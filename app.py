@@ -57,6 +57,7 @@ SIMBOLOS = {
 # (evita spam en la misma vela)
 # ══════════════════════════════════════
 alertas_enviadas = {}
+ultimo_analisis = {}  # Guarda última fecha y scores analizados
 
 # ══════════════════════════════════════
 # TELEGRAM
@@ -316,8 +317,33 @@ def analizar(simbolo, params):
     # ══════════════════════════════════
     # LOG EN CONSOLA
     # ══════════════════════════════════
-    fecha = df.index[-2].strftime('%Y-%m-%d')
-    print(f"  📅 Vela: {fecha}")
+    fecha = df.index[-2].strftime('%Y-%m-%d')    
+    # ══════════════════════════════════════
+    # VERIFICAR SI YA SE ANALIZÓ ESTA VELA
+    # ══════════════════════════════════════
+    clave_simbolo = simbolo
+    ya_analizado = False
+    
+    if clave_simbolo in ultimo_analisis:
+        ultima_fecha = ultimo_analisis[clave_simbolo]['fecha']
+        ultimo_score_sell = ultimo_analisis[clave_simbolo]['score_sell']
+        ultimo_score_buy = ultimo_analisis[clave_simbolo]['score_buy']
+        
+        # Si es la misma fecha y scores similares, ya fue analizado
+        if (ultima_fecha == fecha and 
+            abs(ultimo_score_sell - score_sell) <= 1 and 
+            abs(ultimo_score_buy - score_buy) <= 1):
+            ya_analizado = True
+            print(f"  ℹ️  Vela {fecha} ya analizada - Sin cambios significativos")
+            return  # No enviar alertas repetidas
+    
+    # Actualizar último análisis
+    ultimo_analisis[clave_simbolo] = {
+        'fecha': fecha,
+        'score_sell': score_sell,
+        'score_buy': score_buy
+    }
+        print(f"  📅 Vela: {fecha}")
     print(f"  💰 Precio cierre: {round(close, 2)}")
     print(f"  📊 Score SELL: {score_sell}/15 | Score BUY: {score_buy}/15")
     print(f"  🔴 SELL → Alerta:{senal_sell_alerta} Media:{senal_sell_media} Fuerte:{senal_sell_fuerte} Máxima:{senal_sell_maxima}")
@@ -467,7 +493,8 @@ def main():
                     "📊 Monitorizando: XAUUSD\n"
                     "⏱️ Timeframe: 1D\n"
                     "🔄 Revisión cada 14 minutos\n"
-                    "💚 Mantiene el servidor activo")
+                    "💚 Mantiene el servidor activo\n"
+                    "✅ Solo alertas en velas nuevas o cambios significativos")
 
     while True:
         for simbolo, params in SIMBOLOS.items():
