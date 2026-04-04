@@ -343,7 +343,8 @@ def analizar(simbolo, params):
         'score_sell': score_sell,
         'score_buy': score_buy
     }
-        print(f"  📅 Vela: {fecha}")
+    
+    print(f"  📅 Vela: {fecha}")
     print(f"  💰 Precio cierre: {round(close, 2)}")
     print(f"  📊 Score SELL: {score_sell}/15 | Score BUY: {score_buy}/15")
     print(f"  🔴 SELL → Alerta:{senal_sell_alerta} Media:{senal_sell_media} Fuerte:{senal_sell_fuerte} Máxima:{senal_sell_maxima}")
