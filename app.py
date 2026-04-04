@@ -17,8 +17,8 @@ load_dotenv()
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
-CHECK_INTERVAL = 60 * 60  # cada hora (en segundos)
-                           # la vela diaria cierra 1 vez al día
+CHECK_INTERVAL = 14 * 60  # cada 14 minutos (en segundos)
+                          # mantiene el servidor activo
 
 # ══════════════════════════════════════
 # PARÁMETROS — igual que Pine Script
@@ -458,7 +458,7 @@ def analizar(simbolo, params):
 # ══════════════════════════════════════
 def main():
     print("🚀 Detector de señales iniciado")
-    print(f"⏱️  Revisando cada {CHECK_INTERVAL//3600}h")
+    print(f"⏱️  Revisando cada {CHECK_INTERVAL//60} minutos")
     print(f"📊 Símbolos: {list(SIMBOLOS.keys())}")
 
     # Enviar mensaje de arranque
@@ -466,12 +466,13 @@ def main():
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "📊 Monitorizando: XAUUSD\n"
                     "⏱️ Timeframe: 1D\n"
-                    "🔄 Revisión cada hora")
+                    "🔄 Revisión cada 14 minutos\n"
+                    "💚 Mantiene el servidor activo")
 
     while True:
         for simbolo, params in SIMBOLOS.items():
             analizar(simbolo, params)
-        print(f"\n⏳ Esperando {CHECK_INTERVAL//3600}h...\n")
+        print(f"\n⏳ Esperando {CHECK_INTERVAL//60} minutos...\n")
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == '__main__':
