@@ -1,0 +1,502 @@
+// ══════════════════════════════════════════════════════════════════
+// Detector SPX500 — Señales de Trading
+// Pine Script v5
+// Traducción fiel de detector_spx.py
+// ══════════════════════════════════════════════════════════════════
+//@version=5
+indicator("📊 Detector SPX500 — Señales Trading", overlay=true, max_labels_count=500, max_lines_count=50)
+
+// ══════════════════════════════════════
+// INPUTS — ZONAS
+// ══════════════════════════════════════
+zrh = input.float(6100.0, "Resistencia High",  group="Zonas")
+zrl = input.float(5800.0, "Resistencia Low",   group="Zonas")
+zsh = input.float(5200.0, "Soporte High",      group="Zonas")
+zsl = input.float(4800.0, "Soporte Low",       group="Zonas")
+tol = input.float(50.0,   "Tolerancia zona",   group="Zonas")
+cd  = input.float(1.5,    "Cancelar dist %",   group="Zonas")
+av  = input.int(3,        "Anticipar velas",   group="Zonas")
+lop = input.float(0.3,    "Limit offset %",    group="Zonas")
+
+// ── Take Profits ──
+tp1_v = input.float(4941.0, "TP1 Venta",  group="Take Profits")
+tp2_v = input.float(4700.0, "TP2 Venta",  group="Take Profits")
+tp3_v = input.float(4400.0, "TP3 Venta",  group="Take Profits")
+tp1_c = input.float(5800.0, "TP1 Compra", group="Take Profits")
+tp2_c = input.float(6000.0, "TP2 Compra", group="Take Profits")
+tp3_c = input.float(6100.0, "TP3 Compra", group="Take Profits")
+
+// ── Indicadores ──
+rsi_len       = input.int(14,    "RSI Length",      group="Indicadores")
+rsi_min_sell  = input.float(60.0, "RSI mín SELL",   group="Indicadores")
+rsi_max_buy   = input.float(40.0, "RSI máx BUY",    group="Indicadores")
+ema_fast_len  = input.int(9,     "EMA rápida",      group="Indicadores")
+ema_slow_len  = input.int(21,    "EMA lenta",       group="Indicadores")
+ema_trend_len = input.int(200,   "EMA tendencia",   group="Indicadores")
+atr_len       = input.int(14,    "ATR Length",      group="Indicadores")
+atr_sl_mult   = input.float(2.0, "ATR SL mult",     group="Indicadores")
+vol_mult      = input.float(1.3, "Vol multiplier",  group="Indicadores")
+
+// ── Mostrar ──
+show_emas   = input.bool(true, "Mostrar EMAs",          group="Visual")
+show_zones  = input.bool(true, "Mostrar zonas (fondo)", group="Visual")
+show_table  = input.bool(true, "Mostrar tabla score",   group="Visual")
+
+// ══════════════════════════════════════
+// INDICADORES TÉCNICOS
+// ══════════════════════════════════════
+rsi_val   = ta.rsi(close, rsi_len)
+ema_fast  = ta.ema(close, ema_fast_len)
+ema_slow  = ta.ema(close, ema_slow_len)
+ema_trend = ta.ema(close, ema_trend_len)
+atr_val   = ta.atr(atr_len)
+vol_avg   = ta.sma(volume, 20)
+
+// ══════════════════════════════════════
+// ANATOMÍA DE VELA
+// ══════════════════════════════════════
+body        = math.abs(close - open)
+upper_wick  = high - math.max(close, open)
+lower_wick  = math.min(close, open) - low
+total_range = high - low
+is_bearish  = close < open
+is_bullish  = close > open
+
+// ══════════════════════════════════════
+// PRECIOS LÍMITE
+// ══════════════════════════════════════
+sell_limit = zrl + (zrh - zrl) * (lop / 100.0 * 10.0)
+buy_limit  = zsh - (zsh - zsl) * (lop / 100.0 * 10.0)
+
+// ══════════════════════════════════════
+// ZONAS Y PROXIMIDAD
+// avg_candle_range = media de últimas 5 velas (equivale a iloc[-6:-1])
+// close[3] equivale a df['Close'].iloc[-5] en Python
+// ══════════════════════════════════════
+avg_range       = ta.sma(high - low, 5)
+dist_to_resist  = zrl - close
+dist_to_support = close - zsh
+
+aprox_resist = dist_to_resist  > 0 and dist_to_resist  < avg_range * av and close > close[3]
+aprox_soport = dist_to_support > 0 and dist_to_support < avg_range * av and close < close[3]
+
+en_zona_resist  = high >= zrl - tol and high <= zrh + tol
+en_zona_soporte = low  >= zsl - tol and low  <= zsh + tol
+
+cancelar_sell = close > zrh * (1.0 + cd / 100.0)
+cancelar_buy  = close < zsl * (1.0 - cd / 100.0)
+
+// ── velas_para_resist / velas_para_support (informativo) ──
+velas_resist  = avg_range > 0.0 ? math.round(dist_to_resist  / avg_range * 10.0) / 10.0 : 0.0
+velas_soport  = avg_range > 0.0 ? math.round(dist_to_support / avg_range * 10.0) / 10.0 : 0.0
+
+// ══════════════════════════════════════
+// BLOQUE VENTA — PATRONES
+// Referencia Python: prev = df.iloc[-3] → Pine [1]
+//                    p2   = df.iloc[-4] → Pine [2]
+// Divergencia: df['High'].iloc[-7:-2] → ta.highest(high[1], 5)
+// ══════════════════════════════════════
+intento_rotura_fallido = high >= zrl and close < zrl
+
+shooting_star     = is_bearish and upper_wick > body * 2.0 and lower_wick < body * 0.3 and en_zona_resist
+bearish_engulfing = is_bearish and open >= high[1] and close <= low[1] and en_zona_resist
+bearish_marubozu  = is_bearish and body > total_range * 0.8 and en_zona_resist
+doji_resist       = body < total_range * 0.1 and en_zona_resist and upper_wick > body * 2.0
+vela_rechazo      = shooting_star or bearish_engulfing or bearish_marubozu or doji_resist
+
+rsi_alto_girando = rsi_val >= rsi_min_sell and rsi_val < rsi_val[1]
+rsi_sobrecompra  = rsi_val >= 70.0
+
+lookback            = 5
+price_new_high      = high > ta.highest(high[1], lookback)
+rsi_lower_high      = rsi_val < ta.highest(rsi_val[1], lookback)
+divergencia_bajista = price_new_high and rsi_lower_high and rsi_val > 50.0
+
+vol_alto_rechazo = volume > vol_avg * vol_mult
+vol_decreciente  = volume < volume[1] and volume[1] < volume[2] and is_bullish
+
+emas_bajistas      = ema_fast < ema_slow
+bajo_ema200        = close < ema_trend
+max_decreciente    = high < high[1] and high[1] < high[2]
+min_decreciente    = low  < low[1]  and low[1]  < low[2]
+estructura_bajista = max_decreciente or min_decreciente
+
+score_sell = (en_zona_resist          ? 2 : 0) +
+             (vela_rechazo            ? 2 : 0) +
+             (vol_alto_rechazo        ? 2 : 0) +
+             (rsi_alto_girando        ? 1 : 0) +
+             (rsi_sobrecompra         ? 1 : 0) +
+             (divergencia_bajista     ? 1 : 0) +
+             (emas_bajistas           ? 1 : 0) +
+             (estructura_bajista      ? 1 : 0) +
+             (intento_rotura_fallido  ? 1 : 0) +
+             (vol_decreciente         ? 1 : 0) +
+             (shooting_star and vol_alto_rechazo      ? 1 : 0) +
+             (divergencia_bajista and rsi_sobrecompra ? 1 : 0) +
+             (bajo_ema200             ? 1 : 0)
+
+// ══════════════════════════════════════
+// BLOQUE COMPRA — PATRONES
+// ══════════════════════════════════════
+intento_caida_fallido = low <= zsh and close > zsh
+
+hammer            = is_bullish and lower_wick > body * 2.0 and upper_wick < body * 0.3 and en_zona_soporte
+bullish_engulfing = is_bullish and open <= low[1] and close >= high[1] and en_zona_soporte
+bullish_marubozu  = is_bullish and body > total_range * 0.8 and en_zona_soporte
+doji_soporte      = body < total_range * 0.1 and en_zona_soporte and lower_wick > body * 2.0
+vela_rebote       = hammer or bullish_engulfing or bullish_marubozu or doji_soporte
+
+rsi_bajo_girando = rsi_val <= rsi_max_buy and rsi_val > rsi_val[1]
+rsi_sobreventa   = rsi_val <= 30.0
+
+price_new_low       = low < ta.lowest(low[1], lookback)
+rsi_higher_low      = rsi_val > ta.lowest(rsi_val[1], lookback)
+divergencia_alcista = price_new_low and rsi_higher_low and rsi_val < 50.0
+
+vol_alto_rebote      = volume > vol_avg * vol_mult
+vol_decreciente_sell = volume < volume[1] and volume[1] < volume[2] and is_bearish
+
+emas_alcistas      = ema_fast > ema_slow
+sobre_ema200       = close > ema_trend
+max_creciente      = high > high[1] and high[1] > high[2]
+min_creciente      = low  > low[1]  and low[1]  > low[2]
+estructura_alcista = max_creciente or min_creciente
+
+score_buy = (en_zona_soporte          ? 2 : 0) +
+            (vela_rebote              ? 2 : 0) +
+            (vol_alto_rebote          ? 2 : 0) +
+            (rsi_bajo_girando         ? 1 : 0) +
+            (rsi_sobreventa           ? 1 : 0) +
+            (divergencia_alcista      ? 1 : 0) +
+            (emas_alcistas            ? 1 : 0) +
+            (estructura_alcista       ? 1 : 0) +
+            (intento_caida_fallido    ? 1 : 0) +
+            (vol_decreciente_sell     ? 1 : 0) +
+            (hammer and vol_alto_rebote             ? 1 : 0) +
+            (divergencia_alcista and rsi_sobreventa ? 1 : 0) +
+            (sobre_ema200             ? 1 : 0)
+
+// ══════════════════════════════════════
+// NIVELES DE SEÑAL
+// ══════════════════════════════════════
+senal_sell_maxima = score_sell >= 10
+senal_sell_fuerte = score_sell >= 8
+senal_sell_media  = score_sell >= 6
+senal_sell_alerta = score_sell >= 4
+
+senal_buy_maxima = score_buy >= 10
+senal_buy_fuerte = score_buy >= 8
+senal_buy_media  = score_buy >= 6
+senal_buy_alerta = score_buy >= 4
+
+// ══════════════════════════════════════
+// SL Y TP
+// ══════════════════════════════════════
+sl_venta  = math.max(zrh, close + atr_val * atr_sl_mult)
+sl_compra = math.min(zsl, close - atr_val * atr_sl_mult)
+
+// Función R:R
+rr_calc(limit, sl, tp) =>
+    diff = math.abs(sl - limit)
+    diff > 0.0 ? math.round(math.abs(tp - limit) / diff * 10.0) / 10.0 : 0.0
+
+// ══════════════════════════════════════
+// VISUAL — EMAs
+// ══════════════════════════════════════
+plot(show_emas ? ema_fast  : na, "EMA 9",   color=color.new(color.yellow, 0), linewidth=1)
+plot(show_emas ? ema_slow  : na, "EMA 21",  color=color.new(color.orange, 0), linewidth=1)
+plot(show_emas ? ema_trend : na, "EMA 200", color=color.new(color.white,  0), linewidth=2)
+
+// ── Niveles de zona ──
+plot(zrh, "Resistencia High", color=color.new(color.red,   40), linewidth=1, style=plot.style_linebr)
+plot(zrl, "Resistencia Low",  color=color.new(color.red,   0),  linewidth=2, style=plot.style_linebr)
+plot(zsh, "Soporte High",     color=color.new(color.green, 0),  linewidth=2, style=plot.style_linebr)
+plot(zsl, "Soporte Low",      color=color.new(color.green, 40), linewidth=1, style=plot.style_linebr)
+
+// ── Fondo de zonas ──
+bgcolor(show_zones and en_zona_resist  ? color.new(color.red,   88) : na, title="Zona Resistencia")
+bgcolor(show_zones and en_zona_soporte ? color.new(color.green, 88) : na, title="Zona Soporte")
+
+// ══════════════════════════════════════
+// LABELS EN CHART
+// ══════════════════════════════════════
+if barstate.isconfirmed
+    // ── SEÑALES SELL ──
+    if senal_sell_alerta and not cancelar_sell
+        nivel_txt = senal_sell_maxima ? "⚡ SELL MÁX"    :
+                    senal_sell_fuerte ? "🔴 SELL FUERTE" :
+                    senal_sell_media  ? "⚠️ SELL MEDIA"  :
+                                        "👀 SELL ALERTA"
+        lbl_color = senal_sell_maxima ? color.purple :
+                    senal_sell_fuerte ? color.red     :
+                    senal_sell_media  ? color.orange  :
+                                        color.yellow
+        label.new(bar_index, high,
+                  nivel_txt + "\nScore: " + str.tostring(score_sell) + "/15" +
+                  "\nRSI: " + str.tostring(math.round(rsi_val * 10.0) / 10.0) +
+                  "\nSL: "  + str.tostring(math.round(sl_venta * 10.0) / 10.0),
+                  style=label.style_label_down, color=lbl_color,
+                  textcolor=color.white, size=size.small)
+
+    // ── SEÑALES BUY ──
+    if senal_buy_alerta and not cancelar_buy
+        nivel_txt = senal_buy_maxima ? "⚡ BUY MÁX"    :
+                    senal_buy_fuerte ? "🟢 BUY FUERTE" :
+                    senal_buy_media  ? "⚠️ BUY MEDIA"  :
+                                       "👀 BUY ALERTA"
+        lbl_color = senal_buy_maxima ? color.purple :
+                    senal_buy_fuerte ? color.lime    :
+                    senal_buy_media  ? color.teal    :
+                                       color.yellow
+        label.new(bar_index, low,
+                  nivel_txt + "\nScore: " + str.tostring(score_buy) + "/15" +
+                  "\nRSI: " + str.tostring(math.round(rsi_val * 10.0) / 10.0) +
+                  "\nSL: "  + str.tostring(math.round(sl_compra * 10.0) / 10.0),
+                  style=label.style_label_up, color=lbl_color,
+                  textcolor=color.white, size=size.small)
+
+    // ── PREPARAR SELL ──
+    if aprox_resist and not en_zona_resist and not cancelar_sell
+        label.new(bar_index, high,
+                  "🔔 PREP SELL\n~" + str.tostring(velas_resist) + " velas\nScore: " + str.tostring(score_sell) + "/15",
+                  style=label.style_label_down,
+                  color=color.new(color.red, 50), textcolor=color.white, size=size.tiny)
+
+    // ── PREPARAR BUY ──
+    if aprox_soport and not en_zona_soporte and not cancelar_buy
+        label.new(bar_index, low,
+                  "🔔 PREP BUY\n~" + str.tostring(velas_soport) + " velas\nScore: " + str.tostring(score_buy) + "/15",
+                  style=label.style_label_up,
+                  color=color.new(color.green, 50), textcolor=color.white, size=size.tiny)
+
+    // ── CANCELACIONES ──
+    if cancelar_sell
+        label.new(bar_index, high, "❌ CANCEL SELL",
+                  style=label.style_label_down, color=color.gray,
+                  textcolor=color.white, size=size.tiny)
+
+    if cancelar_buy
+        label.new(bar_index, low, "❌ CANCEL BUY",
+                  style=label.style_label_up, color=color.gray,
+                  textcolor=color.white, size=size.tiny)
+
+// ══════════════════════════════════════
+// TABLA DE SCORE EN TIEMPO REAL
+// ══════════════════════════════════════
+var table tbl = table.new(position.top_right, 2, 8,
+                           bgcolor=color.new(color.black, 60),
+                           border_color=color.gray, border_width=1)
+if show_table and barstate.islast
+    table.cell(tbl, 0, 0, "📊 SPX500",       text_color=color.white,  text_size=size.small, bgcolor=color.new(color.blue, 60))
+    table.cell(tbl, 1, 0, timeframe.period,   text_color=color.yellow, text_size=size.small, bgcolor=color.new(color.blue, 60))
+    table.cell(tbl, 0, 1, "Score SELL",       text_color=color.white,  text_size=size.small)
+    table.cell(tbl, 1, 1, str.tostring(score_sell) + "/15",
+               text_color=score_sell >= 10 ? color.purple : score_sell >= 8 ? color.red : score_sell >= 6 ? color.orange : score_sell >= 4 ? color.yellow : color.gray,
+               text_size=size.small)
+    table.cell(tbl, 0, 2, "Score BUY",        text_color=color.white,  text_size=size.small)
+    table.cell(tbl, 1, 2, str.tostring(score_buy) + "/15",
+               text_color=score_buy >= 10 ? color.purple : score_buy >= 8 ? color.lime : score_buy >= 6 ? color.teal : score_buy >= 4 ? color.yellow : color.gray,
+               text_size=size.small)
+    table.cell(tbl, 0, 3, "RSI",              text_color=color.white,  text_size=size.small)
+    table.cell(tbl, 1, 3, str.tostring(math.round(rsi_val * 10.0) / 10.0),
+               text_color=rsi_val >= 70 ? color.red : rsi_val <= 30 ? color.lime : color.white,
+               text_size=size.small)
+    table.cell(tbl, 0, 4, "En Resist.",       text_color=color.white,  text_size=size.small)
+    table.cell(tbl, 1, 4, en_zona_resist  ? "✅" : "—",
+               text_color=en_zona_resist  ? color.red   : color.gray, text_size=size.small)
+    table.cell(tbl, 0, 5, "En Soporte",       text_color=color.white,  text_size=size.small)
+    table.cell(tbl, 1, 5, en_zona_soporte ? "✅" : "—",
+               text_color=en_zona_soporte ? color.lime  : color.gray, text_size=size.small)
+    table.cell(tbl, 0, 6, "SELL LIMIT",       text_color=color.white,  text_size=size.small)
+    table.cell(tbl, 1, 6, str.tostring(math.round(sell_limit * 10.0) / 10.0),
+               text_color=color.red, text_size=size.small)
+    table.cell(tbl, 0, 7, "BUY LIMIT",        text_color=color.white,  text_size=size.small)
+    table.cell(tbl, 1, 7, str.tostring(math.round(buy_limit * 10.0) / 10.0),
+               text_color=color.lime, text_size=size.small)
+
+// ══════════════════════════════════════
+// ALERTAS DINÁMICAS (alert())
+// Se disparan en vela cerrada con mensaje completo
+// ══════════════════════════════════════
+if barstate.isconfirmed
+    sl_v_str  = str.tostring(math.round(sl_venta  * 100.0) / 100.0)
+    sl_c_str  = str.tostring(math.round(sl_compra * 100.0) / 100.0)
+    sl_str    = str.tostring(math.round(sell_limit * 100.0) / 100.0)
+    bl_str    = str.tostring(math.round(buy_limit  * 100.0) / 100.0)
+    px_str    = str.tostring(close)
+    rsi_str   = str.tostring(math.round(rsi_val * 10.0) / 10.0)
+    sc_s_str  = str.tostring(score_sell)
+    sc_b_str  = str.tostring(score_buy)
+    tf_str    = timeframe.period
+    vr_str    = str.tostring(velas_resist)
+    vs_str    = str.tostring(velas_soport)
+    sep       = "\n━━━━━━━━━━━━━━━━━━━━\n"
+
+    // ── PREPARAR SELL ──
+    if aprox_resist and not en_zona_resist and not cancelar_sell
+        alert("🔔 PREPARAR SELL LIMIT — SPX500 🔔" + sep +
+              "📢 Precio aproximándose a resistencia\n" +
+              "💰 Precio:     " + px_str  + "\n" +
+              "📐 Faltan:     ~" + vr_str + " velas\n" +
+              "📌 SELL LIMIT: " + sl_str  + "\n" +
+              "🛑 Stop Loss:  " + sl_v_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp1_v)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp2_v)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp3_v)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_s_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    // ── PREPARAR BUY ──
+    if aprox_soport and not en_zona_soporte and not cancelar_buy
+        alert("🔔 PREPARAR BUY LIMIT — SPX500 🔔" + sep +
+              "📢 Precio aproximándose a soporte\n" +
+              "💰 Precio:    " + px_str  + "\n" +
+              "📐 Faltan:    ~" + vs_str + " velas\n" +
+              "📌 BUY LIMIT: " + bl_str  + "\n" +
+              "🛑 Stop Loss: " + sl_c_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp1_c)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp2_c)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp3_c)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_b_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    // ── SELL SEÑALES ──
+    if senal_sell_maxima and not cancelar_sell
+        alert("⚡ SELL MÁXIMA — SPX500 ⚡" + sep +
+              "💰 Precio:     " + px_str   + "\n" +
+              "📌 SELL LIMIT: " + sl_str   + "\n" +
+              "🛑 Stop Loss:  " + sl_v_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp1_v)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp2_v)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp3_v)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_s_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    if senal_sell_fuerte and not senal_sell_maxima and not cancelar_sell
+        alert("🔴 SELL FUERTE — SPX500 🔴" + sep +
+              "💰 Precio:     " + px_str   + "\n" +
+              "📌 SELL LIMIT: " + sl_str   + "\n" +
+              "🛑 Stop Loss:  " + sl_v_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp1_v)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp2_v)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp3_v)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_s_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    if senal_sell_media and not senal_sell_fuerte and not cancelar_sell
+        alert("⚠️ SELL MEDIA — SPX500 ⚠️" + sep +
+              "💰 Precio:     " + px_str   + "\n" +
+              "📌 SELL LIMIT: " + sl_str   + "\n" +
+              "🛑 Stop Loss:  " + sl_v_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp1_v)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp2_v)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp3_v)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_s_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    if senal_sell_alerta and not senal_sell_media and not cancelar_sell
+        alert("👀 SELL ALERTA — SPX500 👀" + sep +
+              "💰 Precio:     " + px_str   + "\n" +
+              "📌 SELL LIMIT: " + sl_str   + "\n" +
+              "🛑 Stop Loss:  " + sl_v_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp1_v)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp2_v)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_v) + "  R:R " + str.tostring(rr_calc(sell_limit, sl_venta, tp3_v)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_s_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    // ── BUY SEÑALES ──
+    if senal_buy_maxima and not cancelar_buy
+        alert("⚡ BUY MÁXIMA — SPX500 ⚡" + sep +
+              "💰 Precio:    " + px_str   + "\n" +
+              "📌 BUY LIMIT: " + bl_str   + "\n" +
+              "🛑 Stop Loss: " + sl_c_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp1_c)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp2_c)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp3_c)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_b_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    if senal_buy_fuerte and not senal_buy_maxima and not cancelar_buy
+        alert("🟢 BUY FUERTE — SPX500 🟢" + sep +
+              "💰 Precio:    " + px_str   + "\n" +
+              "📌 BUY LIMIT: " + bl_str   + "\n" +
+              "🛑 Stop Loss: " + sl_c_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp1_c)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp2_c)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp3_c)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_b_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    if senal_buy_media and not senal_buy_fuerte and not cancelar_buy
+        alert("⚠️ BUY MEDIA — SPX500 ⚠️" + sep +
+              "💰 Precio:    " + px_str   + "\n" +
+              "📌 BUY LIMIT: " + bl_str   + "\n" +
+              "🛑 Stop Loss: " + sl_c_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp1_c)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp2_c)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp3_c)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_b_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    if senal_buy_alerta and not senal_buy_media and not cancelar_buy
+        alert("👀 BUY ALERTA — SPX500 👀" + sep +
+              "💰 Precio:    " + px_str   + "\n" +
+              "📌 BUY LIMIT: " + bl_str   + "\n" +
+              "🛑 Stop Loss: " + sl_c_str + "\n" +
+              "🎯 TP1: " + str.tostring(tp1_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp1_c)) + ":1\n" +
+              "🎯 TP2: " + str.tostring(tp2_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp2_c)) + ":1\n" +
+              "🎯 TP3: " + str.tostring(tp3_c) + "  R:R " + str.tostring(rr_calc(buy_limit, sl_compra, tp3_c)) + ":1\n" +
+              "━━━━━━━━━━━━━━━━━━━━\n" +
+              "📊 Score: " + sc_b_str + "/15  📉 RSI: " + rsi_str + "\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    // ── CANCELACIONES ──
+    if cancelar_sell
+        alert("❌ CANCELAR SELL LIMIT — SPX500 ❌" + sep +
+              "💰 Precio: " + px_str + "\n" +
+              "⚠️ Precio rompió la resistencia (" + str.tostring(zrh) + ")\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+    if cancelar_buy
+        alert("❌ CANCELAR BUY LIMIT — SPX500 ❌" + sep +
+              "💰 Precio: " + px_str + "\n" +
+              "⚠️ Precio rompió el soporte (" + str.tostring(zsl) + ")\n" +
+              "⏱️ TF: " + tf_str,
+              alert.freq_once_per_bar)
+
+// ══════════════════════════════════════
+// ALERTCONDITIONS (para crear alertas desde panel TV)
+// ══════════════════════════════════════
+alertcondition(senal_sell_maxima and not cancelar_sell,                                   "⚡ SELL MÁXIMA",   "⚡ SELL MÁXIMA — SPX500")
+alertcondition(senal_sell_fuerte and not senal_sell_maxima and not cancelar_sell,          "🔴 SELL FUERTE",  "🔴 SELL FUERTE — SPX500")
+alertcondition(senal_sell_media  and not senal_sell_fuerte and not cancelar_sell,          "⚠️ SELL MEDIA",   "⚠️ SELL MEDIA — SPX500")
+alertcondition(senal_sell_alerta and not senal_sell_media  and not cancelar_sell,          "👀 SELL ALERTA",  "👀 SELL ALERTA — SPX500")
+alertcondition(senal_buy_maxima  and not cancelar_buy,                                    "⚡ BUY MÁXIMA",    "⚡ BUY MÁXIMA — SPX500")
+alertcondition(senal_buy_fuerte  and not senal_buy_maxima  and not cancelar_buy,           "🟢 BUY FUERTE",   "🟢 BUY FUERTE — SPX500")
+alertcondition(senal_buy_media   and not senal_buy_fuerte  and not cancelar_buy,           "⚠️ BUY MEDIA",    "⚠️ BUY MEDIA — SPX500")
+alertcondition(senal_buy_alerta  and not senal_buy_media   and not cancelar_buy,           "👀 BUY ALERTA",   "👀 BUY ALERTA — SPX500")
+alertcondition(aprox_resist and not en_zona_resist and not cancelar_sell,                  "🔔 PREP SELL",    "🔔 PREPARAR SELL LIMIT — SPX500")
+alertcondition(aprox_soport and not en_zona_soporte and not cancelar_buy,                  "🔔 PREP BUY",     "🔔 PREPARAR BUY LIMIT — SPX500")
+alertcondition(cancelar_sell,                                                              "❌ CANCEL SELL",  "❌ CANCELAR SELL LIMIT — SPX500")
+alertcondition(cancelar_buy,                                                               "❌ CANCEL BUY",   "❌ CANCELAR BUY LIMIT — SPX500")
