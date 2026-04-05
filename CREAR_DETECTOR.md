@@ -13,10 +13,11 @@ Esta guía detalla paso a paso cómo crear un detector automatizado de señales 
 5. [Código del Detector](#código-del-detector)
 6. [Parámetros de Configuración](#parámetros-de-configuración)
 7. [Indicadores Técnicos](#indicadores-técnicos)
-8. [Sistema de Scoring](#sistema-de-scoring)
-9. [Sistema Anti-Spam](#sistema-anti-spam)
-10. [Ejecución y Pruebas](#ejecución-y-pruebas)
-11. [Despliegue](#despliegue)
+8. [Detección del Sentimiento del Mercado](#detección-del-sentimiento-del-mercado)
+9. [Sistema de Scoring](#sistema-de-scoring)
+10. [Sistema Anti-Spam](#sistema-anti-spam)
+11. [Ejecución y Pruebas](#ejecución-y-pruebas)
+12. [Despliegue](#despliegue)
 
 ---
 
@@ -316,7 +317,378 @@ def calcular_atr(df, length):
 
 ---
 
-## 8. Sistema de Scoring
+## 8. Detección del Sentimiento del Mercado
+
+El sentimiento del mercado es crucial para determinar la fuerza y dirección de las señales. El detector analiza múltiples factores para determinar si el mercado está en un contexto **alcista**, **bajista** o **neutral**.
+
+### 8.1. Componentes del Sentimiento del Mercado
+
+#### A) Estructura de Precios
+
+La estructura del mercado revela la tendencia subyacente analizando la formación de máximos y mínimos.
+
+```python
+# Análisis de estructura bajista
+max_decreciente = (high < prev['High']) and (prev['High'] < p2['High'])
+min_decreciente = (low < prev['Low']) and (prev['Low'] < p2['Low'])
+estructura_bajista = max_decreciente or min_decreciente
+
+# Análisis de estructura alcista
+max_creciente = (high > prev['High']) and (prev['High'] > p2['High'])
+min_creciente = (low > prev['Low']) and (prev['Low'] > p2['Low'])
+estructura_alcista = max_creciente or min_creciente
+```
+
+**Interpretación:**
+- 🔴 **Estructura Bajista**: Máximos y/o mínimos decrecientes → Presión vendedora
+- 🟢 **Estructura Alcista**: Máximos y/o mínimos crecientes → Presión compradora
+- ⚪ **Estructura Neutral**: Sin patrón claro → Consolidación
+
+#### B) Posición Relativa a EMAs
+
+Las medias móviles exponenciales ayudan a identificar la tendencia general del mercado.
+
+```python
+# Clasificar EMAs
+df['ema_fast'] = calcular_ema(df['Close'], 9)
+df['ema_slow'] = calcular_ema(df['Close'], 21)
+df['ema_trend'] = calcular_ema(df['Close'], 200)
+
+# Determinar tendencia por EMAs
+emas_bajistas = ema_fast < ema_slow  # EMA 9 < EMA 21
+emas_alcistas = ema_fast > ema_slow  # EMA 9 > EMA 21
+
+# Posición respecto a EMA 200 (tendencia de largo plazo)
+sobre_ema200 = close > ema_trend  # Tendencia alcista general
+bajo_ema200 = close < ema_trend   # Tendencia bajista general
+```
+
+**Interpretación:**
+- 🟢 **Sentimiento Alcista**: Precio > EMA200 y EMA9 > EMA21
+- 🔴 **Sentimiento Bajista**: Precio < EMA200 y EMA9 < EMA21
+- ⚪ **Sentimiento Mixto**: Señales contradictorias
+
+#### C) Divergencias RSI
+
+Las divergencias revelan debilidad en la tendencia actual y posibles reversiones.
+
+```python
+# Divergencia Bajista (precio sube, RSI no confirma)
+lookback = 5
+price_new_high = high > df['High'].iloc[-lookback-2:-2].max()
+rsi_lower_high = rsi < df['rsi'].iloc[-lookback-2:-2].max()
+divergencia_bajista = price_new_high and rsi_lower_high and rsi > 50
+
+# Divergencia Alcista (precio baja, RSI no confirma)
+price_new_low = low < df['Low'].iloc[-lookback-2:-2].min()
+rsi_higher_low = rsi > df['rsi'].iloc[-lookback-2:-2].min()
+divergencia_alcista = price_new_low and rsi_higher_low and rsi < 50
+```
+
+**Interpretación:**
+- ⚠️ **Divergencia Bajista**: El precio hace nuevos máximos pero el RSI no los confirma → Debilidad alcista, posible reversión bajista
+- ⚠️ **Divergencia Alcista**: El precio hace nuevos mínimos pero el RSI no los confirma → Debilidad bajista, posible reversión alcista
+
+#### D) Análisis de Volumen
+
+El volumen confirma la validez de los movimientos de precio.
+
+```python
+# Calcular volumen promedio
+df['vol_avg'] = df['Volume'].rolling(20).mean()
+
+# Detectar volumen alto en rechazo/rebote
+vol_alto_rechazo = vol > vol_avg * vol_mult  # Rechazo con volumen alto
+vol_alto_rebote = vol > vol_avg * vol_mult   # Rebote con volumen alto
+
+# Detectar volumen decreciente (señal de debilidad)
+vol_decreciente = (vol < prev['Volume']) and (prev['Volume'] < p2['Volume'])
+```
+
+**Interpretación:**
+- ✅ **Volumen Alto + Movimiento**: Confirma la fuerza del movimiento
+- ❌ **Volumen Bajo + Movimiento**: Movimiento débil, posible reversión
+- 📉 **Volumen Decreciente**: Pérdida de momentum
+
+#### E) Zonas de Soporte y Resistencia
+
+La reacción del precio en zonas clave revela el sentimiento institucional.
+
+```python
+# Definir zonas
+zona_resist_high = 4900.0
+zona_resist_low = 4750.0
+zona_soporte_high = 4400.0
+zona_soporte_low = 4200.0
+tolerancia = 30.0
+
+# Detectar si el precio está en zona
+en_zona_resist = (high >= zona_resist_low - tolerancia) and \
+                 (high <= zona_resist_high + tolerancia)
+
+en_zona_soporte = (low >= zona_soporte_low - tolerancia) and \
+                  (low <= zona_soporte_high + tolerancia)
+
+# Detectar intentos de rotura fallidos (revela sentimiento)
+intento_rotura_fallido = (high >= zona_resist_low) and (close < zona_resist_low)
+intento_caida_fallido = (low <= zona_soporte_high) and (close > zona_soporte_high)
+```
+
+**Interpretación:**
+- 🔴 **Rechazo en Resistencia**: Fuerte sentimiento bajista, vendedores dominan
+- 🟢 **Rebote en Soporte**: Fuerte sentimiento alcista, compradores dominan
+- ⚡ **Rotura de Zona**: Cambio de sentimiento del mercado
+
+### 8.2. Confluencia de Señales (Sentimiento Combinado)
+
+El sentimiento real se determina cuando **múltiples factores coinciden**:
+
+```python
+def detectar_sentimiento_bajista(df, row, prev, p2):
+    """
+    Detecta sentimiento bajista del mercado
+    Returns: (sentimiento_score, factores_detectados)
+    """
+    factores = []
+    score = 0
+    
+    # 1. Estructura bajista
+    if max_decreciente or min_decreciente:
+        factores.append("Estructura bajista")
+        score += 2
+    
+    # 2. EMAs bajistas + precio bajo EMA200
+    if emas_bajistas:
+        factores.append("EMAs bajistas")
+        score += 1
+    if bajo_ema200:
+        factores.append("Bajo EMA200")
+        score += 1
+    
+    # 3. Divergencia bajista
+    if divergencia_bajista:
+        factores.append("Divergencia bajista")
+        score += 2
+    
+    # 4. RSI alto girando
+    if rsi_alto_girando or rsi_sobrecompra:
+        factores.append("RSI sobrecompra")
+        score += 1
+    
+    # 5. Rechazo en resistencia
+    if en_zona_resist and vela_rechazo:
+        factores.append("Rechazo en resistencia")
+        score += 3
+    
+    return score, factores
+
+# Uso:
+sentimiento_score, factores = detectar_sentimiento_bajista(df, row, prev, p2)
+
+if sentimiento_score >= 6:
+    print(f"🔴 SENTIMIENTO BAJISTA FUERTE ({sentimiento_score}/10)")
+    print(f"   Factores: {', '.join(factores)}")
+elif sentimiento_score >= 3:
+    print(f"⚠️ SENTIMIENTO BAJISTA MODERADO ({sentimiento_score}/10)")
+else:
+    print(f"⚪ SENTIMIENTO NEUTRAL/ALCISTA ({sentimiento_score}/10)")
+```
+
+### 8.3. Patrones de Mercado según Sentimiento
+
+#### Sentimiento BAJISTA dominante (Score 6-10):
+```
+✓ Precio en resistencia o bajo EMA200
+✓ EMAs descendentes (EMA9 < EMA21)
+✓ Estructura de máximos y mínimos descendentes
+✓ RSI en sobrecompra (>70) o girando a la baja
+✓ Divergencias bajistas
+✓ Volumen alto en rechazos
+✓ Patrones de velas bajistas (Shooting Star, Engulfing)
+```
+
+#### Sentimiento ALCISTA dominante (Score 6-10):
+```
+✓ Precio en soporte o sobre EMA200
+✓ EMAs ascendentes (EMA9 > EMA21)
+✓ Estructura de máximos y mínimos ascendentes
+✓ RSI en sobreventa (<30) o girando al alza
+✓ Divergencias alcistas
+✓ Volumen alto en rebotes
+✓ Patrones de velas alcistas (Hammer, Bullish Engulfing)
+```
+
+#### Sentimiento NEUTRAL (Score 0-3):
+```
+? Señales contradictorias
+? Precio en rango lateral
+? EMAs entrelazadas
+? RSI en zona neutral (40-60)
+? Volumen bajo
+→ Esperar confirmación antes de operar
+```
+
+### 8.4. Ejemplo Práctico: Análisis Completo de Sentimiento
+
+```python
+def analizar_sentimiento_completo(simbolo, df, row, prev, p2):
+    """Análisis completo del sentimiento del mercado"""
+    
+    print(f"\n{'='*50}")
+    print(f"📊 ANÁLISIS DE SENTIMIENTO - {simbolo}")
+    print(f"{'='*50}\n")
+    
+    fecha = df.index[-2].strftime('%Y-%m-%d')
+    close = row['Close']
+    rsi = row['rsi']
+    
+    print(f"📅 Fecha: {fecha}")
+    print(f"💰 Precio: {close:.2f}")
+    print(f"📉 RSI: {rsi:.1f}\n")
+    
+    # 1. ESTRUCTURA
+    print("═══ 1. ESTRUCTURA DE PRECIOS ═══")
+    if estructura_bajista:
+        print("  🔴 Estructura BAJISTA detectada")
+    elif estructura_alcista:
+        print("  🟢 Estructura ALCISTA detectada")
+    else:
+        print("  ⚪ Estructura NEUTRAL\n")
+    
+    # 2. EMAs
+    print("\n═══ 2. MEDIAS MÓVILES ═══")
+    print(f"  EMA 9:   {ema_fast:.2f}")
+    print(f"  EMA 21:  {ema_slow:.2f}")
+    print(f"  EMA 200: {ema_trend:.2f}")
+    
+    if emas_bajistas and bajo_ema200:
+        print("  🔴 TENDENCIA BAJISTA confirmada")
+    elif emas_alcistas and sobre_ema200:
+        print("  🟢 TENDENCIA ALCISTA confirmada")
+    else:
+        print("  ⚪ TENDENCIA MIXTA")
+    
+    # 3. DIVERGENCIAS
+    print("\n═══ 3. DIVERGENCIAS ═══")
+    if divergencia_bajista:
+        print("  ⚠️ DIVERGENCIA BAJISTA: Precio fuerte, RSI débil")
+    elif divergencia_alcista:
+        print("  ⚠️ DIVERGENCIA ALCISTA: Precio débil, RSI fuerte")
+    else:
+        print("  ✓ Sin divergencias relevantes")
+    
+    # 4. ZONAS
+    print("\n═══ 4. ZONAS CLAVE ═══")
+    if en_zona_resist:
+        print(f"  🔴 En RESISTENCIA ({zona_resist_low}-{zona_resist_high})")
+    elif en_zona_soporte:
+        print(f"  🟢 En SOPORTE ({zona_soporte_low}-{zona_soporte_high})")
+    else:
+        dist_resist = zona_resist_low - close
+        dist_soporte = close - zona_soporte_high
+        print(f"  ↗️ Distancia a resistencia: {dist_resist:.0f}")
+        print(f"  ↘️ Distancia a soporte: {dist_soporte:.0f}")
+    
+    # 5. VOLUMEN
+    print("\n═══ 5. VOLUMEN ═══")
+    vol_ratio = vol / vol_avg
+    if vol_ratio > 1.5:
+        print(f"  🔊 Volumen ALTO ({vol_ratio:.1f}x promedio)")
+    elif vol_ratio > 1.0:
+        print(f"  📊 Volumen NORMAL ({vol_ratio:.1f}x promedio)")
+    else:
+        print(f"  🔇 Volumen BAJO ({vol_ratio:.1f}x promedio)")
+    
+    # CONCLUSIÓN
+    print(f"\n{'='*50}")
+    sentimiento_bajista = sum([
+        estructura_bajista * 2,
+        emas_bajistas,
+        bajo_ema200,
+        divergencia_bajista * 2,
+        en_zona_resist * 2
+    ])
+    
+    sentimiento_alcista = sum([
+        estructura_alcista * 2,
+        emas_alcistas,
+        sobre_ema200,
+        divergencia_alcista * 2,
+        en_zona_soporte * 2
+    ])
+    
+    if sentimiento_bajista >= 6:
+        print("🔴 SENTIMIENTO: BAJISTA FUERTE")
+        print("   → Favorece señales de VENTA")
+    elif sentimiento_alcista >= 6:
+        print("🟢 SENTIMIENTO: ALCISTA FUERTE")
+        print("   → Favorece señales de COMPRA")
+    else:
+        print("⚪ SENTIMIENTO: NEUTRAL/MIXTO")
+        print("   → Esperar confirmación adicional")
+    
+    print(f"{'='*50}\n")
+```
+
+### 8.5. Integración en el Sistema de Alertas
+
+```python
+# En la función analizar(), después de calcular los scores:
+
+# Detectar sentimiento general
+sentimiento_bajista_score = sum([
+    estructura_bajista * 2,
+    emas_bajistas,
+    bajo_ema200,
+    divergencia_bajista * 2,
+    (rsi > 60)
+])
+
+sentimiento_alcista_score = sum([
+    estructura_alcista * 2,
+    emas_alcistas,
+    sobre_ema200,
+    divergencia_alcista * 2,
+    (rsi < 40)
+])
+
+# Ajustar mensaje según sentimiento
+if senal_sell_alerta:
+    contexto = ""
+    if sentimiento_bajista_score >= 6:
+        contexto = "\n🎯 <b>CONTEXTO:</b> Fuerte sentimiento bajista del mercado"
+    elif sentimiento_bajista_score >= 3:
+        contexto = "\n⚠️ <b>CONTEXTO:</b> Sentimiento bajista moderado"
+    else:
+        contexto = "\n⚪ <b>CONTEXTO:</b> Sentimiento mixto - Operar con precaución"
+    
+    mensaje = f"{nivel_alerta}\n" + contexto + f"\n{detalles_trade}"
+    enviar_telegram(mensaje)
+```
+
+### 8.6. Mejores Prácticas
+
+#### ✅ Operar SOLO con confluencia
+- **Mínimo 3 factores** de sentimiento alineados
+- Evitar señales contradictorias
+- Esperar confirmación en múltiples timeframes
+
+#### ✅ Dar prioridad a:
+1. **Estructura de precios** (máximos/mínimos)
+2. **Posición respecto a EMA200**
+3. **Reacción en zonas clave**
+4. **Divergencias**
+5. **Volumen confirmatorio**
+
+#### ❌ Evitar operar cuando:
+- Sentimiento neutral (score < 3)
+- Señales contradictorias
+- Volumen muy bajo
+- Precio en medio del rango (lejos de zonas)
+
+---
+
+## 9. Sistema de Scoring
 
 ### 8.1. Condiciones para señales de VENTA (Score 0-15)
 
@@ -382,9 +754,9 @@ bearish_engulfing = (
 
 ---
 
-## 9. Sistema Anti-Spam
+## 10. Sistema Anti-Spam
 
-### 9.1. Control de alertas duplicadas
+### 10.1. Control de alertas duplicadas
 
 ```python
 # Variables globales
@@ -416,7 +788,7 @@ def verificar_vela_analizada(simbolo, fecha, score_sell, score_buy):
     return False
 ```
 
-### 9.2. Evitar alertas repetidas en la misma vela
+### 10.2. Evitar alertas repetidas en la misma vela
 
 ```python
 clave_vela = f"{simbolo}_{fecha}"
@@ -435,9 +807,9 @@ if senal_sell_maxima and not ya_enviada('SELL_MAX'):
 
 ---
 
-## 10. Ejecución y Pruebas
+## 11. Ejecución y Pruebas
 
-### 10.1. Bucle principal
+### 11.1. Bucle principal
 
 ```python
 def main():
@@ -463,13 +835,13 @@ if __name__ == '__main__':
     main()
 ```
 
-### 10.2. Ejecutar el detector
+### 11.2. Ejecutar el detector
 
 ```bash
 python detector_gold.py
 ```
 
-### 10.3. Verificar que funciona
+### 11.3. Verificar que funciona
 
 Deberías ver:
 ```
@@ -484,9 +856,9 @@ Y recibir un mensaje en Telegram confirmando el inicio.
 
 ---
 
-## 11. Despliegue
+## 12. Despliegue
 
-### 11.1. Subir a GitHub
+### 12.1. Subir a GitHub
 
 ```bash
 git add .
@@ -495,7 +867,7 @@ git remote add origin https://github.com/tu-usuario/BotTrading.git
 git push -u origin main
 ```
 
-### 11.2. Ejecutar en servidor (Render, Railway, etc.)
+### 12.2. Ejecutar en servidor (Render, Railway, etc.)
 
 **Crear `Procfile`:**
 ```
@@ -506,7 +878,7 @@ worker: python detector_gold.py
 - `TELEGRAM_TOKEN`: Tu token del bot
 - `TELEGRAM_CHAT_ID`: Tu chat ID
 
-### 11.3. Mantener activo 24/7
+### 12.3. Mantener activo 24/7
 
 El detector verifica cada 14 minutos, lo que:
 - ✅ Mantiene el proceso activo
