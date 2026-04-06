@@ -99,140 +99,131 @@ def calcular_atr(df, length):
     return tr.ewm(com=length - 1, min_periods=length).mean()
 
 # ══════════════════════════════════════
-# NUEVOS INDICADORES — ALTA PRIORIDAD
+# ANÁLISIS DE SENTIMIENTO DEL MERCADO
 # ══════════════════════════════════════
+def calcular_sentimiento_bajista(row, prev, p2, df, params):
+    """
+    Calcula el score de sentimiento bajista (0-10)
+    Returns: (score, factores_detectados)
+    """
+    factores = []
+    score = 0
+    
+    close = row['Close']
+    high = row['High']
+    rsi = row['rsi']
+    ema_fast = row['ema_fast']
+    ema_slow = row['ema_slow']
+    ema_trend = row['ema_trend']
+    
+    # 1. Estructura bajista (2 puntos)
+    max_decreciente = (high < float(prev['High'])) and (float(prev['High']) < float(p2['High']))
+    min_decreciente = (row['Low'] < float(prev['Low'])) and (float(prev['Low']) < float(p2['Low']))
+    if max_decreciente or min_decreciente:
+        factores.append("Estructura bajista")
+        score += 2
+    
+    # 2. EMAs bajistas (1 punto cada una)
+    if ema_fast < ema_slow:
+        factores.append("EMAs bajistas (9<21)")
+        score += 1
+    if close < ema_trend:
+        factores.append("Precio bajo EMA200")
+        score += 1
+    
+    # 3. RSI en zona alta (1 punto)
+    if rsi > params['rsi_min_sell']:
+        factores.append(f"RSI alto ({rsi:.1f})")
+        score += 1
+    
+    # 4. En zona de resistencia (2 puntos)
+    zrh = params['zona_resist_high']
+    zrl = params['zona_resist_low']
+    tol = params['tolerancia']
+    if (high >= zrl - tol) and (high <= zrh + tol):
+        factores.append("En zona resistencia")
+        score += 2
+    
+    # 5. Divergencia bajista (2 puntos)
+    try:
+        lookback = 5
+        if len(df) >= lookback + 3:
+            price_new_high = high > float(df['High'].iloc[-lookback-2:-2].max())
+            rsi_lower_high = rsi < float(df['rsi'].iloc[-lookback-2:-2].max())
+            if price_new_high and rsi_lower_high and rsi > 50:
+                factores.append("Divergencia bajista")
+                score += 2
+    except:
+        pass
+    
+    # 6. Tendencia de largo plazo bajista (1 punto)
+    if ema_trend < df['Close'].iloc[-20:].mean():
+        factores.append("Tendencia LT bajista")
+        score += 1
+    
+    return score, factores
 
-def calcular_bollinger_bands(series, length=20, std_dev=2):
+def calcular_sentimiento_alcista(row, prev, p2, df, params):
     """
-    Bandas de Bollinger
-    Retorna: (bb_upper, bb_mid, bb_lower, bb_width)
+    Calcula el score de sentimiento alcista (0-10)
+    Returns: (score, factores_detectados)
     """
-    bb_mid = series.rolling(window=length).mean()
-    std = series.rolling(window=length).std()
-    bb_upper = bb_mid + (std * std_dev)
-    bb_lower = bb_mid - (std * std_dev)
-    bb_width = (bb_upper - bb_lower) / bb_mid
-    return bb_upper, bb_mid, bb_lower, bb_width
-
-def calcular_macd(series, fast=12, slow=26, signal=9):
-    """
-    MACD (Moving Average Convergence Divergence)
-    Retorna: (macd_line, signal_line, histogram)
-    """
-    ema_fast = series.ewm(span=fast, adjust=False).mean()
-    ema_slow = series.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    histogram = macd_line - signal_line
-    return macd_line, signal_line, histogram
-
-def calcular_obv(df):
-    """
-    On-Balance Volume
-    """
-    obv = pd.Series(index=df.index, dtype=float)
-    obv.iloc[0] = df['Volume'].iloc[0]
+    factores = []
+    score = 0
     
-    for i in range(1, len(df)):
-        if df['Close'].iloc[i] > df['Close'].iloc[i-1]:
-            obv.iloc[i] = obv.iloc[i-1] + df['Volume'].iloc[i]
-        elif df['Close'].iloc[i] < df['Close'].iloc[i-1]:
-            obv.iloc[i] = obv.iloc[i-1] - df['Volume'].iloc[i]
-        else:
-            obv.iloc[i] = obv.iloc[i-1]
+    close = row['Close']
+    low = row['Low']
+    rsi = row['rsi']
+    ema_fast = row['ema_fast']
+    ema_slow = row['ema_slow']
+    ema_trend = row['ema_trend']
     
-    return obv
-
-def calcular_adx(df, length=14):
-    """
-    ADX (Average Directional Index)
-    Retorna: (adx, di_plus, di_minus)
-    """
-    high = df['High']
-    low = df['Low']
-    close = df['Close']
+    # 1. Estructura alcista (2 puntos)
+    max_creciente = (row['High'] > float(prev['High'])) and (float(prev['High']) > float(p2['High']))
+    min_creciente = (low > float(prev['Low'])) and (float(prev['Low']) > float(p2['Low']))
+    if max_creciente or min_creciente:
+        factores.append("Estructura alcista")
+        score += 2
     
-    tr = pd.concat([
-        high - low,
-        (high - close.shift(1)).abs(),
-        (low - close.shift(1)).abs()
-    ], axis=1).max(axis=1)
+    # 2. EMAs alcistas (1 punto cada una)
+    if ema_fast > ema_slow:
+        factores.append("EMAs alcistas (9>21)")
+        score += 1
+    if close > ema_trend:
+        factores.append("Precio sobre EMA200")
+        score += 1
     
-    up_move = high - high.shift(1)
-    down_move = low.shift(1) - low
+    # 3. RSI en zona baja (1 punto)
+    if rsi < params['rsi_max_buy']:
+        factores.append(f"RSI bajo ({rsi:.1f})")
+        score += 1
     
-    plus_dm = pd.Series(0.0, index=df.index)
-    minus_dm = pd.Series(0.0, index=df.index)
+    # 4. En zona de soporte (2 puntos)
+    zsh = params['zona_soporte_high']
+    zsl = params['zona_soporte_low']
+    tol = params['tolerancia']
+    if (low >= zsl - tol) and (low <= zsh + tol):
+        factores.append("En zona soporte")
+        score += 2
     
-    plus_dm[(up_move > down_move) & (up_move > 0)] = up_move
-    minus_dm[(down_move > up_move) & (down_move > 0)] = down_move
+    # 5. Divergencia alcista (2 puntos)
+    try:
+        lookback = 5
+        if len(df) >= lookback + 3:
+            price_new_low = low < float(df['Low'].iloc[-lookback-2:-2].min())
+            rsi_higher_low = rsi > float(df['rsi'].iloc[-lookback-2:-2].min())
+            if price_new_low and rsi_higher_low and rsi < 50:
+                factores.append("Divergencia alcista")
+                score += 2
+    except:
+        pass
     
-    atr = tr.ewm(com=length - 1, min_periods=length).mean()
-    plus_di = 100 * (plus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
-    minus_di = 100 * (minus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
+    # 6. Tendencia de largo plazo alcista (1 punto)
+    if ema_trend > df['Close'].iloc[-20:].mean():
+        factores.append("Tendencia LT alcista")
+        score += 1
     
-    dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
-    adx = dx.ewm(com=length - 1, min_periods=length).mean()
-    
-    return adx, plus_di, minus_di
-
-def detectar_evening_star(df, idx):
-    """
-    Evening Star: Patrón de reversión bajista (3 velas)
-    """
-    if idx < 2:
-        return False
-    
-    v1 = df.iloc[idx - 2]
-    v2 = df.iloc[idx - 1]
-    v3 = df.iloc[idx]
-    
-    v1_bullish = v1['Close'] > v1['Open']
-    v1_body = abs(v1['Close'] - v1['Open'])
-    v1_range = v1['High'] - v1['Low']
-    v1_large_body = v1_body > v1_range * 0.6
-    
-    v2_body = abs(v2['Close'] - v2['Open'])
-    v2_range = v2['High'] - v2['Low']
-    v2_small = v2_body < v2_range * 0.3
-    v2_gap_up = v2['Open'] > v1['Close']
-    
-    v3_bearish = v3['Close'] < v3['Open']
-    v3_body = abs(v3['Close'] - v3['Open'])
-    v3_range = v3['High'] - v3['Low']
-    v3_large_body = v3_body > v3_range * 0.6
-    v3_closes_in_v1 = v3['Close'] < (v1['Open'] + v1['Close']) / 2
-    
-    return v1_bullish and v1_large_body and v2_small and v2_gap_up and v3_bearish and v3_large_body and v3_closes_in_v1
-
-def detectar_morning_star(df, idx):
-    """
-    Morning Star: Patrón de reversión alcista (3 velas)
-    """
-    if idx < 2:
-        return False
-    
-    v1 = df.iloc[idx - 2]
-    v2 = df.iloc[idx - 1]
-    v3 = df.iloc[idx]
-    
-    v1_bearish = v1['Close'] < v1['Open']
-    v1_body = abs(v1['Close'] - v1['Open'])
-    v1_range = v1['High'] - v1['Low']
-    v1_large_body = v1_body > v1_range * 0.6
-    
-    v2_body = abs(v2['Close'] - v2['Open'])
-    v2_range = v2['High'] - v2['Low']
-    v2_small = v2_body < v2_range * 0.3
-    v2_gap_down = v2['Open'] < v1['Close']
-    
-    v3_bullish = v3['Close'] > v3['Open']
-    v3_body = abs(v3['Close'] - v3['Open'])
-    v3_range = v3['High'] - v3['Low']
-    v3_large_body = v3_body > v3_range * 0.6
-    v3_closes_in_v1 = v3['Close'] > (v1['Open'] + v1['Close']) / 2
-    
-    return v1_bearish and v1_large_body and v2_small and v2_gap_down and v3_bullish and v3_large_body and v3_closes_in_v1
+    return score, factores
 
 # ══════════════════════════════════════
 # LÓGICA PRINCIPAL
@@ -263,13 +254,6 @@ def analizar(simbolo, params):
     df['atr']       = calcular_atr(df, params['atr_length'])
     df['vol_avg']   = df['Volume'].rolling(20).mean()
 
-    # ── Nuevos Indicadores (Alta Prioridad) ──
-    df['bb_upper'], df['bb_mid'], df['bb_lower'], df['bb_width'] = calcular_bollinger_bands(df['Close'])
-    df['macd'], df['macd_signal'], df['macd_hist'] = calcular_macd(df['Close'])
-    df['obv'] = calcular_obv(df)
-    df['adx'], df['di_plus'], df['di_minus'] = calcular_adx(df)
-    df['obv_ema'] = calcular_ema(df['obv'], 20)
-
     # ── Velas ──
     df['body']        = (df['Close'] - df['Open']).abs()
     df['upper_wick']  = df['High'] - df[['Close','Open']].max(axis=1)
@@ -296,26 +280,6 @@ def analizar(simbolo, params):
     ema_trend = float(row['ema_trend'])
     atr       = float(row['atr'])
     vol_avg   = float(row['vol_avg'])
-
-    # Nuevos indicadores
-    bb_upper  = float(row['bb_upper'])
-    bb_lower  = float(row['bb_lower'])
-    bb_mid    = float(row['bb_mid'])
-    bb_width  = float(row['bb_width'])
-    bb_width_prev = float(prev['bb_width'])
-    
-    macd      = float(row['macd'])
-    macd_signal = float(row['macd_signal'])
-    macd_hist = float(row['macd_hist'])
-    macd_hist_prev = float(prev['macd_hist'])
-    
-    obv       = float(row['obv'])
-    obv_prev  = float(prev['obv'])
-    obv_ema   = float(row['obv_ema'])
-    
-    adx       = float(row['adx'])
-    di_plus   = float(row['di_plus'])
-    di_minus  = float(row['di_minus'])
 
     body        = float(row['body'])
     upper_wick  = float(row['upper_wick'])
@@ -393,23 +357,6 @@ def analizar(simbolo, params):
     min_decreciente    = (low  < float(prev['Low']))  and (float(prev['Low'])  < float(p2['Low']))
     estructura_bajista = max_decreciente or min_decreciente
 
-    # ── Nuevas señales VENTA (indicadores alta prioridad) ──
-    bb_toca_superior = close >= bb_upper or high >= bb_upper
-    bb_squeeze = bb_width < 0.02
-    
-    macd_cruce_bajista = (macd < macd_signal) and (macd_hist < 0) and (macd_hist_prev >= 0)
-    macd_divergencia_bajista = price_new_high and (macd < float(df['macd'].iloc[-lookback-2:-2].max()))
-    macd_negativo = macd < 0
-    
-    adx_tendencia_fuerte = adx > 25
-    adx_bajista = (di_minus > di_plus) and adx_tendencia_fuerte
-    adx_lateral = adx < 20
-    
-    obv_divergencia_bajista = price_new_high and (obv < float(df['obv'].iloc[-lookback-2:-2].max()))
-    obv_decreciente = obv < obv_prev and obv < obv_ema
-    
-    evening_star = detectar_evening_star(df, len(df) - 2)
-
     score_sell = 0
     score_sell += 2 if en_zona_resist          else 0
     score_sell += 2 if vela_rechazo            else 0
@@ -424,19 +371,6 @@ def analizar(simbolo, params):
     score_sell += 1 if (shooting_star and vol_alto_rechazo)      else 0
     score_sell += 1 if (divergencia_bajista and rsi_sobrecompra) else 0
     score_sell += 1 if bajo_ema200             else 0
-    
-    # Nuevos puntos (indicadores alta prioridad)
-    score_sell += 2 if bb_toca_superior        else 0
-    score_sell += 2 if evening_star            else 0
-    score_sell += 2 if macd_cruce_bajista      else 0
-    score_sell += 2 if adx_bajista             else 0
-    score_sell += 1 if macd_divergencia_bajista else 0
-    score_sell += 1 if obv_divergencia_bajista else 0
-    score_sell += 1 if obv_decreciente         else 0
-    score_sell += 1 if macd_negativo           else 0
-    
-    if adx_lateral:
-        score_sell = max(0, score_sell - 3)
 
     # ══════════════════════════════════
     # BLOQUE COMPRA
@@ -464,20 +398,6 @@ def analizar(simbolo, params):
     min_creciente      = (low  > float(prev['Low']))  and (float(prev['Low'])  > float(p2['Low']))
     estructura_alcista = max_creciente or min_creciente
 
-    # ── Nuevas señales COMPRA (indicadores alta prioridad) ──
-    bb_toca_inferior = close <= bb_lower or low <= bb_lower
-    
-    macd_cruce_alcista = (macd > macd_signal) and (macd_hist > 0) and (macd_hist_prev <= 0)
-    macd_divergencia_alcista = price_new_low and (macd > float(df['macd'].iloc[-lookback-2:-2].min()))
-    macd_positivo = macd > 0
-    
-    adx_alcista = (di_plus > di_minus) and adx_tendencia_fuerte
-    
-    obv_divergencia_alcista = price_new_low and (obv > float(df['obv'].iloc[-lookback-2:-2].min()))
-    obv_creciente = obv > obv_prev and obv > obv_ema
-    
-    morning_star = detectar_morning_star(df, len(df) - 2)
-
     score_buy = 0
     score_buy += 2 if en_zona_soporte          else 0
     score_buy += 2 if vela_rebote              else 0
@@ -492,19 +412,6 @@ def analizar(simbolo, params):
     score_buy += 1 if (hammer and vol_alto_rebote)             else 0
     score_buy += 1 if (divergencia_alcista and rsi_sobreventa) else 0
     score_buy += 1 if sobre_ema200             else 0
-    
-    # Nuevos puntos (indicadores alta prioridad)
-    score_buy += 2 if bb_toca_inferior        else 0
-    score_buy += 2 if morning_star            else 0
-    score_buy += 2 if macd_cruce_alcista      else 0
-    score_buy += 2 if adx_alcista             else 0
-    score_buy += 1 if macd_divergencia_alcista else 0
-    score_buy += 1 if obv_divergencia_alcista else 0
-    score_buy += 1 if obv_creciente           else 0
-    score_buy += 1 if macd_positivo           else 0
-    
-    if adx_lateral:
-        score_buy = max(0, score_buy - 3)
 
     # ══════════════════════════════════
     # NIVELES DE SEÑAL
@@ -517,6 +424,32 @@ def analizar(simbolo, params):
     senal_buy_fuerte  = score_buy  >= 8
     senal_buy_media   = score_buy  >= 6
     senal_buy_alerta  = score_buy  >= 4
+
+    # ══════════════════════════════════
+    # ANÁLISIS DE SENTIMIENTO DEL MERCADO
+    # ══════════════════════════════════
+    sentimiento_bajista_score, factores_bajistas = calcular_sentimiento_bajista(row, prev, p2, df, params)
+    sentimiento_alcista_score, factores_alcistas = calcular_sentimiento_alcista(row, prev, p2, df, params)
+    
+    # Determinar sentimiento dominante
+    if sentimiento_bajista_score >= 6:
+        sentimiento_general = "🔴 BAJISTA FUERTE"
+    elif sentimiento_alcista_score >= 6:
+        sentimiento_general = "🟢 ALCISTA FUERTE"
+    elif sentimiento_bajista_score >= 4:
+        sentimiento_general = "⚠️ BAJISTA MODERADO"
+    elif sentimiento_alcista_score >= 4:
+        sentimiento_general = "⚠️ ALCISTA MODERADO"
+    else:
+        sentimiento_general = "⚪ NEUTRAL/MIXTO"
+    
+    # Validar confluencia (señal más fiable si sentimiento la apoya)
+    confluencia_sell = sentimiento_bajista_score >= 4 and score_sell >= 6
+    confluencia_buy = sentimiento_alcista_score >= 4 and score_buy >= 6
+    
+    # Señal contradictoria (advertencia)
+    senal_contradictoria_sell = score_sell >= 6 and sentimiento_alcista_score > sentimiento_bajista_score
+    senal_contradictoria_buy = score_buy >= 6 and sentimiento_bajista_score > sentimiento_alcista_score
 
     # ── SL y TP ──
     sl_venta  = max(zrh, close + atr * asm)
@@ -564,6 +497,24 @@ def analizar(simbolo, params):
     print(f"  📊 Score SELL: {score_sell}/15 | Score BUY: {score_buy}/15")
     print(f"  🔴 SELL → Alerta:{senal_sell_alerta} Media:{senal_sell_media} Fuerte:{senal_sell_fuerte} Máxima:{senal_sell_maxima}")
     print(f"  🟢 BUY  → Alerta:{senal_buy_alerta}  Media:{senal_buy_media}  Fuerte:{senal_buy_fuerte}  Máxima:{senal_buy_maxima}")
+    
+    # Mostrar sentimiento del mercado
+    print(f"\n  📊 SENTIMIENTO MERCADO: {sentimiento_general}")
+    if sentimiento_bajista_score >= 4:
+        print(f"     🔴 Bajista ({sentimiento_bajista_score}/10): {', '.join(factores_bajistas[:3])}")
+    if sentimiento_alcista_score >= 4:
+        print(f"     🟢 Alcista ({sentimiento_alcista_score}/10): {', '.join(factores_alcistas[:3])}")
+    
+    # Advertencias de confluencia
+    if confluencia_sell:
+        print(f"  ✅ CONFLUENCIA SELL: Señal + Sentimiento alineados")
+    elif senal_contradictoria_sell:
+        print(f"  ⚠️ ADVERTENCIA: Señal SELL pero sentimiento alcista - Precaución")
+    
+    if confluencia_buy:
+        print(f"  ✅ CONFLUENCIA BUY: Señal + Sentimiento alineados")
+    elif senal_contradictoria_buy:
+        print(f"  ⚠️ ADVERTENCIA: Señal BUY pero sentimiento bajista - Precaución")
 
     # ══════════════════════════════════
     # ANTI-SPAM
@@ -583,6 +534,13 @@ def analizar(simbolo, params):
     # ── APROXIMACIÓN RESISTENCIA ──
     if aproximando_resistencia and not en_zona_resist and not cancelar_sell:
         if not ya_enviada('PREP_SELL'):
+            # Añadir advertencia si sentimiento es contradictorio
+            advertencia = ""
+            if sentimiento_alcista_score > sentimiento_bajista_score:
+                advertencia = f"\n⚠️ <b>NOTA:</b> Sentimiento alcista ({sentimiento_alcista_score}/10) - Esperar confirmación"
+            elif sentimiento_bajista_score >= 4:
+                advertencia = f"\n✅ <b>FAVORABLE:</b> Sentimiento bajista ({sentimiento_bajista_score}/10)"
+            
             msg = (f"🔔 <b>PREPARAR SELL LIMIT — SPX500</b> 🔔\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📢 Precio aproximándose a resistencia\n"
@@ -593,6 +551,7 @@ def analizar(simbolo, params):
                    f"🎯 <b>TP1:</b> {tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
                    f"🎯 <b>TP2:</b> {tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
                    f"🎯 <b>TP3:</b> {tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                   f"{advertencia}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                    f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
@@ -602,6 +561,13 @@ def analizar(simbolo, params):
     # ── APROXIMACIÓN SOPORTE ──
     if aproximando_soporte and not en_zona_soporte and not cancelar_buy:
         if not ya_enviada('PREP_BUY'):
+            # Añadir advertencia si sentimiento es contradictorio
+            advertencia = ""
+            if sentimiento_bajista_score > sentimiento_alcista_score:
+                advertencia = f"\n⚠️ <b>NOTA:</b> Sentimiento bajista ({sentimiento_bajista_score}/10) - Esperar confirmación"
+            elif sentimiento_alcista_score >= 4:
+                advertencia = f"\n✅ <b>FAVORABLE:</b> Sentimiento alcista ({sentimiento_alcista_score}/10)"
+            
             msg = (f"🔔 <b>PREPARAR BUY LIMIT — SPX500</b> 🔔\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📢 Precio aproximándose a soporte\n"
@@ -612,6 +578,7 @@ def analizar(simbolo, params):
                    f"🎯 <b>TP1:</b> {tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
                    f"🎯 <b>TP2:</b> {tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
                    f"🎯 <b>TP3:</b> {tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                   f"{advertencia}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                    f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
@@ -628,6 +595,21 @@ def analizar(simbolo, params):
                       "SELL_FUE" if senal_sell_fuerte else
                       "SELL_MED" if senal_sell_media  else
                       "SELL_ALE")
+        
+        # Determinar contexto de sentimiento
+        if confluencia_sell:
+            contexto = f"\n🎯 <b>CONFLUENCIA:</b> Sentimiento bajista confirmado ({sentimiento_bajista_score}/10)"
+            fiabilidad = "⭐⭐⭐ ALTA"
+        elif sentimiento_bajista_score >= 3:
+            contexto = f"\n📊 <b>SENTIMIENTO:</b> Moderado bajista ({sentimiento_bajista_score}/10)"
+            fiabilidad = "⭐⭐ MEDIA"
+        elif senal_contradictoria_sell:
+            contexto = f"\n⚠️ <b>PRECAUCIÓN:</b> Sentimiento alcista ({sentimiento_alcista_score}/10) - Operar con cautela"
+            fiabilidad = "⭐ BAJA (señal mixta)"
+        else:
+            contexto = "\n⚪ <b>SENTIMIENTO:</b> Neutral"
+            fiabilidad = "⭐⭐ MEDIA"
+        
         if not ya_enviada(tipo_clave):
             msg = (f"{nivel} — <b>SPX500</b> {nivel.split()[0]}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -639,6 +621,8 @@ def analizar(simbolo, params):
                    f"🎯 <b>TP3:</b> {tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                   f"🔍 <b>Fiabilidad:</b> {fiabilidad}"
+                   f"{contexto}\n"
                    f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
             enviar_telegram(msg)
             marcar_enviada(tipo_clave)
@@ -653,6 +637,21 @@ def analizar(simbolo, params):
                       "BUY_FUE" if senal_buy_fuerte else
                       "BUY_MED" if senal_buy_media  else
                       "BUY_ALE")
+        
+        # Determinar contexto de sentimiento
+        if confluencia_buy:
+            contexto = f"\n🎯 <b>CONFLUENCIA:</b> Sentimiento alcista confirmado ({sentimiento_alcista_score}/10)"
+            fiabilidad = "⭐⭐⭐ ALTA"
+        elif sentimiento_alcista_score >= 3:
+            contexto = f"\n📊 <b>SENTIMIENTO:</b> Moderado alcista ({sentimiento_alcista_score}/10)"
+            fiabilidad = "⭐⭐ MEDIA"
+        elif senal_contradictoria_buy:
+            contexto = f"\n⚠️ <b>PRECAUCIÓN:</b> Sentimiento bajista ({sentimiento_bajista_score}/10) - Operar con cautela"
+            fiabilidad = "⭐ BAJA (señal mixta)"
+        else:
+            contexto = "\n⚪ <b>SENTIMIENTO:</b> Neutral"
+            fiabilidad = "⭐⭐ MEDIA"
+        
         if not ya_enviada(tipo_clave):
             msg = (f"{nivel} — <b>SPX500</b> {nivel.split()[0]}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -664,6 +663,8 @@ def analizar(simbolo, params):
                    f"🎯 <b>TP3:</b> {tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                   f"🔍 <b>Fiabilidad:</b> {fiabilidad}"
+                   f"{contexto}\n"
                    f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
             enviar_telegram(msg)
             marcar_enviada(tipo_clave)
@@ -701,6 +702,9 @@ def main():
                     "🔄 Revisión cada 14 minutos\n"
                     "💚 Mantiene el servidor activo\n"
                     "✅ Solo alertas en velas nuevas o cambios significativos\n"
+                    "🧠 <b>NUEVO:</b> Análisis de sentimiento del mercado\n"
+                    "🎯 Validación de confluencia automática\n"
+                    "⚠️ Advertencias sobre señales contradictorias\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     f"🔴 Resistencia: 5800 - 6100\n"
                     f"🟢 Soporte:     4800 - 5200")

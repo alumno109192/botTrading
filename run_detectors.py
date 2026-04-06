@@ -1,6 +1,7 @@
 """
 Run Detectors - Ejecuta múltiples detectores de señales simultáneamente
-Ejecuta detector_gold.py (XAUUSD) y detector_spx.py (SPX500) en hilos separados
+Ejecuta detector_gold.py, detector_spx.py y detector_bitcoin.py en hilos separados
+Incluye signal_monitor.py para tracking de señales
 """
 
 import threading
@@ -9,8 +10,10 @@ from datetime import datetime
 import sys
 
 # Importar los módulos de los detectores
-import detector_gold
-import detector_spx
+import detector_gold_copy
+import detector_spx_copy
+import detector_bitcoin
+import signal_monitor
 
 def ejecutar_detector(nombre, modulo):
     """Ejecuta un detector en un hilo separado"""
@@ -27,19 +30,30 @@ def ejecutar_detector(nombre, modulo):
         ejecutar_detector(nombre, modulo)
 
 def main():
-    print("=" * 50)
+    print("="*60)
     print("🚀 SISTEMA DE DETECCIÓN DE SEÑALES INICIADO")
-    print("=" * 50)
+    print("="*60)
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
-    print("📊 Detectores activos:")
-    print("  🥇 XAUUSD (Oro)     → detector_gold.py")
-    print("  📈 SPX500 (S&P 500) → detector_spx.py")
+    print("📊 Detectores activos (con indicadores de alta prioridad):")
+    print("  🥇 XAUUSD (Oro)       → detector_gold.py")
+    print("  📈 SPX500 (S&P 500)   → detector_spx.py")
+    print("  ₿  BTCUSD (Bitcoin)   → detector_bitcoin.py")
+    print("  🔍 MONITOR SEÑALES    → signal_monitor.py")
     print()
+    print("📈 Indicadores implementados:")
+    print("  ✅ Bandas de Bollinger  ✅ MACD")
+    print("  ✅ OBV (Volumen)        ✅ ADX (Tendencia)")
+    print("  ✅ Evening/Morning Star (Patrones 3 velas)")
+    print()
+    print("💾 Base de datos: Turso (SQLite Cloud)")
+    print("📊 Tracking: TP1, TP2, TP3, SL automático")
     print("⏱️  Intervalo: 14 minutos cada detector")
+    print("🔍 Monitor: Revisa señales cada 5 minutos")
     print("💚 Servidor: Siempre activo")
     print("✅ Anti-spam: Solo alertas en velas nuevas")
-    print("=" * 50)
+    print("🎯 Score máximo: 24 puntos (antes 15)")
+    print("="*60)
     print()
 
     # Crear hilos para cada detector
@@ -48,7 +62,7 @@ def main():
     # Hilo para detector de Oro
     hilo_gold = threading.Thread(
         target=ejecutar_detector,
-        args=("DETECTOR GOLD (XAUUSD)", detector_gold),
+        args=("DETECTOR GOLD (XAUUSD)", detector_gold_copy),
         name="DetectorGold",
         daemon=True
     )
@@ -57,11 +71,28 @@ def main():
     # Hilo para detector de SPX500
     hilo_spx = threading.Thread(
         target=ejecutar_detector,
-        args=("DETECTOR SPX (SPX500)", detector_spx),
+        args=("DETECTOR SPX (SPX500)", detector_spx_copy),
         name="DetectorSPX",
         daemon=True
     )
     hilos.append(hilo_spx)
+    
+    # Hilo para detector de Bitcoin
+    hilo_btc = threading.Thread(
+        target=ejecutar_detector,
+        args=("DETECTOR BITCOIN (BTCUSD)", detector_bitcoin),
+        name="DetectorBitcoin",
+        daemon=True
+    )
+    hilos.append(hilo_btc)
+    
+    # ⭐ NUEVO: Hilo para monitor de señales
+    hilo_monitor = threading.Thread(
+        target=signal_monitor.monitor_senales,
+        name="SignalMonitor",
+        daemon=True
+    )
+    hilos.append(hilo_monitor)
     
     # Iniciar todos los hilos
     for hilo in hilos:

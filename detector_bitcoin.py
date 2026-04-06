@@ -4,11 +4,16 @@ import numpy as np
 import requests
 import os
 import time
-from datetime import datetime
+import json
+from datetime import datetime, timezone
 from dotenv import load_dotenv
+from db_manager import DatabaseManager
 
 # Cargar variables de entorno
 load_dotenv()
+
+# Inicializar base de datos
+db = DatabaseManager()
 
 # ══════════════════════════════════════
 # CONFIGURACIÓN
@@ -19,34 +24,34 @@ TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 CHECK_INTERVAL = 14 * 60  # cada 14 minutos (mantiene servidor activo)
 
 # ══════════════════════════════════════
-# PARÁMETROS — ESPECÍFICOS SPX500
+# PARÁMETROS — ESPECÍFICOS BITCOIN
 # ══════════════════════════════════════
 SIMBOLOS = {
-    'SPX500': {
-        'ticker_yf':          '^GSPC',      # SP500 en Yahoo Finance
-        'zona_resist_high':   6100.0,
-        'zona_resist_low':    5800.0,
-        'zona_soporte_high':  5200.0,
-        'zona_soporte_low':   4800.0,
-        'tp1_venta':          4941.0,
-        'tp2_venta':          4700.0,
-        'tp3_venta':          4400.0,
-        'tp1_compra':         5800.0,
-        'tp2_compra':         6000.0,
-        'tp3_compra':         6100.0,
-        'tolerancia':         50.0,         # Mayor que ORO
-        'limit_offset_pct':   0.3,
+    'BTCUSD': {
+        'ticker_yf':          'BTC-USD',    # Bitcoin en Yahoo Finance
+        'zona_resist_high':   105000.0,     # Resistencia psicológica 105k
+        'zona_resist_low':    95000.0,      # Resistencia psicológica 95k
+        'zona_soporte_high':  75000.0,      # Soporte psicológico 75k
+        'zona_soporte_low':   65000.0,      # Soporte psicológico 65k
+        'tp1_venta':          85000.0,      # TP1 conservador
+        'tp2_venta':          75000.0,      # TP2 zona soporte
+        'tp3_venta':          65000.0,      # TP3 soporte fuerte
+        'tp1_compra':         95000.0,      # TP1 conservador
+        'tp2_compra':         105000.0,     # TP2 resistencia
+        'tp3_compra':         115000.0,     # TP3 objetivo alcista
+        'tolerancia':         2000.0,       # Alta tolerancia (2k) por volatilidad BTC
+        'limit_offset_pct':   0.5,          # Mayor offset para entradas
         'anticipar_velas':    3,
-        'cancelar_dist':      1.5,          # Mayor que ORO
+        'cancelar_dist':      2.5,          # Mayor distancia por volatilidad
         'rsi_length':         14,
-        'rsi_min_sell':       60.0,         # Mayor que ORO
-        'rsi_max_buy':        40.0,
+        'rsi_min_sell':       60.0,         # RSI más exigente (cripto volátil)
+        'rsi_max_buy':        40.0,         # RSI más exigente
         'ema_fast_len':       9,
         'ema_slow_len':       21,
         'ema_trend_len':      200,
         'atr_length':         14,
-        'atr_sl_mult':        2.0,          # Mayor que ORO
-        'vol_mult':           1.3,          # Mayor que ORO
+        'atr_sl_mult':        2.5,          # SL más amplio (volatilidad BTC)
+        'vol_mult':           1.5,          # Volumen muy importante en cripto
     }
 }
 
@@ -250,12 +255,13 @@ def analizar(simbolo, params):
         print(f"❌ Error descargando {simbolo}: {e}")
         return
 
+    # Limpiar columnas multi-index si existen
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.copy()
 
-    # ── Indicadores ──
+    # ── Indicadores base ──
     df['rsi']       = calcular_rsi(df['Close'], params['rsi_length'])
     df['ema_fast']  = calcular_ema(df['Close'], params['ema_fast_len'])
     df['ema_slow']  = calcular_ema(df['Close'], params['ema_slow_len'])
@@ -278,53 +284,53 @@ def analizar(simbolo, params):
     df['is_bearish']  = df['Close'] < df['Open']
     df['is_bullish']  = df['Close'] > df['Open']
 
-    # Última vela cerrada
+    # Última vela completa
     row  = df.iloc[-2]
     prev = df.iloc[-3]
     p2   = df.iloc[-4]
 
-    close = float(row['Close'])
-    high  = float(row['High'])
-    low   = float(row['Low'])
-    open_ = float(row['Open'])
-    vol   = float(row['Volume'])
+    close = row['Close']
+    high  = row['High']
+    low   = row['Low']
+    open_ = row['Open']
+    vol   = row['Volume']
 
-    rsi       = float(row['rsi'])
-    rsi_prev  = float(prev['rsi'])
-    ema_fast  = float(row['ema_fast'])
-    ema_slow  = float(row['ema_slow'])
-    ema_trend = float(row['ema_trend'])
-    atr       = float(row['atr'])
-    vol_avg   = float(row['vol_avg'])
+    rsi       = row['rsi']
+    rsi_prev  = prev['rsi']
+    ema_fast  = row['ema_fast']
+    ema_slow  = row['ema_slow']
+    ema_trend = row['ema_trend']
+    atr       = row['atr']
+    vol_avg   = row['vol_avg']
 
     # Nuevos indicadores
-    bb_upper  = float(row['bb_upper'])
-    bb_lower  = float(row['bb_lower'])
-    bb_mid    = float(row['bb_mid'])
-    bb_width  = float(row['bb_width'])
-    bb_width_prev = float(prev['bb_width'])
+    bb_upper  = row['bb_upper']
+    bb_lower  = row['bb_lower']
+    bb_mid    = row['bb_mid']
+    bb_width  = row['bb_width']
+    bb_width_prev = prev['bb_width']
     
-    macd      = float(row['macd'])
-    macd_signal = float(row['macd_signal'])
-    macd_hist = float(row['macd_hist'])
-    macd_hist_prev = float(prev['macd_hist'])
+    macd      = row['macd']
+    macd_signal = row['macd_signal']
+    macd_hist = row['macd_hist']
+    macd_hist_prev = prev['macd_hist']
     
-    obv       = float(row['obv'])
-    obv_prev  = float(prev['obv'])
-    obv_ema   = float(row['obv_ema'])
+    obv       = row['obv']
+    obv_prev  = prev['obv']
+    obv_ema   = row['obv_ema']
     
-    adx       = float(row['adx'])
-    di_plus   = float(row['di_plus'])
-    di_minus  = float(row['di_minus'])
+    adx       = row['adx']
+    di_plus   = row['di_plus']
+    di_minus  = row['di_minus']
 
-    body        = float(row['body'])
-    upper_wick  = float(row['upper_wick'])
-    lower_wick  = float(row['lower_wick'])
-    total_range = float(row['total_range'])
-    is_bearish  = bool(row['is_bearish'])
-    is_bullish  = bool(row['is_bullish'])
+    body        = row['body']
+    upper_wick  = row['upper_wick']
+    lower_wick  = row['lower_wick']
+    total_range = row['total_range']
+    is_bearish  = row['is_bearish']
+    is_bullish  = row['is_bullish']
 
-    # ── Parámetros ──
+    # ── Parámetros de zona ──
     zrh  = params['zona_resist_high']
     zrl  = params['zona_resist_low']
     zsh  = params['zona_soporte_high']
@@ -342,21 +348,18 @@ def analizar(simbolo, params):
     sell_limit = zrl + (zrh - zrl) * (lop / 100 * 10)
     buy_limit  = zsh - (zsh - zsl) * (lop / 100 * 10)
 
-    # ── Proximidad ──
-    avg_candle_range = float(df['total_range'].iloc[-6:-1].mean())
+    # ── Proximidad a zonas ──
+    avg_candle_range = df['total_range'].iloc[-6:-1].mean()
     dist_to_resist   = zrl - close
     dist_to_support  = close - zsh
 
-    aproximando_resistencia = (dist_to_resist  > 0 and
-                               dist_to_resist  < avg_candle_range * av and
-                               close > float(df['Close'].iloc[-5]))
+    aproximando_resistencia = (dist_to_resist > 0 and
+                               dist_to_resist < avg_candle_range * av and
+                               close > df['Close'].iloc[-5])
 
     aproximando_soporte     = (dist_to_support > 0 and
                                dist_to_support < avg_candle_range * av and
-                               close < float(df['Close'].iloc[-5]))
-
-    velas_para_resist  = round(dist_to_resist  / avg_candle_range, 1) if avg_candle_range > 0 else 0
-    velas_para_support = round(dist_to_support / avg_candle_range, 1) if avg_candle_range > 0 else 0
+                               close < df['Close'].iloc[-5])
 
     # ── Zonas alcanzadas ──
     en_zona_resist  = (high >= zrl - tol) and (high <= zrh + tol)
@@ -421,8 +424,8 @@ def analizar(simbolo, params):
     score_sell += 1 if estructura_bajista      else 0
     score_sell += 1 if intento_rotura_fallido  else 0
     score_sell += 1 if vol_decreciente         else 0
-    score_sell += 1 if (shooting_star and vol_alto_rechazo)      else 0
-    score_sell += 1 if (divergencia_bajista and rsi_sobrecompra) else 0
+    score_sell += 1 if (shooting_star and vol_alto_rechazo)       else 0
+    score_sell += 1 if (divergencia_bajista and rsi_sobrecompra)  else 0
     score_sell += 1 if bajo_ema200             else 0
     
     # Nuevos puntos (indicadores alta prioridad)
@@ -583,16 +586,15 @@ def analizar(simbolo, params):
     # ── APROXIMACIÓN RESISTENCIA ──
     if aproximando_resistencia and not en_zona_resist and not cancelar_sell:
         if not ya_enviada('PREP_SELL'):
-            msg = (f"🔔 <b>PREPARAR SELL LIMIT — SPX500</b> 🔔\n"
+            msg = (f"🔔 <b>PREPARAR SELL LIMIT — BITCOIN</b> 🔔\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📢 Precio aproximándose a resistencia\n"
-                   f"💰 <b>Precio:</b>     {round(close, 2)}\n"
-                   f"📐 <b>Faltan:</b>     ~{velas_para_resist} velas\n"
-                   f"📌 <b>SELL LIMIT:</b> {round(sell_limit, 2)}\n"
-                   f"🛑 <b>Stop Loss:</b>  {round(sl_venta, 2)}\n"
-                   f"🎯 <b>TP1:</b> {tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                   f"🎯 <b>TP2:</b> {tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                   f"🎯 <b>TP3:</b> {tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                   f"💰 <b>Precio:</b>     ${round(close, 0):,}\n"
+                   f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 0):,}\n"
+                   f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 0):,}\n"
+                   f"🎯 <b>TP1:</b> ${tp1_v:,}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
+                   f"🎯 <b>TP2:</b> ${tp2_v:,}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
+                   f"🎯 <b>TP3:</b> ${tp3_v:,}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                    f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
@@ -602,16 +604,15 @@ def analizar(simbolo, params):
     # ── APROXIMACIÓN SOPORTE ──
     if aproximando_soporte and not en_zona_soporte and not cancelar_buy:
         if not ya_enviada('PREP_BUY'):
-            msg = (f"🔔 <b>PREPARAR BUY LIMIT — SPX500</b> 🔔\n"
+            msg = (f"🔔 <b>PREPARAR BUY LIMIT — BITCOIN</b> 🔔\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📢 Precio aproximándose a soporte\n"
-                   f"💰 <b>Precio:</b>    {round(close, 2)}\n"
-                   f"📐 <b>Faltan:</b>    ~{velas_para_support} velas\n"
-                   f"📌 <b>BUY LIMIT:</b> {round(buy_limit, 2)}\n"
-                   f"🛑 <b>Stop Loss:</b> {round(sl_compra, 2)}\n"
-                   f"🎯 <b>TP1:</b> {tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                   f"🎯 <b>TP2:</b> {tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                   f"🎯 <b>TP3:</b> {tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                   f"💰 <b>Precio:</b>    ${round(close, 0):,}\n"
+                   f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 0):,}\n"
+                   f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 0):,}\n"
+                   f"🎯 <b>TP1:</b> ${tp1_c:,}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
+                   f"🎯 <b>TP2:</b> ${tp2_c:,}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
+                   f"🎯 <b>TP3:</b> ${tp3_c:,}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                    f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
@@ -629,19 +630,55 @@ def analizar(simbolo, params):
                       "SELL_MED" if senal_sell_media  else
                       "SELL_ALE")
         if not ya_enviada(tipo_clave):
-            msg = (f"{nivel} — <b>SPX500</b> {nivel.split()[0]}\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"💰 <b>Precio:</b>     {round(close, 2)}\n"
-                   f"📌 <b>SELL LIMIT:</b> {round(sell_limit, 2)}\n"
-                   f"🛑 <b>Stop Loss:</b>  {round(sl_venta, 2)}\n"
-                   f"🎯 <b>TP1:</b> {tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                   f"🎯 <b>TP2:</b> {tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                   f"🎯 <b>TP3:</b> {tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
-                   f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
-            enviar_telegram(msg)
-            marcar_enviada(tipo_clave)
+            # Verificar si ya existe señal reciente para evitar duplicados
+            if not db.existe_senal_reciente(simbolo, 'VENTA', horas=2):
+                msg = (f"{nivel} — <b>BITCOIN</b> {nivel.split()[0]}\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n"
+                       f"💰 <b>Precio:</b>     ${round(close, 0):,}\n"
+                       f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 0):,}\n"
+                       f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 0):,}\n"
+                       f"🎯 <b>TP1:</b> ${tp1_v:,}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
+                       f"🎯 <b>TP2:</b> ${tp2_v:,}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
+                       f"🎯 <b>TP3:</b> ${tp3_v:,}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n"
+                       f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                       f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
+                
+                # Guardar señal en base de datos
+                senal_data = {
+                    'timestamp': datetime.now(timezone.utc),
+                    'simbolo': simbolo,
+                    'direccion': 'VENTA',
+                    'precio_entrada': sell_limit,
+                    'tp1': tp1_v,
+                    'tp2': tp2_v,
+                    'tp3': tp3_v,
+                    'sl': sl_venta,
+                    'score': score_sell,
+                    'indicadores': json.dumps({
+                        'rsi': round(rsi, 1),
+                        'ema_fast': round(ema_fast, 2),
+                        'ema_slow': round(ema_slow, 2),
+                        'atr': round(atr, 2),
+                        'bb_upper': round(bb_upper, 2),
+                        'bb_lower': round(bb_lower, 2),
+                        'macd': round(macd, 2),
+                        'adx': round(adx, 2)
+                    }),
+                    'patron_velas': f"Evening Star: {evening_star}, Shooting Star: {shooting_star}",
+                    'version_detector': '2.0'
+                }
+                
+                try:
+                    senal_id = db.guardar_senal(senal_data)
+                    print(f"  💾 Señal VENTA guardada en DB con ID: {senal_id}")
+                except Exception as e:
+                    print(f"  ⚠️ Error guardando señal en DB: {e}")
+                
+                enviar_telegram(msg)
+                marcar_enviada(tipo_clave)
+            else:
+                print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
 
     # ── SEÑALES COMPRA ──
     if senal_buy_alerta and not cancelar_buy:
@@ -654,35 +691,71 @@ def analizar(simbolo, params):
                       "BUY_MED" if senal_buy_media  else
                       "BUY_ALE")
         if not ya_enviada(tipo_clave):
-            msg = (f"{nivel} — <b>SPX500</b> {nivel.split()[0]}\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"💰 <b>Precio:</b>    {round(close, 2)}\n"
-                   f"📌 <b>BUY LIMIT:</b> {round(buy_limit, 2)}\n"
-                   f"🛑 <b>Stop Loss:</b> {round(sl_compra, 2)}\n"
-                   f"🎯 <b>TP1:</b> {tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                   f"🎯 <b>TP2:</b> {tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                   f"🎯 <b>TP3:</b> {tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
-                   f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
-            enviar_telegram(msg)
-            marcar_enviada(tipo_clave)
+            # Verificar si ya existe señal reciente para evitar duplicados
+            if not db.existe_senal_reciente(simbolo, 'COMPRA', horas=2):
+                msg = (f"{nivel} — <b>BITCOIN</b> {nivel.split()[0]}\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n"
+                       f"💰 <b>Precio:</b>    ${round(close, 0):,}\n"
+                       f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 0):,}\n"
+                       f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 0):,}\n"
+                       f"🎯 <b>TP1:</b> ${tp1_c:,}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
+                       f"🎯 <b>TP2:</b> ${tp2_c:,}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
+                       f"🎯 <b>TP3:</b> ${tp3_c:,}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n"
+                       f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                       f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
+                
+                # Guardar señal en base de datos
+                senal_data = {
+                    'timestamp': datetime.now(timezone.utc),
+                    'simbolo': simbolo,
+                    'direccion': 'COMPRA',
+                    'precio_entrada': buy_limit,
+                    'tp1': tp1_c,
+                    'tp2': tp2_c,
+                    'tp3': tp3_c,
+                    'sl': sl_compra,
+                    'score': score_buy,
+                    'indicadores': json.dumps({
+                        'rsi': round(rsi, 1),
+                        'ema_fast': round(ema_fast, 2),
+                        'ema_slow': round(ema_slow, 2),
+                        'atr': round(atr, 2),
+                        'bb_upper': round(bb_upper, 2),
+                        'bb_lower': round(bb_lower, 2),
+                        'macd': round(macd, 2),
+                        'adx': round(adx, 2)
+                    }),
+                    'patron_velas': f"Morning Star: {morning_star}, Hammer: {hammer}",
+                    'version_detector': '2.0'
+                }
+                
+                try:
+                    senal_id = db.guardar_senal(senal_data)
+                    print(f"  💾 Señal COMPRA guardada en DB con ID: {senal_id}")
+                except Exception as e:
+                    print(f"  ⚠️ Error guardando señal en DB: {e}")
+                
+                enviar_telegram(msg)
+                marcar_enviada(tipo_clave)
+            else:
+                print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
 
     # ── CANCELACIONES ──
     if cancelar_sell and not ya_enviada('CANCEL_SELL'):
-        msg = (f"❌ <b>CANCELAR SELL LIMIT — SPX500</b> ❌\n"
+        msg = (f"❌ <b>CANCELAR SELL LIMIT — BITCOIN</b> ❌\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"💰 <b>Precio:</b> {round(close, 2)}\n"
-               f"⚠️ Precio rompió la resistencia ({zrh})\n"
+               f"💰 <b>Precio:</b> ${round(close, 0):,}\n"
+               f"⚠️ Precio rompió la resistencia (${zrh:,})\n"
                f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
         enviar_telegram(msg)
         marcar_enviada('CANCEL_SELL')
 
     if cancelar_buy and not ya_enviada('CANCEL_BUY'):
-        msg = (f"❌ <b>CANCELAR BUY LIMIT — SPX500</b> ❌\n"
+        msg = (f"❌ <b>CANCELAR BUY LIMIT — BITCOIN</b> ❌\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"💰 <b>Precio:</b> {round(close, 2)}\n"
-               f"⚠️ Precio rompió el soporte ({zsl})\n"
+               f"💰 <b>Precio:</b> ${round(close, 0):,}\n"
+               f"⚠️ Precio rompió el soporte (${zsl:,})\n"
                f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
         enviar_telegram(msg)
         marcar_enviada('CANCEL_BUY')
@@ -691,19 +764,19 @@ def analizar(simbolo, params):
 # BUCLE PRINCIPAL
 # ══════════════════════════════════════
 def main():
-    print("🚀 Detector SPX500 iniciado")
+    print("🚀 Detector BITCOIN iniciado")
     print(f"⏱️  Revisando cada {CHECK_INTERVAL//60} minutos")
 
-    enviar_telegram("🚀 <b>Detector SPX500 iniciado</b>\n"
+    enviar_telegram("🚀 <b>Detector BITCOIN iniciado</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
-                    "📊 Monitorizando: SPX500\n"
+                    "📊 Monitorizando: BTCUSD\n"
                     "⏱️ Timeframe: 1D\n"
                     "🔄 Revisión cada 14 minutos\n"
                     "💚 Mantiene el servidor activo\n"
                     "✅ Solo alertas en velas nuevas o cambios significativos\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🔴 Resistencia: 5800 - 6100\n"
-                    f"🟢 Soporte:     4800 - 5200")
+                    f"🔴 Resistencia: $95,000 - $105,000\n"
+                    f"🟢 Soporte:     $65,000 - $75,000")
 
     while True:
         for simbolo, params in SIMBOLOS.items():

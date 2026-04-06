@@ -4,18 +4,63 @@ Sistema automatizado de detección de señales de trading que analiza múltiples
 
 ## 🎯 Características
 
-- 📊 **Análisis técnico completo**: RSI, EMA (9/21/200), ATR, volumen
-- 🕯️ **Patrones de velas japonesas**: Shooting Star, Hammer, Engulfing, Marubozu, Doji
-- ⚡ **Sistema de scoring** (0-15 puntos) con 4 niveles de alerta
-- 🔕 **Anti-spam inteligente**: Solo notifica en velas nuevas o cambios significativos
-- 💚 **Servidor siempre activo**: Revisión cada 14 minutos
-- 🔄 **Multi-threading**: Ejecuta múltiples detectores simultáneamente
-- 📱 **Alertas a Telegram**: Notificaciones formateadas con SL, TP y R:R
+### 📊 Indicadores Técnicos (Actualizado 5 Abril 2026)
+
+**Indicadores Base:**
+- RSI (Relative Strength Index)
+- EMA (9/21/200) - Medias móviles exponenciales
+- ATR (Average True Range) - Volatilidad
+- Volumen y promedio de volumen
+
+**🆕 Indicadores de Alta Prioridad Implementados:**
+- ✅ **Bandas de Bollinger** - Extremos de volatilidad y squeeze
+- ✅ **MACD** - Momentum y divergencias
+- ✅ **OBV** (On-Balance Volume) - Confirmación por volumen
+- ✅ **ADX** (Average Directional Index) - Fuerza de tendencia y filtro lateral
+- ✅ **Evening/Morning Star** - Patrones de reversión de 3 velas
+
+### 🕯️ Patrones de Velas Japonesas
+- Shooting Star (bajista)
+- Hammer (alcista)
+- Engulfing (bajista/alcista)
+- Marubozu (bajista/alcista)
+- Doji en zonas clave
+- **🆕 Evening Star** (reversión bajista)
+- **🆕 Morning Star** (reversión alcista)
+
+### ⚡ Sistema de Scoring Mejorado
+- **Score máximo:** 24 puntos (antes 15)
+- **Filtro ADX:** Penaliza señales en mercados laterales (-3 pts)
+- **4 niveles de alerta:** Alerta (4+), Media (6+), Fuerte (8+), Máxima (10+)
+- **Confluencia múltiple:** Combina señales de precio, volumen, momentum y tendencia
+
+### 🔕 Anti-spam Inteligente
+- Solo notifica en velas nuevas o cambios significativos
+- Evita duplicados en la misma vela
+- Sistema de caché de alertas enviadas
+
+### 💚 Servidor Siempre Activo
+- Revisión cada 14 minutos
+- Mantiene el servidor activo sin timeouts
+
+### 🔄 Multi-threading
+- Ejecuta múltiples detectores simultáneamente
+- Optimizado para bajo consumo de recursos
+
+### 📱 Alertas a Telegram
+- Notificaciones formateadas con HTML
+- Incluye: SL, TP1/TP2/TP3, R:R ratio
+- Indicadores visuales de fuerza de señal
+
+**📚 Ver documentación completa:** [INDICADORES_IMPLEMENTADOS.md](INDICADORES_IMPLEMENTADOS.md)
 
 ## 📈 Instrumentos monitorizados
 
 - 🥇 **XAUUSD** (Oro) - `detector_gold.py`
 - 📊 **SPX500** (S&P 500) - `detector_spx.py`
+- ₿ **BTCUSD** (Bitcoin) - `detector_bitcoin.py`
+
+**Nota:** Los archivos `*_copy.py` contienen versiones con análisis de sentimiento de mercado mejorado.
 
 ## 🔧 Requisitos
 

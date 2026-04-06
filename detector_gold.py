@@ -100,6 +100,159 @@ def calcular_atr(df, length):
     return tr.ewm(com=length - 1, min_periods=length).mean()
 
 # ══════════════════════════════════════
+# NUEVOS INDICADORES — ALTA PRIORIDAD
+# ══════════════════════════════════════
+
+def calcular_bollinger_bands(series, length=20, std_dev=2):
+    """
+    Bandas de Bollinger
+    Retorna: (bb_upper, bb_mid, bb_lower, bb_width)
+    """
+    bb_mid = series.rolling(window=length).mean()
+    std = series.rolling(window=length).std()
+    bb_upper = bb_mid + (std * std_dev)
+    bb_lower = bb_mid - (std * std_dev)
+    bb_width = (bb_upper - bb_lower) / bb_mid  # Ancho normalizado
+    return bb_upper, bb_mid, bb_lower, bb_width
+
+def calcular_macd(series, fast=12, slow=26, signal=9):
+    """
+    MACD (Moving Average Convergence Divergence)
+    Retorna: (macd_line, signal_line, histogram)
+    """
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+def calcular_obv(df):
+    """
+    On-Balance Volume
+    Acumula volumen según dirección del precio
+    """
+    obv = pd.Series(index=df.index, dtype=float)
+    obv.iloc[0] = df['Volume'].iloc[0]
+    
+    for i in range(1, len(df)):
+        if df['Close'].iloc[i] > df['Close'].iloc[i-1]:
+            obv.iloc[i] = obv.iloc[i-1] + df['Volume'].iloc[i]
+        elif df['Close'].iloc[i] < df['Close'].iloc[i-1]:
+            obv.iloc[i] = obv.iloc[i-1] - df['Volume'].iloc[i]
+        else:
+            obv.iloc[i] = obv.iloc[i-1]
+    
+    return obv
+
+def calcular_adx(df, length=14):
+    """
+    ADX (Average Directional Index)
+    Retorna: (adx, di_plus, di_minus)
+    """
+    high = df['High']
+    low = df['Low']
+    close = df['Close']
+    
+    # True Range
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs()
+    ], axis=1).max(axis=1)
+    
+    # Directional Movement
+    up_move = high - high.shift(1)
+    down_move = low.shift(1) - low
+    
+    plus_dm = pd.Series(0.0, index=df.index)
+    minus_dm = pd.Series(0.0, index=df.index)
+    
+    plus_dm[(up_move > down_move) & (up_move > 0)] = up_move
+    minus_dm[(down_move > up_move) & (down_move > 0)] = down_move
+    
+    # Smoothed TR y DM
+    atr = tr.ewm(com=length - 1, min_periods=length).mean()
+    plus_di = 100 * (plus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
+    minus_di = 100 * (minus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
+    
+    # ADX
+    dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
+    adx = dx.ewm(com=length - 1, min_periods=length).mean()
+    
+    return adx, plus_di, minus_di
+
+def detectar_evening_star(df, idx):
+    """
+    Evening Star: Patrón de reversión bajista (3 velas)
+    Vela 1: Alcista grande
+    Vela 2: Pequeña (indecisión) - gap al alza
+    Vela 3: Bajista grande - cierra dentro de vela 1
+    """
+    if idx < 2:
+        return False
+    
+    v1 = df.iloc[idx - 2]  # Primera vela
+    v2 = df.iloc[idx - 1]  # Vela estrella
+    v3 = df.iloc[idx]      # Última vela
+    
+    # Vela 1: Alcista con cuerpo grande
+    v1_bullish = v1['Close'] > v1['Open']
+    v1_body = abs(v1['Close'] - v1['Open'])
+    v1_range = v1['High'] - v1['Low']
+    v1_large_body = v1_body > v1_range * 0.6
+    
+    # Vela 2: Pequeña (doji o cuerpo pequeño)
+    v2_body = abs(v2['Close'] - v2['Open'])
+    v2_range = v2['High'] - v2['Low']
+    v2_small = v2_body < v2_range * 0.3
+    v2_gap_up = v2['Open'] > v1['Close']
+    
+    # Vela 3: Bajista con cuerpo grande
+    v3_bearish = v3['Close'] < v3['Open']
+    v3_body = abs(v3['Close'] - v3['Open'])
+    v3_range = v3['High'] - v3['Low']
+    v3_large_body = v3_body > v3_range * 0.6
+    v3_closes_in_v1 = v3['Close'] < (v1['Open'] + v1['Close']) / 2
+    
+    return v1_bullish and v1_large_body and v2_small and v2_gap_up and v3_bearish and v3_large_body and v3_closes_in_v1
+
+def detectar_morning_star(df, idx):
+    """
+    Morning Star: Patrón de reversión alcista (3 velas)
+    Vela 1: Bajista grande
+    Vela 2: Pequeña (indecisión) - gap a la baja
+    Vela 3: Alcista grande - cierra dentro de vela 1
+    """
+    if idx < 2:
+        return False
+    
+    v1 = df.iloc[idx - 2]  # Primera vela
+    v2 = df.iloc[idx - 1]  # Vela estrella
+    v3 = df.iloc[idx]      # Última vela
+    
+    # Vela 1: Bajista con cuerpo grande
+    v1_bearish = v1['Close'] < v1['Open']
+    v1_body = abs(v1['Close'] - v1['Open'])
+    v1_range = v1['High'] - v1['Low']
+    v1_large_body = v1_body > v1_range * 0.6
+    
+    # Vela 2: Pequeña (doji o cuerpo pequeño)
+    v2_body = abs(v2['Close'] - v2['Open'])
+    v2_range = v2['High'] - v2['Low']
+    v2_small = v2_body < v2_range * 0.3
+    v2_gap_down = v2['Open'] < v1['Close']
+    
+    # Vela 3: Alcista con cuerpo grande
+    v3_bullish = v3['Close'] > v3['Open']
+    v3_body = abs(v3['Close'] - v3['Open'])
+    v3_range = v3['High'] - v3['Low']
+    v3_large_body = v3_body > v3_range * 0.6
+    v3_closes_in_v1 = v3['Close'] > (v1['Open'] + v1['Close']) / 2
+    
+    return v1_bearish and v1_large_body and v2_small and v2_gap_down and v3_bullish and v3_large_body and v3_closes_in_v1
+
+# ══════════════════════════════════════
 # LÓGICA PRINCIPAL — replica Pine Script
 # ══════════════════════════════════════
 def analizar(simbolo, params):
@@ -129,6 +282,15 @@ def analizar(simbolo, params):
     df['atr']       = calcular_atr(df, params['atr_length'])
     df['vol_avg']   = df['Volume'].rolling(20).mean()
 
+    # ── Nuevos Indicadores (Alta Prioridad) ──
+    df['bb_upper'], df['bb_mid'], df['bb_lower'], df['bb_width'] = calcular_bollinger_bands(df['Close'])
+    df['macd'], df['macd_signal'], df['macd_hist'] = calcular_macd(df['Close'])
+    df['obv'] = calcular_obv(df)
+    df['adx'], df['di_plus'], df['di_minus'] = calcular_adx(df)
+    
+    # OBV promedio para divergencias
+    df['obv_ema'] = calcular_ema(df['obv'], 20)
+
     # ── Velas ──
     df['body']        = (df['Close'] - df['Open']).abs()
     df['upper_wick']  = df['High'] - df[['Close','Open']].max(axis=1)
@@ -155,6 +317,26 @@ def analizar(simbolo, params):
     ema_trend = row['ema_trend']
     atr       = row['atr']
     vol_avg   = row['vol_avg']
+
+    # Nuevos indicadores
+    bb_upper  = row['bb_upper']
+    bb_lower  = row['bb_lower']
+    bb_mid    = row['bb_mid']
+    bb_width  = row['bb_width']
+    bb_width_prev = prev['bb_width']
+    
+    macd      = row['macd']
+    macd_signal = row['macd_signal']
+    macd_hist = row['macd_hist']
+    macd_hist_prev = prev['macd_hist']
+    
+    obv       = row['obv']
+    obv_prev  = prev['obv']
+    obv_ema   = row['obv_ema']
+    
+    adx       = row['adx']
+    di_plus   = row['di_plus']
+    di_minus  = row['di_minus']
 
     body        = row['body']
     upper_wick  = row['upper_wick']
@@ -229,6 +411,28 @@ def analizar(simbolo, params):
     min_decreciente    = (low  < prev['Low'])  and (prev['Low']  < p2['Low'])
     estructura_bajista = max_decreciente or min_decreciente
 
+    # ── Nuevas señales VENTA (indicadores alta prioridad) ──
+    # Bollinger Bands
+    bb_toca_superior = close >= bb_upper or high >= bb_upper
+    bb_squeeze = bb_width < 0.02  # Squeeze detectado (próxima explosión)
+    
+    # MACD
+    macd_cruce_bajista = (macd < macd_signal) and (macd_hist < 0) and (macd_hist_prev >= 0)
+    macd_divergencia_bajista = price_new_high and (macd < df['macd'].iloc[-lookback-2:-2].max())
+    macd_negativo = macd < 0
+    
+    # ADX
+    adx_tendencia_fuerte = adx > 25  # Tendencia confirmada
+    adx_bajista = (di_minus > di_plus) and adx_tendencia_fuerte
+    adx_lateral = adx < 20  # Evitar señales en lateral
+    
+    # OBV
+    obv_divergencia_bajista = price_new_high and (obv < df['obv'].iloc[-lookback-2:-2].max())
+    obv_decreciente = obv < obv_prev and obv < obv_ema
+    
+    # Evening Star
+    evening_star = detectar_evening_star(df, len(df) - 2)
+
     score_sell = 0
     score_sell += 2 if en_zona_resist          else 0
     score_sell += 2 if vela_rechazo            else 0
@@ -243,6 +447,20 @@ def analizar(simbolo, params):
     score_sell += 1 if (shooting_star and vol_alto_rechazo)       else 0
     score_sell += 1 if (divergencia_bajista and rsi_sobrecompra)  else 0
     score_sell += 1 if bajo_ema200             else 0
+    
+    # Nuevos puntos (indicadores alta prioridad)
+    score_sell += 2 if bb_toca_superior        else 0  # Bollinger superior
+    score_sell += 2 if evening_star            else 0  # Patrón Evening Star
+    score_sell += 2 if macd_cruce_bajista      else 0  # MACD cruce
+    score_sell += 2 if adx_bajista             else 0  # ADX confirma tendencia bajista
+    score_sell += 1 if macd_divergencia_bajista else 0  # MACD divergencia
+    score_sell += 1 if obv_divergencia_bajista else 0  # OBV divergencia
+    score_sell += 1 if obv_decreciente         else 0  # OBV cayendo
+    score_sell += 1 if macd_negativo           else 0  # MACD bajo cero
+    
+    # Penalización si mercado lateral (ADX bajo)
+    if adx_lateral:
+        score_sell = max(0, score_sell - 3)  # Reducir score en mercados laterales
 
     # ══════════════════════════════════
     # BLOQUE COMPRA
@@ -270,6 +488,25 @@ def analizar(simbolo, params):
     min_creciente      = (low  > prev['Low'])  and (prev['Low']  > p2['Low'])
     estructura_alcista = max_creciente or min_creciente
 
+    # ── Nuevas señales COMPRA (indicadores alta prioridad) ──
+    # Bollinger Bands
+    bb_toca_inferior = close <= bb_lower or low <= bb_lower
+    
+    # MACD
+    macd_cruce_alcista = (macd > macd_signal) and (macd_hist > 0) and (macd_hist_prev <= 0)
+    macd_divergencia_alcista = price_new_low and (macd > df['macd'].iloc[-lookback-2:-2].min())
+    macd_positivo = macd > 0
+    
+    # ADX
+    adx_alcista = (di_plus > di_minus) and adx_tendencia_fuerte
+    
+    # OBV
+    obv_divergencia_alcista = price_new_low and (obv > df['obv'].iloc[-lookback-2:-2].min())
+    obv_creciente = obv > obv_prev and obv > obv_ema
+    
+    # Morning Star
+    morning_star = detectar_morning_star(df, len(df) - 2)
+
     score_buy = 0
     score_buy += 2 if en_zona_soporte          else 0
     score_buy += 2 if vela_rebote              else 0
@@ -284,6 +521,20 @@ def analizar(simbolo, params):
     score_buy += 1 if (hammer and vol_alto_rebote)              else 0
     score_buy += 1 if (divergencia_alcista and rsi_sobreventa)  else 0
     score_buy += 1 if sobre_ema200             else 0
+    
+    # Nuevos puntos (indicadores alta prioridad)
+    score_buy += 2 if bb_toca_inferior        else 0  # Bollinger inferior
+    score_buy += 2 if morning_star            else 0  # Patrón Morning Star
+    score_buy += 2 if macd_cruce_alcista      else 0  # MACD cruce
+    score_buy += 2 if adx_alcista             else 0  # ADX confirma tendencia alcista
+    score_buy += 1 if macd_divergencia_alcista else 0  # MACD divergencia
+    score_buy += 1 if obv_divergencia_alcista else 0  # OBV divergencia
+    score_buy += 1 if obv_creciente           else 0  # OBV subiendo
+    score_buy += 1 if macd_positivo           else 0  # MACD sobre cero
+    
+    # Penalización si mercado lateral (ADX bajo)
+    if adx_lateral:
+        score_buy = max(0, score_buy - 3)  # Reducir score en mercados laterales
 
     # ══════════════════════════════════
     # NIVELES DE SEÑAL
