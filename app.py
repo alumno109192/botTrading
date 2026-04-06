@@ -22,6 +22,7 @@ app = Flask(__name__)
 # Estado del sistema
 estado_sistema = {
     'iniciado': datetime.now().isoformat(),
+    'ultima_actividad_cron': None,
     'detectores': {
         'gold': 'iniciando',
         'spx': 'iniciando',
@@ -29,6 +30,9 @@ estado_sistema = {
         'monitor': 'iniciando'
     }
 }
+
+# Referencias a los threads para monitoreo
+threads_detectores = {}
 
 def ejecutar_detector(nombre, modulo, clave_estado):
     """Ejecuta un detector en un hilo separado"""
@@ -93,6 +97,7 @@ def iniciar_detectores():
         daemon=True
     )
     hilos.append(hilo_gold)
+    threads_detectores['gold'] = hilo_gold
     
     # Hilo para detector de SPX500
     hilo_spx = threading.Thread(
@@ -102,6 +107,7 @@ def iniciar_detectores():
         daemon=True
     )
     hilos.append(hilo_spx)
+    threads_detectores['spx'] = hilo_spx
     
     # Hilo para detector de Bitcoin
     hilo_btc = threading.Thread(
@@ -111,6 +117,7 @@ def iniciar_detectores():
         daemon=True
     )
     hilos.append(hilo_btc)
+    threads_detectores['bitcoin'] = hilo_btc
     
     # Hilo para monitor de señales
     hilo_monitor = threading.Thread(
@@ -120,6 +127,7 @@ def iniciar_detectores():
         daemon=True
     )
     hilos.append(hilo_monitor)
+    threads_detectores['monitor'] = hilo_monitor
     
     # Hilo para keep-alive (evita que Render duerma la instancia)
     hilo_keepalive = threading.Thread(
@@ -160,6 +168,39 @@ def health():
 def status():
     """Estado detallado del sistema"""
     return jsonify(estado_sistema)
+
+@app.route('/cron')
+def cron_ping():
+    """Endpoint para CRON jobs - Mantiene el servicio activo y verifica threads"""
+    ahora = datetime.now()
+    estado_sistema['ultima_actividad_cron'] = ahora.isoformat()
+    
+    # Verificar estado de threads
+    threads_vivos = {}
+    threads_muertos = []
+    
+    for nombre, thread in threads_detectores.items():
+        if thread.is_alive():
+            threads_vivos[nombre] = 'vivo'
+        else:
+            threads_vivos[nombre] = 'muerto'
+            threads_muertos.append(nombre)
+    
+    # Log de actividad
+    print(f"[{ahora.strftime('%H:%M:%S')}] 🔔 CRON ping recibido - Threads vivos: {len([t for t in threads_vivos.values() if t == 'vivo'])}/{len(threads_detectores)}")
+    
+    if threads_muertos:
+        print(f"[{ahora.strftime('%H:%M:%S')}] ⚠️ Threads muertos detectados: {', '.join(threads_muertos)}")
+    
+    return jsonify({
+        'status': 'alive',
+        'timestamp': ahora.isoformat(),
+        'threads': threads_vivos,
+        'threads_activos': len([t for t in threads_vivos.values() if t == 'vivo']),
+        'threads_totales': len(threads_detectores),
+        'alerta': 'Hay threads muertos' if threads_muertos else None,
+        'detectores': estado_sistema['detectores']
+    }), 200
 
 # ========================================
 # INICIO DE LA APLICACIÓN
