@@ -48,7 +48,7 @@ def ejecutar_detector(nombre, modulo, clave_estado):
         ejecutar_detector(nombre, modulo, clave_estado)
 
 def keep_alive():
-    """Mantiene la instancia activa haciendo ping interno cada 10 minutos"""
+    """Mantiene la instancia activa haciendo ping interno cada 5 minutos"""
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive iniciado")
     time.sleep(120)  # Esperar 2 minutos al inicio para que Flask esté listo
     
@@ -66,7 +66,7 @@ def keep_alive():
         except Exception as e:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Keep-alive error: {e}")
         
-        time.sleep(600)  # 10 minutos = 600 segundos
+        time.sleep(300)  # 5 minutos = 300 segundos
 
 def iniciar_detectores():
     """Inicia todos los detectores en background"""
@@ -135,7 +135,7 @@ def iniciar_detectores():
         time.sleep(2)
     
     print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Todos los detectores están activos")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive activo (ping cada 10 min)\n")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive activo (ping cada 5 min)\n")
 
 # ========================================
 # RUTAS FLASK
