@@ -66,7 +66,7 @@ def keep_alive():
         except Exception as e:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Keep-alive error: {e}")
         
-        time.sleep(300)  # 5 minutos = 300 segundos
+        time.sleep(60)  # 1 minuto = 60 segundos
 
 def iniciar_detectores():
     """Inicia todos los detectores en background"""
