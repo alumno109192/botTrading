@@ -357,5 +357,10 @@ def monitor_senales():
             time.sleep(60)
 
 
-if __name__ == '__main__':
+def main():
+    """Punto de entrada principal - Llama a monitor_senales()"""
     monitor_senales()
+
+
+if __name__ == '__main__':
+    main()
