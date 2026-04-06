@@ -7,13 +7,25 @@ import time
 import json
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-from db_manager import DatabaseManager
 
 # Cargar variables de entorno
 load_dotenv()
 
-# Inicializar base de datos
-db = DatabaseManager()
+# Inicializar base de datos solo si las variables están configuradas
+db = None
+try:
+    turso_url = os.environ.get('TURSO_DATABASE_URL')
+    turso_token = os.environ.get('TURSO_AUTH_TOKEN')
+    if turso_url and turso_token:
+        from db_manager import DatabaseManager
+        db = DatabaseManager()
+        print("✅ Sistema de tracking de BD activado")
+    else:
+        print("⚠️  Variables Turso no configuradas - Sistema funcionará sin tracking de BD")
+except Exception as e:
+    print(f"⚠️  No se pudo inicializar BD: {e}")
+    print("⚠️  Sistema funcionará sin tracking de BD")
+    db = None
 
 # ══════════════════════════════════════
 # CONFIGURACIÓN
@@ -630,21 +642,25 @@ def analizar(simbolo, params):
                       "SELL_MED" if senal_sell_media  else
                       "SELL_ALE")
         if not ya_enviada(tipo_clave):
-            # Verificar si ya existe señal reciente para evitar duplicados
-            if not db.existe_senal_reciente(simbolo, 'VENTA', horas=2):
-                msg = (f"{nivel} — <b>BITCOIN</b> {nivel.split()[0]}\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"💰 <b>Precio:</b>     ${round(close, 0):,}\n"
-                       f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 0):,}\n"
-                       f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 0):,}\n"
-                       f"🎯 <b>TP1:</b> ${tp1_v:,}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                       f"🎯 <b>TP2:</b> ${tp2_v:,}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                       f"🎯 <b>TP3:</b> ${tp3_v:,}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
-                       f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
-                
-                # Guardar señal en base de datos
+            # Verificar si ya existe señal reciente para evitar duplicados (solo si BD activa)
+            if db and db.existe_senal_reciente(simbolo, 'VENTA', horas=2):
+                print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
+                return
+            
+            msg = (f"{nivel} — <b>BITCOIN</b> {nivel.split()[0]}\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"💰 <b>Precio:</b>     ${round(close, 0):,}\n"
+                   f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 0):,}\n"
+                   f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 0):,}\n"
+                   f"🎯 <b>TP1:</b> ${tp1_v:,}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
+                   f"🎯 <b>TP2:</b> ${tp2_v:,}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
+                   f"🎯 <b>TP3:</b> ${tp3_v:,}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                   f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
+            
+            # Guardar señal en base de datos (solo si está disponible)
+            if db:
                 senal_data = {
                     'timestamp': datetime.now(timezone.utc),
                     'simbolo': simbolo,
@@ -674,11 +690,9 @@ def analizar(simbolo, params):
                     print(f"  💾 Señal VENTA guardada en DB con ID: {senal_id}")
                 except Exception as e:
                     print(f"  ⚠️ Error guardando señal en DB: {e}")
-                
-                enviar_telegram(msg)
-                marcar_enviada(tipo_clave)
-            else:
-                print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
+            
+            enviar_telegram(msg)
+            marcar_enviada(tipo_clave)
 
     # ── SEÑALES COMPRA ──
     if senal_buy_alerta and not cancelar_buy:
@@ -691,21 +705,25 @@ def analizar(simbolo, params):
                       "BUY_MED" if senal_buy_media  else
                       "BUY_ALE")
         if not ya_enviada(tipo_clave):
-            # Verificar si ya existe señal reciente para evitar duplicados
-            if not db.existe_senal_reciente(simbolo, 'COMPRA', horas=2):
-                msg = (f"{nivel} — <b>BITCOIN</b> {nivel.split()[0]}\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"💰 <b>Precio:</b>    ${round(close, 0):,}\n"
-                       f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 0):,}\n"
-                       f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 0):,}\n"
-                       f"🎯 <b>TP1:</b> ${tp1_c:,}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                       f"🎯 <b>TP2:</b> ${tp2_c:,}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                       f"🎯 <b>TP3:</b> ${tp3_c:,}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
-                       f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
-                
-                # Guardar señal en base de datos
+            # Verificar si ya existe señal reciente para evitar duplicados (solo si BD activa)
+            if db and db.existe_senal_reciente(simbolo, 'COMPRA', horas=2):
+                print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
+                return
+            
+            msg = (f"{nivel} — <b>BITCOIN</b> {nivel.split()[0]}\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"💰 <b>Precio:</b>    ${round(close, 0):,}\n"
+                   f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 0):,}\n"
+                   f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 0):,}\n"
+                   f"🎯 <b>TP1:</b> ${tp1_c:,}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
+                   f"🎯 <b>TP2:</b> ${tp2_c:,}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
+                   f"🎯 <b>TP3:</b> ${tp3_c:,}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                   f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
+            
+            # Guardar señal en base de datos (solo si está disponible)
+            if db:
                 senal_data = {
                     'timestamp': datetime.now(timezone.utc),
                     'simbolo': simbolo,
@@ -735,11 +753,9 @@ def analizar(simbolo, params):
                     print(f"  💾 Señal COMPRA guardada en DB con ID: {senal_id}")
                 except Exception as e:
                     print(f"  ⚠️ Error guardando señal en DB: {e}")
-                
-                enviar_telegram(msg)
-                marcar_enviada(tipo_clave)
-            else:
-                print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
+            
+            enviar_telegram(msg)
+            marcar_enviada(tipo_clave)
 
     # ── CANCELACIONES ──
     if cancelar_sell and not ya_enviada('CANCEL_SELL'):

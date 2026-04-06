@@ -279,7 +279,17 @@ def monitor_senales():
     print()
     
     # Inicializar conexión a base de datos
-    db = DatabaseManager()
+    try:
+        db = DatabaseManager()
+        print("✅ Conexión a base de datos establecida")
+    except Exception as e:
+        print(f"⚠️  Base de datos no disponible: {e}")
+        print("📋 El monitor de señales requiere base de datos configurada")
+        print("💤 Monitor en espera indefinida (no afecta los detectores)...")
+        # Dormir indefinidamente sin hacer nada (el thread sigue vivo pero inactivo)
+        while True:
+            time.sleep(3600)  # Dormir 1 hora
+        return
     
     ciclo = 0
     
