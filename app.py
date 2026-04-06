@@ -85,65 +85,99 @@ def iniciar_detectores():
     print("  ₿  BTCUSD (Bitcoin)   → detector_bitcoin.py")
     print("  🔍 MONITOR SEÑALES    → signal_monitor.py")
     print("="*60)
+    print()
     
     # Crear hilos para cada detector
     hilos = []
     
-    # Hilo para detector de Oro
-    hilo_gold = threading.Thread(
-        target=ejecutar_detector,
-        args=("DETECTOR GOLD (XAUUSD)", detector_gold_copy, "gold"),
-        name="DetectorGold",
-        daemon=True
-    )
-    hilos.append(hilo_gold)
-    threads_detectores['gold'] = hilo_gold
+    print("🔧 Creando threads...")
     
-    # Hilo para detector de SPX500
-    hilo_spx = threading.Thread(
-        target=ejecutar_detector,
-        args=("DETECTOR SPX (SPX500)", detector_spx_copy, "spx"),
-        name="DetectorSPX",
-        daemon=True
-    )
-    hilos.append(hilo_spx)
-    threads_detectores['spx'] = hilo_spx
+    try:
+        # Hilo para detector de Oro
+        print("  📦 Creando thread: Detector GOLD...")
+        hilo_gold = threading.Thread(
+            target=ejecutar_detector,
+            args=("DETECTOR GOLD (XAUUSD)", detector_gold_copy, "gold"),
+            name="DetectorGold",
+            daemon=True
+        )
+        hilos.append(hilo_gold)
+        threads_detectores['gold'] = hilo_gold
+        print("    ✓ Thread GOLD creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread GOLD: {e}")
     
-    # Hilo para detector de Bitcoin
-    hilo_btc = threading.Thread(
-        target=ejecutar_detector,
-        args=("DETECTOR BITCOIN (BTCUSD)", detector_bitcoin, "bitcoin"),
-        name="DetectorBitcoin",
-        daemon=True
-    )
-    hilos.append(hilo_btc)
-    threads_detectores['bitcoin'] = hilo_btc
+    try:
+        # Hilo para detector de SPX500
+        print("  📦 Creando thread: Detector SPX...")
+        hilo_spx = threading.Thread(
+            target=ejecutar_detector,
+            args=("DETECTOR SPX (SPX500)", detector_spx_copy, "spx"),
+            name="DetectorSPX",
+            daemon=True
+        )
+        hilos.append(hilo_spx)
+        threads_detectores['spx'] = hilo_spx
+        print("    ✓ Thread SPX creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread SPX: {e}")
     
-    # Hilo para monitor de señales
-    hilo_monitor = threading.Thread(
-        target=ejecutar_detector,
-        args=("MONITOR SEÑALES", signal_monitor, "monitor"),
-        name="SignalMonitor",
-        daemon=True
-    )
-    hilos.append(hilo_monitor)
-    threads_detectores['monitor'] = hilo_monitor
+    try:
+        # Hilo para detector de Bitcoin
+        print("  📦 Creando thread: Detector BITCOIN...")
+        hilo_btc = threading.Thread(
+            target=ejecutar_detector,
+            args=("DETECTOR BITCOIN (BTCUSD)", detector_bitcoin, "bitcoin"),
+            name="DetectorBitcoin",
+            daemon=True
+        )
+        hilos.append(hilo_btc)
+        threads_detectores['bitcoin'] = hilo_btc
+        print("    ✓ Thread BITCOIN creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread BITCOIN: {e}")
     
-    # Hilo para keep-alive (evita que Render duerma la instancia)
-    hilo_keepalive = threading.Thread(
-        target=keep_alive,
-        name="KeepAlive",
-        daemon=True
-    )
-    hilos.append(hilo_keepalive)
+    try:
+        # Hilo para monitor de señales
+        print("  📦 Creando thread: Monitor...")
+        hilo_monitor = threading.Thread(
+            target=ejecutar_detector,
+            args=("MONITOR SEÑALES", signal_monitor, "monitor"),
+            name="SignalMonitor",
+            daemon=True
+        )
+        hilos.append(hilo_monitor)
+        threads_detectores['monitor'] = hilo_monitor
+        print("    ✓ Thread MONITOR creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread MONITOR: {e}")
+    
+    try:
+        # Hilo para keep-alive (evita que Render duerma la instancia)
+        print("  📦 Creando thread: Keep-alive...")
+        hilo_keepalive = threading.Thread(
+            target=keep_alive,
+            name="KeepAlive",
+            daemon=True
+        )
+        hilos.append(hilo_keepalive)
+        print("    ✓ Thread KEEP-ALIVE creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread KEEP-ALIVE: {e}")
     
     # Iniciar todos los hilos
-    for hilo in hilos:
-        hilo.start()
-        time.sleep(2)
+    print(f"\n🚀 Iniciando {len(hilos)} threads...")
+    for i, hilo in enumerate(hilos, 1):
+        try:
+            hilo.start()
+            print(f"  [{i}/{len(hilos)}] ✓ {hilo.name} iniciado")
+            time.sleep(2)
+        except Exception as e:
+            print(f"  [{i}/{len(hilos)}] ✗ Error iniciando {hilo.name}: {e}")
     
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Todos los detectores están activos")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive activo (ping cada 5 min)\n")
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✅ Proceso de inicio completado")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Threads activos: {len(threads_detectores)}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive activo (ping cada 1 min)\n")
 
 # ========================================
 # RUTAS FLASK
@@ -174,6 +208,19 @@ def cron_ping():
     """Endpoint para CRON jobs - Mantiene el servicio activo y verifica threads"""
     ahora = datetime.now()
     estado_sistema['ultima_actividad_cron'] = ahora.isoformat()
+    
+    # Verificar si hay threads registrados
+    if not threads_detectores:
+        print(f"[{ahora.strftime('%H:%M:%S')}] 🔔 CRON ping recibido - ⚠️ NO HAY THREADS REGISTRADOS (error en inicialización)")
+        return jsonify({
+            'status': 'alive_sin_detectores',
+            'timestamp': ahora.isoformat(),
+            'error': 'No hay threads de detectores registrados',
+            'threads': {},
+            'threads_activos': 0,
+            'threads_totales': 0,
+            'alerta': 'Sistema arrancó sin detectores - revisar logs de inicio'
+        }), 200
     
     # Verificar estado de threads
     threads_vivos = {}
@@ -207,10 +254,23 @@ def cron_ping():
 # ========================================
 
 if __name__ == '__main__':
-    # Iniciar detectores en background
-    iniciar_detectores()
+    print("\n" + "="*60)
+    print("🌟 INICIANDO BOT TRADING")
+    print("="*60)
+    
+    try:
+        # Iniciar detectores en background
+        print("📦 Iniciando detectores en background...")
+        iniciar_detectores()
+        print("✅ Detectores iniciados correctamente\n")
+    except Exception as e:
+        print(f"❌ ERROR FATAL iniciando detectores: {e}")
+        import traceback
+        traceback.print_exc()
+        print("⚠️ El servidor Flask arrancará SIN detectores\n")
     
     # Iniciar servidor Flask
     port = int(os.environ.get('PORT', 5000))
     print(f"🌐 Servidor Flask iniciando en puerto {port}...")
+    print("="*60 + "\n")
     app.run(host='0.0.0.0', port=port, debug=False)
