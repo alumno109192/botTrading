@@ -794,10 +794,22 @@ def main():
                     f"🔴 Resistencia: $95,000 - $105,000\n"
                     f"🟢 Soporte:     $65,000 - $75,000")
 
+    ciclo = 0
     while True:
+        ciclo += 1
+        ahora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        print(f"\n{'='*60}")
+        print(f"[{ahora}] 🔄 CICLO #{ciclo} - Iniciando análisis BITCOIN")
+        print(f"{'='*60}")
+        
         for simbolo, params in SIMBOLOS.items():
+            print(f"\n📊 Analizando {simbolo}...")
             analizar(simbolo, params)
-        print(f"\n⏳ Esperando {CHECK_INTERVAL//60} minutos...\n")
+        
+        print(f"\n{'='*60}")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ Ciclo #{ciclo} completado")
+        print(f"⏳ Esperando {CHECK_INTERVAL//60} minutos hasta el próximo análisis...")
+        print(f"{'='*60}\n")
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == '__main__':
