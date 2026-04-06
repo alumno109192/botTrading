@@ -9,6 +9,7 @@ import threading
 import time
 from datetime import datetime
 import os
+import requests
 
 # Importar los módulos de los detectores
 import detector_gold_copy
@@ -45,6 +46,27 @@ def ejecutar_detector(nombre, modulo, clave_estado):
         time.sleep(60)
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 Reintentando {nombre}...")
         ejecutar_detector(nombre, modulo, clave_estado)
+
+def keep_alive():
+    """Mantiene la instancia activa haciendo ping interno cada 10 minutos"""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive iniciado")
+    time.sleep(120)  # Esperar 2 minutos al inicio para que Flask esté listo
+    
+    while True:
+        try:
+            # Hacer ping a nuestro propio endpoint /health
+            port = int(os.environ.get('PORT', 5000))
+            url = f"http://localhost:{port}/health"
+            
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive ping OK")
+            else:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Keep-alive ping failed: {response.status_code}")
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Keep-alive error: {e}")
+        
+        time.sleep(600)  # 10 minutos = 600 segundos
 
 def iniciar_detectores():
     """Inicia todos los detectores en background"""
@@ -99,12 +121,21 @@ def iniciar_detectores():
     )
     hilos.append(hilo_monitor)
     
+    # Hilo para keep-alive (evita que Render duerma la instancia)
+    hilo_keepalive = threading.Thread(
+        target=keep_alive,
+        name="KeepAlive",
+        daemon=True
+    )
+    hilos.append(hilo_keepalive)
+    
     # Iniciar todos los hilos
     for hilo in hilos:
         hilo.start()
         time.sleep(2)
     
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Todos los detectores están activos\n")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Todos los detectores están activos")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive activo (ping cada 10 min)\n")
 
 # ========================================
 # RUTAS FLASK
