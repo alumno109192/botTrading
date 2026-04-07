@@ -252,6 +252,134 @@ def detectar_morning_star(df, idx):
     return v1_bearish and v1_large_body and v2_small and v2_gap_down and v3_bullish and v3_large_body and v3_closes_in_v1
 
 # ══════════════════════════════════════
+# ANÁLISIS DE SENTIMIENTO DEL MERCADO
+# (Mejora calidad - solo señales con confluencia)
+# ══════════════════════════════════════
+def calcular_sentimiento_bajista(row, prev, p2, df, params):
+    """
+    Calcula el score de sentimiento bajista (0-10)
+    Returns: (score, factores_detectados)
+    """
+    factores = []
+    score = 0
+    
+    close = row['Close']
+    high = row['High']
+    rsi = row['rsi']
+    ema_fast = row['ema_fast']
+    ema_slow = row['ema_slow']
+    ema_trend = row['ema_trend']
+    
+    # 1. Estructura bajista (2 puntos)
+    max_decreciente = (high < float(prev['High'])) and (float(prev['High']) < float(p2['High']))
+    min_decreciente = (row['Low'] < float(prev['Low'])) and (float(prev['Low']) < float(p2['Low']))
+    if max_decreciente or min_decreciente:
+        factores.append("Estructura bajista")
+        score += 2
+    
+    # 2. EMAs bajistas (1 punto cada una)
+    if ema_fast < ema_slow:
+        factores.append("EMAs bajistas (9<21)")
+        score += 1
+    if close < ema_trend:
+        factores.append("Precio bajo EMA200")
+        score += 1
+    
+    # 3. RSI en zona alta (1 punto)
+    if rsi > params['rsi_min_sell']:
+        factores.append(f"RSI alto ({rsi:.1f})")
+        score += 1
+    
+    # 4. En zona de resistencia (2 puntos)
+    zrh = params['zona_resist_high']
+    zrl = params['zona_resist_low']
+    tol = params['tolerancia']
+    if (high >= zrl - tol) and (high <= zrh + tol):
+        factores.append("En zona resistencia")
+        score += 2
+    
+    # 5. Divergencia bajista (2 puntos)
+    try:
+        lookback = 5
+        if len(df) >= lookback + 3:
+            price_new_high = high > float(df['High'].iloc[-lookback-2:-2].max())
+            rsi_lower_high = rsi < float(df['rsi'].iloc[-lookback-2:-2].max())
+            if price_new_high and rsi_lower_high and rsi > 50:
+                factores.append("Divergencia bajista")
+                score += 2
+    except:
+        pass
+    
+    # 6. Tendencia de largo plazo bajista (1 punto)
+    if ema_trend < df['Close'].iloc[-20:].mean():
+        factores.append("Tendencia LT bajista")
+        score += 1
+    
+    return score, factores
+
+def calcular_sentimiento_alcista(row, prev, p2, df, params):
+    """
+    Calcula el score de sentimiento alcista (0-10)
+    Returns: (score, factores_detectados)
+    """
+    factores = []
+    score = 0
+    
+    close = row['Close']
+    low = row['Low']
+    rsi = row['rsi']
+    ema_fast = row['ema_fast']
+    ema_slow = row['ema_slow']
+    ema_trend = row['ema_trend']
+    
+    # 1. Estructura alcista (2 puntos)
+    max_creciente = (row['High'] > float(prev['High'])) and (float(prev['High']) > float(p2['High']))
+    min_creciente = (low > float(prev['Low'])) and (float(prev['Low']) > float(p2['Low']))
+    if max_creciente or min_creciente:
+        factores.append("Estructura alcista")
+        score += 2
+    
+    # 2. EMAs alcistas (1 punto cada una)
+    if ema_fast > ema_slow:
+        factores.append("EMAs alcistas (9>21)")
+        score += 1
+    if close > ema_trend:
+        factores.append("Precio sobre EMA200")
+        score += 1
+    
+    # 3. RSI en zona baja (1 punto)
+    if rsi < params['rsi_max_buy']:
+        factores.append(f"RSI bajo ({rsi:.1f})")
+        score += 1
+    
+    # 4. En zona de soporte (2 puntos)
+    zsh = params['zona_soporte_high']
+    zsl = params['zona_soporte_low']
+    tol = params['tolerancia']
+    if (low >= zsl - tol) and (low <= zsh + tol):
+        factores.append("En zona soporte")
+        score += 2
+    
+    # 5. Divergencia alcista (2 puntos)
+    try:
+        lookback = 5
+        if len(df) >= lookback + 3:
+            price_new_low = low < float(df['Low'].iloc[-lookback-2:-2].min())
+            rsi_higher_low = rsi > float(df['rsi'].iloc[-lookback-2:-2].min())
+            if price_new_low and rsi_higher_low and rsi < 50:
+                factores.append("Divergencia alcista")
+                score += 2
+    except:
+        pass
+    
+    # 6. Tendencia de largo plazo alcista (1 punto)
+    if ema_trend > df['Close'].iloc[-20:].mean():
+        factores.append("Tendencia LT alcista")
+        score += 1
+    
+    return score, factores
+
+# ══════════════════════════════════════
 # LÓGICA PRINCIPAL
 # ══════════════════════════════════════
 def analizar(simbolo, params):
@@ -522,16 +650,57 @@ def analizar(simbolo, params):
         score_buy = max(0, score_buy - 3)
 
     # ══════════════════════════════════
-    # NIVELES DE SEÑAL
+    # ANÁLISIS DE SENTIMIENTO DEL MERCADO
+    # (Validación cruzada para señales de alta calidad)
     # ══════════════════════════════════
-    senal_sell_maxima = score_sell >= 10
-    senal_sell_fuerte = score_sell >= 8
-    senal_sell_media  = score_sell >= 6
-    senal_sell_alerta = score_sell >= 4
-    senal_buy_maxima  = score_buy  >= 10
-    senal_buy_fuerte  = score_buy  >= 8
-    senal_buy_media   = score_buy  >= 6
-    senal_buy_alerta  = score_buy  >= 4
+    sentimiento_bajista_score, factores_bajistas = calcular_sentimiento_bajista(row, prev, p2, df, params)
+    sentimiento_alcista_score, factores_alcistas = calcular_sentimiento_alcista(row, prev, p2, df, params)
+    
+    # Determinar sentimiento dominante
+    if sentimiento_bajista_score >= 6:
+        sentimiento_general = "🔴 BAJISTA FUERTE"
+        emoji_sentimiento = "🔴"
+    elif sentimiento_alcista_score >= 6:
+        sentimiento_general = "🟢 ALCISTA FUERTE"
+        emoji_sentimiento = "🟢"
+    elif sentimiento_bajista_score >= 4:
+        sentimiento_general = "⚠️ BAJISTA MODERADO"
+        emoji_sentimiento = "🟠"
+    elif sentimiento_alcista_score >= 4:
+        sentimiento_general = "⚠️ ALCISTA MODERADO"
+        emoji_sentimiento = "🟡"
+    else:
+        sentimiento_general = "⚪ NEUTRAL/MIXTO"
+        emoji_sentimiento = "⚪"
+    
+    # ══════════════════════════════════
+    # SISTEMA DE CONFLUENCIA
+    # Solo señales con confirmación del sentimiento
+    # ══════════════════════════════════
+    
+    # Validar confluencia (señal más fiable si sentimiento la apoya)
+    confluencia_sell = sentimiento_bajista_score >= 4 and score_sell >= 6
+    confluencia_buy = sentimiento_alcista_score >= 4 and score_buy >= 6
+    
+    # Señal contradictoria (advertencia - calidad reducida)
+    senal_contradictoria_sell = score_sell >= 6 and sentimiento_alcista_score > sentimiento_bajista_score
+    senal_contradictoria_buy = score_buy >= 6 and sentimiento_bajista_score > sentimiento_alcista_score
+    
+    # ══════════════════════════════════
+    # NIVELES DE SEÑAL CON FILTRO DE CALIDAD
+    # ══════════════════════════════════
+    
+    # SELL - Solo con confluencia o muy alto score técnico
+    senal_sell_maxima = score_sell >= 10 and sentimiento_bajista_score >= 6
+    senal_sell_fuerte = score_sell >= 8 and sentimiento_bajista_score >= 4
+    senal_sell_media  = score_sell >= 6 and sentimiento_bajista_score >= 3
+    senal_sell_alerta = score_sell >= 4 and not senal_contradictoria_sell
+    
+    # BUY - Solo con confluencia o muy alto score técnico
+    senal_buy_maxima  = score_buy >= 10 and sentimiento_alcista_score >= 6
+    senal_buy_fuerte  = score_buy >= 8 and sentimiento_alcista_score >= 4
+    senal_buy_media   = score_buy >= 6 and sentimiento_alcista_score >= 3
+    senal_buy_alerta  = score_buy >= 4 and not senal_contradictoria_buy
 
     # ── SL y TP ──
     sl_venta  = max(zrh, close + atr * asm)
@@ -576,9 +745,14 @@ def analizar(simbolo, params):
     
     print(f"  📅 Vela:  {fecha}")
     print(f"  💰 Close: {round(close, 2)}")
-    print(f"  📊 Score SELL: {score_sell}/15 | Score BUY: {score_buy}/15")
+    print(f"  📊 Score SELL: {score_sell}/21 | Score BUY: {score_buy}/21")
+    print(f"  {emoji_sentimiento} Sentimiento: {sentimiento_general} (Bajista:{sentimiento_bajista_score}/10 | Alcista:{sentimiento_alcista_score}/10)")
     print(f"  🔴 SELL → Alerta:{senal_sell_alerta} Media:{senal_sell_media} Fuerte:{senal_sell_fuerte} Máxima:{senal_sell_maxima}")
     print(f"  🟢 BUY  → Alerta:{senal_buy_alerta}  Media:{senal_buy_media}  Fuerte:{senal_buy_fuerte}  Máxima:{senal_buy_maxima}")
+    if senal_contradictoria_sell:
+        print(f"  ⚠️  ADVERTENCIA: Señal SELL contradice sentimiento alcista")
+    if senal_contradictoria_buy:
+        print(f"  ⚠️  ADVERTENCIA: Señal BUY contradice sentimiento bajista")
 
     # ══════════════════════════════════
     # ANTI-SPAM
@@ -633,10 +807,20 @@ def analizar(simbolo, params):
 
     # ── SEÑALES VENTA ──
     if senal_sell_alerta and not cancelar_sell:
-        nivel = ("⚡ SELL MÁXIMA" if senal_sell_maxima else
-                 "🔴 SELL FUERTE" if senal_sell_fuerte else
-                 "⚠️ SELL MEDIA"  if senal_sell_media  else
-                 "👀 SELL ALERTA")
+        # Determinar nivel y agregar marcador de confluencia
+        if senal_sell_maxima:
+            nivel = "🔥 SELL MÁXIMA - CONFLUENCIA CONFIRMADA 🔥"
+            calidad = "✅ ALTA CALIDAD"
+        elif senal_sell_fuerte:
+            nivel = "🔴 SELL FUERTE"
+            calidad = "✅ BUENA CALIDAD" if confluencia_sell else "⚠️ CALIDAD MEDIA"
+        elif senal_sell_media:
+            nivel = "⚠️ SELL MEDIA"
+            calidad = "⚠️ PRECAUCIÓN" if not senal_contradictoria_sell else "❌ SEÑAL DUDOSA"
+        else:
+            nivel = "👀 SELL ALERTA"
+            calidad = "ℹ️ MONITOREAR"
+        
         tipo_clave = ("SELL_MAX" if senal_sell_maxima else
                       "SELL_FUE" if senal_sell_fuerte else
                       "SELL_MED" if senal_sell_media  else
@@ -647,7 +831,7 @@ def analizar(simbolo, params):
                 print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
                 return
             
-            msg = (f"{nivel} — <b>BITCOIN</b> {nivel.split()[0]}\n"
+            msg = (f"{nivel} — <b>BITCOIN</b>\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"💰 <b>Precio:</b>     ${round(close, 0):,}\n"
                    f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 0):,}\n"
@@ -656,8 +840,15 @@ def analizar(simbolo, params):
                    f"🎯 <b>TP2:</b> ${tp2_v:,}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
                    f"🎯 <b>TP3:</b> ${tp3_v:,}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                   f"📊 <b>Score técnico:</b> {score_sell}/21\n"
+                   f"{emoji_sentimiento} <b>Sentimiento:</b> {sentimiento_general} ({sentimiento_bajista_score}/10)\n"
+                   f"🎯 <b>Calidad:</b> {calidad}\n"
+                   f"📉 <b>RSI:</b> {round(rsi, 1)}\n"
                    f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
+            
+            # Agregar advertencia si hay contradicción
+            if senal_contradictoria_sell:
+                msg += f"\n\n⚠️ <b>ADVERTENCIA:</b> Sentimiento alcista ({sentimiento_alcista_score}/10) contradice señal SELL"
             
             # Guardar señal en base de datos (solo si está disponible)
             if db:
@@ -696,10 +887,20 @@ def analizar(simbolo, params):
 
     # ── SEÑALES COMPRA ──
     if senal_buy_alerta and not cancelar_buy:
-        nivel = ("⚡ BUY MÁXIMA"  if senal_buy_maxima else
-                 "🟢 BUY FUERTE"  if senal_buy_fuerte else
-                 "⚠️ BUY MEDIA"   if senal_buy_media  else
-                 "👀 BUY ALERTA")
+        # Determinar nivel y agregar marcador de confluencia
+        if senal_buy_maxima:
+            nivel = "🔥 BUY MÁXIMA - CONFLUENCIA CONFIRMADA 🔥"
+            calidad = "✅ ALTA CALIDAD"
+        elif senal_buy_fuerte:
+            nivel = "🟢 BUY FUERTE"
+            calidad = "✅ BUENA CALIDAD" if confluencia_buy else "⚠️ CALIDAD MEDIA"
+        elif senal_buy_media:
+            nivel = "⚠️ BUY MEDIA"
+            calidad = "⚠️ PRECAUCIÓN" if not senal_contradictoria_buy else "❌ SEÑAL DUDOSA"
+        else:
+            nivel = "👀 BUY ALERTA"
+            calidad = "ℹ️ MONITOREAR"
+        
         tipo_clave = ("BUY_MAX" if senal_buy_maxima else
                       "BUY_FUE" if senal_buy_fuerte else
                       "BUY_MED" if senal_buy_media  else
@@ -710,7 +911,7 @@ def analizar(simbolo, params):
                 print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
                 return
             
-            msg = (f"{nivel} — <b>BITCOIN</b> {nivel.split()[0]}\n"
+            msg = (f"{nivel} — <b>BITCOIN</b>\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"💰 <b>Precio:</b>    ${round(close, 0):,}\n"
                    f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 0):,}\n"
@@ -719,8 +920,15 @@ def analizar(simbolo, params):
                    f"🎯 <b>TP2:</b> ${tp2_c:,}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
                    f"🎯 <b>TP3:</b> ${tp3_c:,}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                   f"📊 <b>Score técnico:</b> {score_buy}/21\n"
+                   f"{emoji_sentimiento} <b>Sentimiento:</b> {sentimiento_general} ({sentimiento_alcista_score}/10)\n"
+                   f"🎯 <b>Calidad:</b> {calidad}\n"
+                   f"📉 <b>RSI:</b> {round(rsi, 1)}\n"
                    f"⏱️ <b>TF:</b> 1D  📅 {fecha}")
+            
+            # Agregar advertencia si hay contradicción
+            if senal_contradictoria_buy:
+                msg += f"\n\n⚠️ <b>ADVERTENCIA:</b> Sentimiento bajista ({sentimiento_bajista_score}/10) contradice señal BUY"
             
             # Guardar señal en base de datos (solo si está disponible)
             if db:
