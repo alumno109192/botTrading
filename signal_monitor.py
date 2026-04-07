@@ -91,7 +91,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
     senal_id = senal['id']
     simbolo = senal['simbolo']
     
-    # Convertir valores numéricos de BD a float
+    # Convertir valores numéricos de BD a float (fix para Turso que retorna strings)
     precio_entrada = float(senal['precio_entrada'])
     tp1 = float(senal['tp1'])
     tp2 = float(senal['tp2'])
@@ -175,13 +175,8 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
     senal_id = senal['id']
     simbolo = senal['simbolo']
     
-    # Convertir valores numéricos de BD a float
+    # Convertir valores numéricos de BD a float (fix para Turso que retorna strings)
     precio_entrada = float(senal['precio_entrada'])
-    tp1 = float(senal['tp1'])
-    tp2 = float(senal['tp2'])
-    tp3 = float(senal['tp3'])
-    sl = float(senal['sl'])
-    
     # Verificar TP3 (menor precio)
     if precio_actual <= tp3 and not senal['tp3_alcanzado']:
         beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
@@ -335,7 +330,7 @@ def monitor_senales():
                     # Registrar precio en historial
                     db.registrar_precio(senal['id'], precio_actual)
                     
-                    # Convertir precio_entrada a float
+                    # Convertir precio_entrada a float (fix Turso strings)
                     precio_entrada = float(senal['precio_entrada'])
                     
                     # Mostrar estado actual

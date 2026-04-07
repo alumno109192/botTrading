@@ -318,7 +318,7 @@ class DatabaseManager:
         
         senal = dict(result.rows[0])
         
-        # Convertir valores numéricos a float
+        # Convertir valores numéricos a float (CRÍTICO: Turso retorna strings)
         precio_entrada = float(senal['precio_entrada'])
         tp1 = float(senal['tp1'])
         tp2 = float(senal['tp2'])
