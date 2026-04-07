@@ -15,10 +15,13 @@ import sys
 # Forzar flush inmediato de logs (crítico para Render)
 sys.stdout.reconfigure(line_buffering=True)
 
-# Importar los módulos de los detectores
-import detector_gold_copy
-import detector_spx_copy
-import detector_bitcoin
+# Importar los módulos de los detectores organizados
+from detectors.bitcoin import detector_bitcoin_1d
+from detectors.bitcoin import detector_bitcoin_4h
+from detectors.gold import detector_gold_1d
+from detectors.gold import detector_gold_4h
+from detectors.spx import detector_spx_1d
+from detectors.spx import detector_spx_4h
 import signal_monitor
 
 app = Flask(__name__)
@@ -28,9 +31,12 @@ estado_sistema = {
     'iniciado': datetime.now().isoformat(),
     'ultima_actividad_cron': None,
     'detectores': {
-        'gold': 'iniciando',
-        'spx': 'iniciando',
-        'bitcoin': 'iniciando',
+        'bitcoin_1d': 'iniciando',
+        'bitcoin_4h': 'iniciando',
+        'gold_1d': 'iniciando',
+        'gold_4h': 'iniciando',
+        'spx_1d': 'iniciando',
+        'spx_4h': 'iniciando',
         'monitor': 'iniciando'
     }
 }
@@ -86,11 +92,12 @@ def iniciar_detectores():
     print("="*60)
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
-    print("📊 Detectores activos:")
-    print("  🥇 XAUUSD (Oro)       → detector_gold.py")
-    print("  📈 SPX500 (S&P 500)   → detector_spx.py")
-    print("  ₿  BTCUSD (Bitcoin)   → detector_bitcoin.py")
-    print("  🔍 MONITOR SEÑALES    → signal_monitor.py")
+    print("📊 Detectores activos (Timeframes 1D + 4H):")
+    print("  ₿  BTCUSD   → 1D + 4H  (2 detectores)")
+    print("  🥇 XAUUSD   → 1D + 4H  (2 detectores)")
+    print("  📈 SPX500   → 1D + 4H  (2 detectores)")
+    print("  🔍 MONITOR  → Tracking de señales")
+    print("  📊 TOTAL: 7 threads de detección")
     print("="*60)
     print()
     
@@ -98,51 +105,105 @@ def iniciar_detectores():
     hilos = []
     
     print("🔧 Creando threads...")
+    print()
+    print("  📊 DETECTORES TIMEFRAME 1D (Diario):")
     
     try:
-        # Hilo para detector de Oro
-        print("  📦 Creando thread: Detector GOLD...")
-        hilo_gold = threading.Thread(
+        # Bitcoin 1D
+        print("  📦 Creando thread: Bitcoin 1D...")
+        hilo_btc_1d = threading.Thread(
             target=ejecutar_detector,
-            args=("DETECTOR GOLD (XAUUSD)", detector_gold_copy, "gold"),
-            name="DetectorGold",
+            args=("DETECTOR BITCOIN 1D", detector_bitcoin_1d, "bitcoin_1d"),
+            name="DetectorBitcoin1D",
             daemon=True
         )
-        hilos.append(hilo_gold)
-        threads_detectores['gold'] = hilo_gold
-        print("    ✓ Thread GOLD creado")
+        hilos.append(hilo_btc_1d)
+        threads_detectores['bitcoin_1d'] = hilo_btc_1d
+        print("    ✓ Thread Bitcoin 1D creado")
     except Exception as e:
-        print(f"    ✗ Error creando thread GOLD: {e}")
+        print(f"    ✗ Error creando thread Bitcoin 1D: {e}")
     
     try:
-        # Hilo para detector de SPX500
-        print("  📦 Creando thread: Detector SPX...")
-        hilo_spx = threading.Thread(
+        # Gold 1D
+        print("  📦 Creando thread: Gold 1D...")
+        hilo_gold_1d = threading.Thread(
             target=ejecutar_detector,
-            args=("DETECTOR SPX (SPX500)", detector_spx_copy, "spx"),
-            name="DetectorSPX",
+            args=("DETECTOR GOLD 1D", detector_gold_1d, "gold_1d"),
+            name="DetectorGold1D",
             daemon=True
         )
-        hilos.append(hilo_spx)
-        threads_detectores['spx'] = hilo_spx
-        print("    ✓ Thread SPX creado")
+        hilos.append(hilo_gold_1d)
+        threads_detectores['gold_1d'] = hilo_gold_1d
+        print("    ✓ Thread Gold 1D creado")
     except Exception as e:
-        print(f"    ✗ Error creando thread SPX: {e}")
+        print(f"    ✗ Error creando thread Gold 1D: {e}")
     
     try:
-        # Hilo para detector de Bitcoin
-        print("  📦 Creando thread: Detector BITCOIN...")
-        hilo_btc = threading.Thread(
+        # SPX 1D
+        print("  📦 Creando thread: SPX 1D...")
+        hilo_spx_1d = threading.Thread(
             target=ejecutar_detector,
-            args=("DETECTOR BITCOIN (BTCUSD)", detector_bitcoin, "bitcoin"),
-            name="DetectorBitcoin",
+            args=("DETECTOR SPX 1D", detector_spx_1d, "spx_1d"),
+            name="DetectorSPX1D",
             daemon=True
         )
-        hilos.append(hilo_btc)
-        threads_detectores['bitcoin'] = hilo_btc
-        print("    ✓ Thread BITCOIN creado")
+        hilos.append(hilo_spx_1d)
+        threads_detectores['spx_1d'] = hilo_spx_1d
+        print("    ✓ Thread SPX 1D creado")
     except Exception as e:
-        print(f"    ✗ Error creando thread BITCOIN: {e}")
+        print(f"    ✗ Error creando thread SPX 1D: {e}")
+    
+    print()
+    print("  📊 DETECTORES TIMEFRAME 4H (4 Horas):")
+    
+    try:
+        # Bitcoin 4H
+        print("  📦 Creando thread: Bitcoin 4H...")
+        hilo_btc_4h = threading.Thread(
+            target=ejecutar_detector,
+            args=("DETECTOR BITCOIN 4H", detector_bitcoin_4h, "bitcoin_4h"),
+            name="DetectorBitcoin4H",
+            daemon=True
+        )
+        hilos.append(hilo_btc_4h)
+        threads_detectores['bitcoin_4h'] = hilo_btc_4h
+        print("    ✓ Thread Bitcoin 4H creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread Bitcoin 4H: {e}")
+    
+    try:
+        # Gold 4H
+        print("  📦 Creando thread: Gold 4H...")
+        hilo_gold_4h = threading.Thread(
+            target=ejecutar_detector,
+            args=("DETECTOR GOLD 4H", detector_gold_4h, "gold_4h"),
+            name="DetectorGold4H",
+            daemon=True
+        )
+        hilos.append(hilo_gold_4h)
+        threads_detectores['gold_4h'] = hilo_gold_4h
+        print("    ✓ Thread Gold 4H creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread Gold 4H: {e}")
+    
+    try:
+        # SPX 4H
+        print("  📦 Creando thread: SPX 4H...")
+        hilo_spx_4h = threading.Thread(
+            target=ejecutar_detector,
+            args=("DETECTOR SPX 4H", detector_spx_4h, "spx_4h"),
+            name="DetectorSPX4H",
+            daemon=True
+        )
+        hilos.append(hilo_spx_4h)
+        threads_detectores['spx_4h'] = hilo_spx_4h
+        print("    ✓ Thread SPX 4H creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread SPX 4H: {e}")
+    
+    print()
+    
+    print("  📊 OTROS SERVICIOS:")
     
     try:
         # Hilo para monitor de señales
@@ -174,17 +235,22 @@ def iniciar_detectores():
     
     # Iniciar todos los hilos
     print(f"\n🚀 Iniciando {len(hilos)} threads...")
+    print()
     for i, hilo in enumerate(hilos, 1):
         try:
             hilo.start()
             print(f"  [{i}/{len(hilos)}] ✓ {hilo.name} iniciado")
-            time.sleep(2)
+            time.sleep(1)  # Reducido a 1 segundo entre threads
         except Exception as e:
             print(f"  [{i}/{len(hilos)}] ✗ Error iniciando {hilo.name}: {e}")
     
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✅ Proceso de inicio completado")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Threads activos: {len(threads_detectores)}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Detectores 1D: 3 (Bitcoin, Gold, SPX)")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Detectores 4H: 3 (Bitcoin, Gold, SPX)")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Otros: 2 (Monitor + Keep-alive)")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Total threads: {len(threads_detectores)} detectores + 1 keep-alive")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive activo (ping cada 1 min)\n")
+    sys.stdout.flush()
 
 # ========================================
 # RUTAS FLASK

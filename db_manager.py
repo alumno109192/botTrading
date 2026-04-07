@@ -208,7 +208,7 @@ class DatabaseManager:
         
         result = self.ejecutar_query(query, (simbolo, direccion, fecha_limite.isoformat()))
         
-        if result.rows and result.rows[0]['count'] > 0:
+        if result.rows and int(result.rows[0]['count']) > 0:
             print(f"⚠️ Señal duplicada detectada: {simbolo} {direccion}")
             return True
         return False
@@ -318,17 +318,24 @@ class DatabaseManager:
         
         senal = dict(result.rows[0])
         
+        # Convertir valores numéricos a float
+        precio_entrada = float(senal['precio_entrada'])
+        tp1 = float(senal['tp1'])
+        tp2 = float(senal['tp2'])
+        tp3 = float(senal['tp3'])
+        sl = float(senal['sl'])
+        
         # Calcular distancias relativas
         if senal['direccion'] == 'COMPRA':
-            dist_tp1 = ((precio_actual - senal['tp1']) / senal['precio_entrada']) * 100
-            dist_tp2 = ((precio_actual - senal['tp2']) / senal['precio_entrada']) * 100
-            dist_tp3 = ((precio_actual - senal['tp3']) / senal['precio_entrada']) * 100
-            dist_sl = ((precio_actual - senal['sl']) / senal['precio_entrada']) * 100
+            dist_tp1 = ((precio_actual - tp1) / precio_entrada) * 100
+            dist_tp2 = ((precio_actual - tp2) / precio_entrada) * 100
+            dist_tp3 = ((precio_actual - tp3) / precio_entrada) * 100
+            dist_sl = ((precio_actual - sl) / precio_entrada) * 100
         else:  # VENTA
-            dist_tp1 = ((senal['tp1'] - precio_actual) / senal['precio_entrada']) * 100
-            dist_tp2 = ((senal['tp2'] - precio_actual) / senal['precio_entrada']) * 100
-            dist_tp3 = ((senal['tp3'] - precio_actual) / senal['precio_entrada']) * 100
-            dist_sl = ((senal['sl'] - precio_actual) / senal['precio_entrada']) * 100
+            dist_tp1 = ((tp1 - precio_actual) / precio_entrada) * 100
+            dist_tp2 = ((tp2 - precio_actual) / precio_entrada) * 100
+            dist_tp3 = ((tp3 - precio_actual) / precio_entrada) * 100
+            dist_sl = ((sl - precio_actual) / precio_entrada) * 100
         
         # Insertar en historial
         insert_query = """

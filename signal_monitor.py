@@ -91,9 +91,16 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
     senal_id = senal['id']
     simbolo = senal['simbolo']
     
+    # Convertir valores numéricos de BD a float
+    precio_entrada = float(senal['precio_entrada'])
+    tp1 = float(senal['tp1'])
+    tp2 = float(senal['tp2'])
+    tp3 = float(senal['tp3'])
+    sl = float(senal['sl'])
+    
     # Verificar TP3 (mayor prioridad)
-    if precio_actual >= senal['tp3'] and not senal['tp3_alcanzado']:
-        beneficio = calcular_beneficio_pct(senal['precio_entrada'], precio_actual, 'COMPRA')
+    if precio_actual >= tp3 and not senal['tp3_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
         
         mensaje = f"""
@@ -101,8 +108,8 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
 
 📊 Símbolo: {simbolo}
 🔼 Dirección: COMPRA
-💰 Precio Entrada: ${senal['precio_entrada']:.2f}
-✅ TP3: ${senal['tp3']:.2f}
+💰 Precio Entrada: ${precio_entrada:.2f}
+✅ TP3: ${tp3:.2f}
 📈 Precio Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
 
@@ -112,16 +119,16 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
         return
     
     # Verificar TP2
-    if precio_actual >= senal['tp2'] and not senal['tp2_alcanzado']:
-        beneficio = calcular_beneficio_pct(senal['precio_entrada'], precio_actual, 'COMPRA')
+    if precio_actual >= tp2 and not senal['tp2_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
         
         mensaje = f"""
 🎯🎯 <b>TP2 ALCANZADO</b>
 
 📊 {simbolo} | COMPRA
-💰 Entrada: ${senal['precio_entrada']:.2f}
-✅ TP2: ${senal['tp2']:.2f}
+💰 Entrada: ${precio_entrada:.2f}
+✅ TP2: ${tp2:.2f}
 📈 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
         """
@@ -129,16 +136,16 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
         return
     
     # Verificar TP1
-    if precio_actual >= senal['tp1'] and not senal['tp1_alcanzado']:
-        beneficio = calcular_beneficio_pct(senal['precio_entrada'], precio_actual, 'COMPRA')
+    if precio_actual >= tp1 and not senal['tp1_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
         
         mensaje = f"""
 🎯 <b>TP1 ALCANZADO</b>
 
 📊 {simbolo} | COMPRA
-💰 Entrada: ${senal['precio_entrada']:.2f}
-✅ TP1: ${senal['tp1']:.2f}
+💰 Entrada: ${precio_entrada:.2f}
+✅ TP1: ${tp1:.2f}
 📈 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
         """
@@ -146,16 +153,16 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
         return
     
     # Verificar SL (Stop Loss)
-    if precio_actual <= senal['sl'] and not senal['sl_alcanzado']:
-        beneficio = calcular_beneficio_pct(senal['precio_entrada'], precio_actual, 'COMPRA')
+    if precio_actual <= sl and not senal['sl_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'SL', beneficio)
         
         mensaje = f"""
 ❌ <b>STOP LOSS ACTIVADO</b>
 
 📊 {simbolo} | COMPRA
-💰 Entrada: ${senal['precio_entrada']:.2f}
-🛑 SL: ${senal['sl']:.2f}
+💰 Entrada: ${precio_entrada:.2f}
+🛑 SL: ${sl:.2f}
 📉 Actual: ${precio_actual:.2f}
 💸 Pérdida: {beneficio:.2f}%
         """
@@ -168,9 +175,16 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
     senal_id = senal['id']
     simbolo = senal['simbolo']
     
+    # Convertir valores numéricos de BD a float
+    precio_entrada = float(senal['precio_entrada'])
+    tp1 = float(senal['tp1'])
+    tp2 = float(senal['tp2'])
+    tp3 = float(senal['tp3'])
+    sl = float(senal['sl'])
+    
     # Verificar TP3 (menor precio)
-    if precio_actual <= senal['tp3'] and not senal['tp3_alcanzado']:
-        beneficio = calcular_beneficio_pct(senal['precio_entrada'], precio_actual, 'VENTA')
+    if precio_actual <= tp3 and not senal['tp3_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
         
         mensaje = f"""
@@ -178,8 +192,8 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
 
 📊 Símbolo: {simbolo}
 🔽 Dirección: VENTA
-💰 Precio Entrada: ${senal['precio_entrada']:.2f}
-✅ TP3: ${senal['tp3']:.2f}
+💰 Precio Entrada: ${precio_entrada:.2f}
+✅ TP3: ${tp3:.2f}
 📉 Precio Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
 
@@ -189,16 +203,16 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
         return
     
     # Verificar TP2
-    if precio_actual <= senal['tp2'] and not senal['tp2_alcanzado']:
-        beneficio = calcular_beneficio_pct(senal['precio_entrada'], precio_actual, 'VENTA')
+    if precio_actual <= tp2 and not senal['tp2_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
         
         mensaje = f"""
 🎯🎯 <b>TP2 ALCANZADO</b>
 
 📊 {simbolo} | VENTA
-💰 Entrada: ${senal['precio_entrada']:.2f}
-✅ TP2: ${senal['tp2']:.2f}
+💰 Entrada: ${precio_entrada:.2f}
+✅ TP2: ${tp2:.2f}
 📉 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
         """
@@ -206,16 +220,16 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
         return
     
     # Verificar TP1
-    if precio_actual <= senal['tp1'] and not senal['tp1_alcanzado']:
-        beneficio = calcular_beneficio_pct(senal['precio_entrada'], precio_actual, 'VENTA')
+    if precio_actual <= tp1 and not senal['tp1_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
         
         mensaje = f"""
 🎯 <b>TP1 ALCANZADO</b>
 
 📊 {simbolo} | VENTA
-💰 Entrada: ${senal['precio_entrada']:.2f}
-✅ TP1: ${senal['tp1']:.2f}
+💰 Entrada: ${precio_entrada:.2f}
+✅ TP1: ${tp1:.2f}
 📉 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
         """
@@ -223,16 +237,16 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
         return
     
     # Verificar SL (Stop Loss)
-    if precio_actual >= senal['sl'] and not senal['sl_alcanzado']:
-        beneficio = calcular_beneficio_pct(senal['precio_entrada'], precio_actual, 'VENTA')
+    if precio_actual >= sl and not senal['sl_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'SL', beneficio)
         
         mensaje = f"""
 ❌ <b>STOP LOSS ACTIVADO</b>
 
 📊 {simbolo} | VENTA
-💰 Entrada: ${senal['precio_entrada']:.2f}
-🛑 SL: ${senal['sl']:.2f}
+💰 Entrada: ${precio_entrada:.2f}
+🛑 SL: ${sl:.2f}
 📈 Actual: ${precio_actual:.2f}
 💸 Pérdida: {beneficio:.2f}%
         """
@@ -321,15 +335,18 @@ def monitor_senales():
                     # Registrar precio en historial
                     db.registrar_precio(senal['id'], precio_actual)
                     
+                    # Convertir precio_entrada a float
+                    precio_entrada = float(senal['precio_entrada'])
+                    
                     # Mostrar estado actual
                     beneficio_actual = calcular_beneficio_pct(
-                        senal['precio_entrada'], 
+                        precio_entrada, 
                         precio_actual, 
                         direccion
                     )
                     
                     print(f"  📊 {simbolo} | {direccion} | "
-                          f"Entrada: ${senal['precio_entrada']:.2f} | "
+                          f"Entrada: ${precio_entrada:.2f} | "
                           f"Actual: ${precio_actual:.2f} | "
                           f"Beneficio: {beneficio_actual:+.2f}%")
                     
