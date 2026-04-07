@@ -17,7 +17,7 @@ load_dotenv()
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
-CHECK_INTERVAL = 14 * 60  # cada 14 minutos (en segundos)
+CHECK_INTERVAL = 10 * 60  # cada 10 minutos (balance óptimo para timeframe 1D)
                           # mantiene el servidor activo
 
 # ══════════════════════════════════════

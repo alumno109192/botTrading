@@ -35,7 +35,7 @@ except Exception as e:
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
-CHECK_INTERVAL = 7 * 60  # cada 7 minutos (timeframe 4H)
+CHECK_INTERVAL = 4 * 60  # cada 4 minutos (balance óptimo para timeframe 4H)
 
 # ══════════════════════════════════════
 # PARÁMETROS — ESPECÍFICOS SPX500 4H

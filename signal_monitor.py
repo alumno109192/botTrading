@@ -355,9 +355,9 @@ def monitor_senales():
             if ciclo % 12 == 0:  # Cada hora (12 ciclos * 5 min = 60 min)
                 cerrar_senales_antiguas(db, dias=7)
             
-            # Esperar 5 minutos antes del próximo ciclo
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⏳ Esperando 5 minutos...")
-            time.sleep(300)  # 5 minutos = 300 segundos
+            # Esperar 3 minutos antes del próximo ciclo (balance óptimo)
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⏳ Esperando 3 minutos...")
+            time.sleep(180)  # 3 minutos = 180 segundos
             
         except KeyboardInterrupt:
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Monitor detenido por usuario")
