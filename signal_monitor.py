@@ -109,14 +109,15 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
         mensaje = f"""
 🎯🎯🎯 <b>TP3 ALCANZADO!</b>
 
-📊 Símbolo: {simbolo}
-🔼 Dirección: COMPRA
-💰 Precio Entrada: ${precio_entrada:.2f}
+📊 {simbolo} | COMPRA
+💰 Entrada: ${precio_entrada:.2f}
 ✅ TP3: ${tp3:.2f}
-📈 Precio Actual: ${precio_actual:.2f}
+📈 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
 
-🏆 ¡Excelente operación!
+📋 <b>ACCIÓN RECOMENDADA:</b>
+🔴 Cerrar el 100% restante de la posición
+🏆 ¡Operación completada con éxito!
         """
         enviar_notificacion_telegram(mensaje)
         return
@@ -134,6 +135,11 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
 ✅ TP2: ${tp2:.2f}
 📈 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
+
+📋 <b>ACCIÓN RECOMENDADA:</b>
+🔴 Cerrar 33% de la posición
+🔒 Mover SL a TP1 (${tp1:.2f})
+⏳ Dejar correr hacia TP3 (${tp3:.2f})
         """
         enviar_notificacion_telegram(mensaje)
         return
@@ -151,6 +157,11 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
 ✅ TP1: ${tp1:.2f}
 📈 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
+
+📋 <b>ACCIÓN RECOMENDADA:</b>
+🔴 Cerrar 33% de la posición
+🔒 Mover SL a breakeven (${precio_entrada:.2f})
+⏳ Dejar correr hacia TP2 (${tp2:.2f})
         """
         enviar_notificacion_telegram(mensaje)
         return
@@ -168,6 +179,9 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
 🛑 SL: ${sl:.2f}
 📉 Actual: ${precio_actual:.2f}
 💸 Pérdida: {beneficio:.2f}%
+
+📋 <b>ACCIÓN RECOMENDADA:</b>
+🔴 Cerrar el 100% de la posición
         """
         enviar_notificacion_telegram(mensaje)
         return
@@ -193,14 +207,15 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
         mensaje = f"""
 🎯🎯🎯 <b>TP3 ALCANZADO!</b>
 
-📊 Símbolo: {simbolo}
-🔽 Dirección: VENTA
-💰 Precio Entrada: ${precio_entrada:.2f}
+📊 {simbolo} | VENTA
+💰 Entrada: ${precio_entrada:.2f}
 ✅ TP3: ${tp3:.2f}
-📉 Precio Actual: ${precio_actual:.2f}
+📉 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
 
-🏆 ¡Excelente operación!
+📋 <b>ACCIÓN RECOMENDADA:</b>
+🔴 Cerrar el 100% restante de la posición
+🏆 ¡Operación completada con éxito!
         """
         enviar_notificacion_telegram(mensaje)
         return
@@ -218,6 +233,11 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
 ✅ TP2: ${tp2:.2f}
 📉 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
+
+📋 <b>ACCIÓN RECOMENDADA:</b>
+🔴 Cerrar 33% de la posición
+🔒 Mover SL a TP1 (${tp1:.2f})
+⏳ Dejar correr hacia TP3 (${tp3:.2f})
         """
         enviar_notificacion_telegram(mensaje)
         return
@@ -235,6 +255,11 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
 ✅ TP1: ${tp1:.2f}
 📉 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
+
+📋 <b>ACCIÓN RECOMENDADA:</b>
+🔴 Cerrar 33% de la posición
+🔒 Mover SL a breakeven (${precio_entrada:.2f})
+⏳ Dejar correr hacia TP2 (${tp2:.2f})
         """
         enviar_notificacion_telegram(mensaje)
         return
@@ -252,6 +277,9 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
 🛑 SL: ${sl:.2f}
 📈 Actual: ${precio_actual:.2f}
 💸 Pérdida: {beneficio:.2f}%
+
+📋 <b>ACCIÓN RECOMENDADA:</b>
+🔴 Cerrar el 100% de la posición
         """
         enviar_notificacion_telegram(mensaje)
         return
