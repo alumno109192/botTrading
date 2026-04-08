@@ -247,8 +247,8 @@ def analizar(simbolo, params):
 
     # Descargar datos 4H
     try:
-        df = yf.download(params['ticker_yf'], period='90d', interval='4h', progress=False)
-        if df.empty or len(df) < 400:
+        df = yf.download(params['ticker_yf'], period='60d', interval='4h', progress=False)
+        if df.empty or len(df) < 200:
             print(f"⚠️ Datos insuficientes para {simbolo}")
             return
     except Exception as e:
