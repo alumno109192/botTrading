@@ -563,7 +563,7 @@ def analizar(simbolo, params):
                       "SELL_MED" if senal_sell_media  else
                       "SELL_ALE")
         if not ya_enviada(tipo_clave):
-            if db and db.existe_senal_reciente(simbolo, 'VENTA', horas=2):
+            if db and db.existe_senal_reciente(f"{simbolo}_4H", 'VENTA', horas=2):
                 print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
                 return
             
@@ -624,7 +624,7 @@ def analizar(simbolo, params):
                       "BUY_MED" if senal_buy_media  else
                       "BUY_ALE")
         if not ya_enviada(tipo_clave):
-            if db and db.existe_senal_reciente(simbolo, 'COMPRA', horas=2):
+            if db and db.existe_senal_reciente(f"{simbolo}_4H", 'COMPRA', horas=2):
                 print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
                 return
             

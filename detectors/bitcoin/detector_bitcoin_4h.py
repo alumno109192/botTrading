@@ -650,7 +650,7 @@ def analizar(simbolo, params):
                       "SELL_ALE")
         if not ya_enviada(tipo_clave):
             # Verificar si ya existe señal reciente para evitar duplicados (solo si BD activa)
-            if db and db.existe_senal_reciente(simbolo, 'VENTA', horas=2):
+            if db and db.existe_senal_reciente(f"{simbolo}_4H", 'VENTA', horas=2):
                 print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
                 return
             
@@ -714,7 +714,7 @@ def analizar(simbolo, params):
                       "BUY_ALE")
         if not ya_enviada(tipo_clave):
             # Verificar si ya existe señal reciente para evitar duplicados (solo si BD activa)
-            if db and db.existe_senal_reciente(simbolo, 'COMPRA', horas=2):
+            if db and db.existe_senal_reciente(f"{simbolo}_4H", 'COMPRA', horas=2):
                 print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
                 return
             
