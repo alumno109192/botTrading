@@ -30,15 +30,18 @@ def obtener_precio_actual(simbolo: str) -> float:
     Obtiene el precio actual de un símbolo usando yfinance
     
     Args:
-        simbolo: BTCUSD, XAUUSD, SPX500
+        simbolo: BTCUSD, XAUUSD, SPX500 (puede incluir sufijos como _4H, _1D, _15M)
         
     Returns:
         Precio actual o None si hay error
     """
     try:
-        ticker = SIMBOLO_TO_TICKER.get(simbolo)
+        # Extraer símbolo base (sin sufijos _4H, _1D, _15M, etc.)
+        simbolo_base = simbolo.split('_')[0]
+        
+        ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
         if not ticker:
-            print(f"⚠️ Símbolo desconocido: {simbolo}")
+            print(f"⚠️ Símbolo desconocido: {simbolo} (base: {simbolo_base})")
             return None
         
         data = yf.Ticker(ticker)

@@ -225,7 +225,14 @@ def analizar_simbolo(simbolo, params):
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.droplevel(1)
         
-        df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        # Renombrar columnas (GC=F puede no tener 'Adj Close')
+        if len(df.columns) == 6:
+            df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        elif len(df.columns) == 5:
+            df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+        else:
+            print(f"⚠️ Columnas inesperadas ({len(df.columns)}): {df.columns.tolist()}")
+            return
         
         # Calcular indicadores
         close = df['Close'].iloc[-1]
