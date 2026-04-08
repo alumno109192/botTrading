@@ -185,31 +185,30 @@ class DatabaseManager:
     
     def existe_senal_reciente(self, simbolo: str, direccion: str, horas: int = 2) -> bool:
         """
-        Verifica si existe una señal activa reciente para evitar duplicados
+        Verifica si ya existe una señal ACTIVA para el símbolo+dirección dados.
+        Si la señal sigue activa (no ha tocado TP ni SL), no se crea otra.
+        El parámetro horas se mantiene por compatibilidad pero no se usa.
         
         Args:
-            simbolo: BTCUSD, XAUUSD, SPX500
+            simbolo: BTCUSD_4H, XAUUSD_15M, etc.
             direccion: COMPRA o VENTA
-            horas: Ventana de tiempo para considerar duplicado
+            horas: Ignorado (mantenido por compatibilidad)
             
         Returns:
-            True si existe una señal similar reciente
+            True si ya existe una señal activa para ese símbolo+dirección
         """
-        fecha_limite = datetime.now(timezone.utc) - timedelta(hours=horas)
-        
         query = """
         SELECT COUNT(*) as count
         FROM senales
         WHERE simbolo = ?
         AND direccion = ?
         AND estado = 'ACTIVA'
-        AND timestamp >= ?
         """
         
-        result = self.ejecutar_query(query, (simbolo, direccion, fecha_limite.isoformat()))
+        result = self.ejecutar_query(query, (simbolo, direccion))
         
         if result.rows and int(result.rows[0]['count']) > 0:
-            print(f"⚠️ Señal duplicada detectada: {simbolo} {direccion}")
+            print(f"⚠️ Ya existe señal ACTIVA: {simbolo} {direccion} — no se duplica")
             return True
         return False
     
