@@ -68,9 +68,14 @@ def enviar_telegram(mensaje):
             "parse_mode": "HTML"
         }
         r = requests.post(url, json=payload, timeout=10)
-        print(f"✅ Telegram enviado → {r.status_code}")
+        if r.status_code == 200:
+            print(f"✅ Telegram enviado → {r.status_code}")
+        else:
+            print(f"❌ Error Telegram → Status {r.status_code}")
+            print(f"   Respuesta: {r.text}")
+            print(f"   Mensaje (primeros 200 chars): {mensaje[:200]}...")
     except Exception as e:
-        print(f"❌ Error Telegram: {e}")
+        print(f"❌ Error Telegram (excepción): {e}")
 
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
