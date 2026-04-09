@@ -246,9 +246,11 @@ def analizar(simbolo, params):
     print(f"\n🔍 Analizando {simbolo} [4H]...")
 
     # Descargar datos 4H
+    # SPX500 solo cotiza en horario de mercado (~6 velas/día vs 6 de cripto 24h)
+    # con 60d retorna ~120 velas, umbral ajustado a 80
     try:
         df = yf.download(params['ticker_yf'], period='60d', interval='4h', progress=False)
-        if df.empty or len(df) < 200:
+        if df.empty or len(df) < 80:
             print(f"⚠️ Datos insuficientes para {simbolo}")
             return
     except Exception as e:
