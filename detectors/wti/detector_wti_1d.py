@@ -353,16 +353,17 @@ def analizar(simbolo, params):
     def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = True
     def fmt(v): return f"${v:.2f}"
 
-    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
-    if senal_sell_alerta and senal_buy_alerta:
-        if score_sell >= score_buy:
-            senal_buy_alerta = False
-            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
-        else:
-            senal_sell_alerta = False
-            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+    # ── FILTRO PROXIMIDAD: solo operar cerca de zona ──
+    cerca_resistencia = en_zona_resist or aproximando_resistencia
+    cerca_soporte     = en_zona_soporte or aproximando_soporte
+    if not cerca_resistencia:
+        if senal_sell_alerta: print(f"  ⏳ SELL ignorada: precio lejos de resistencia")
+        senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+    if not cerca_soporte:
+        if senal_buy_alerta: print(f"  ⏳ BUY ignorada: precio lejos de soporte")
+        senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
 
-    if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta and not ya_enviada('PREP_SELL'):
+    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
         msg = (f"🔔 <b>PREPARAR SELL LIMIT — WTI OIL</b> 🔔\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"📢 Precio aproximándose a resistencia\n"

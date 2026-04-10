@@ -619,6 +619,16 @@ def analizar(simbolo, params):
     # ENVIAR ALERTAS
     # ══════════════════════════════════
 
+    # ── FILTRO PROXIMIDAD: solo operar cerca de zona ──
+    cerca_resistencia = en_zona_resist or aproximando_resistencia
+    cerca_soporte     = en_zona_soporte or aproximando_soporte
+    if not cerca_resistencia:
+        if senal_sell_alerta: print(f"  ⏳ SELL ignorada: precio lejos de resistencia")
+        senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+    if not cerca_soporte:
+        if senal_buy_alerta: print(f"  ⏳ BUY ignorada: precio lejos de soporte")
+        senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
+
     # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
     if senal_sell_alerta and senal_buy_alerta:
         if score_sell >= score_buy:

@@ -301,6 +301,16 @@ def analizar(simbolo, params):
     def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = True
     def fmt(v): return f"${v:.2f}"
 
+    # ── FILTRO PROXIMIDAD: solo operar cerca de zona ──
+    cerca_resistencia = en_zona_resist or aproximando_resistencia
+    cerca_soporte     = en_zona_soporte or aproximando_soporte
+    if not cerca_resistencia and score_sell >= 4:
+        print(f"  ⏳ SELL ignorada: precio lejos de resistencia")
+        score_sell = 0
+    if not cerca_soporte and score_buy >= 4:
+        print(f"  ⏳ BUY ignorada: precio lejos de soporte")
+        score_buy = 0
+
     # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
     if score_sell >= 4 and score_buy >= 4:
         if score_sell >= score_buy:

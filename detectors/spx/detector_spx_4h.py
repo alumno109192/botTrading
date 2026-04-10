@@ -64,7 +64,10 @@ SIMBOLOS = {
         'ema_slow_len':       42,           # 21D × 2 para 4H
         'ema_trend_len':      400,          # 200D × 2 para 4H
         'atr_length':         28,           # 14D × 2 para 4H
-        'atr_sl_mult':        1.6,          # Menos agresivo para 4H (era 2.0)
+        'atr_sl_mult':        1.5,
+        'atr_tp1_mult':       1.5,
+        'atr_tp2_mult':       2.5,
+        'atr_tp3_mult':       4.0,
         'vol_mult':           1.3,
     }
 }
@@ -505,18 +508,26 @@ def analizar(simbolo, params):
     senal_buy_media   = score_buy  >= 9
     senal_buy_alerta  = score_buy  >= 5
 
-    sl_venta  = max(zrh, close + atr * asm)
-    sl_compra = min(zsl, close - atr * asm)
+    sl_venta  = round(sell_limit + atr * asm, 2)
+    sl_compra = round(buy_limit  - atr * asm, 2)
 
-    tp1_v = params['tp1_venta']
-    tp2_v = params['tp2_venta']
-    tp3_v = params['tp3_venta']
-    tp1_c = params['tp1_compra']
-    tp2_c = params['tp2_compra']
-    tp3_c = params['tp3_compra']
+    tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
+    tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
+    tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
+    tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
+    tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
+    tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
 
     def rr(limit, sl, tp):
         return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
+
+    # ── FILTRO R:R MÍNIMO 1.5 ──
+    rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
+    rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
+    if rr_sell_tp1 < 1.5:
+        print(f"  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.5")
+    if rr_buy_tp1 < 1.5:
+        print(f"  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.5")
 
     fecha = df.index[-2].strftime('%Y-%m-%d %H:%M')
     
@@ -555,7 +566,26 @@ def analizar(simbolo, params):
         alertas_enviadas[f"{clave_vela}_{tipo}"] = True
 
     # ENVIAR SEÑALES
-    if senal_sell_alerta and not cancelar_sell:
+    # ── FILTRO PROXIMIDAD: solo operar cerca de zona ──
+    cerca_resistencia = en_zona_resist or aproximando_resistencia
+    cerca_soporte     = en_zona_soporte or aproximando_soporte
+    if not cerca_resistencia:
+        if senal_sell_alerta: print(f"  ⏳ SELL ignorada: precio lejos de resistencia")
+        senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+    if not cerca_soporte:
+        if senal_buy_alerta: print(f"  ⏳ BUY ignorada: precio lejos de soporte")
+        senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
+
+    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
+    if senal_sell_alerta and senal_buy_alerta:
+        if score_sell >= score_buy:
+            senal_buy_alerta = False
+            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+        else:
+            senal_sell_alerta = False
+            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
+    if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.5:
         nivel = ("⚡ SELL MÁXIMA" if senal_sell_maxima else
                  "🔴 SELL FUERTE" if senal_sell_fuerte else
                  "⚠️ SELL MEDIA"  if senal_sell_media  else
@@ -616,7 +646,7 @@ def analizar(simbolo, params):
             enviar_telegram(msg)
             marcar_enviada(tipo_clave)
 
-    if senal_buy_alerta and not cancelar_buy:
+    if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.5:
         nivel = ("⚡ BUY MÁXIMA"  if senal_buy_maxima else
                  "🟢 BUY FUERTE"  if senal_buy_fuerte else
                  "⚠️ BUY MEDIA"   if senal_buy_media  else
