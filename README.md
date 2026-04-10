@@ -1,174 +1,179 @@
-# Bot Trading - Detectores de Señales Técnicas
+# Bot Trading — Detectores de Señales Técnicas
 
-Sistema automatizado de detección de señales de trading que analiza múltiples instrumentos financieros usando indicadores técnicos y envía alertas a Telegram.
+Sistema automatizado de detección de señales de trading. Analiza BTCUSD, XAUUSD y SPX500 con indicadores técnicos, envía alertas a Telegram y hace seguimiento de señales activas con recomendaciones de gestión de posición.
 
-## 🎯 Características
+Desplegado en **Render** como servicio web Flask con detectores en background threads.
 
-### 📊 Indicadores Técnicos (Actualizado 5 Abril 2026)
+---
 
-**Indicadores Base:**
-- RSI (Relative Strength Index)
-- EMA (9/21/200) - Medias móviles exponenciales
-- ATR (Average True Range) - Volatilidad
-- Volumen y promedio de volumen
+## Instrumentos y Timeframes
 
-**🆕 Indicadores de Alta Prioridad Implementados:**
-- ✅ **Bandas de Bollinger** - Extremos de volatilidad y squeeze
-- ✅ **MACD** - Momentum y divergencias
-- ✅ **OBV** (On-Balance Volume) - Confirmación por volumen
-- ✅ **ADX** (Average Directional Index) - Fuerza de tendencia y filtro lateral
-- ✅ **Evening/Morning Star** - Patrones de reversión de 3 velas
+| Instrumento | Timeframes | Detector |
+|---|---|---|
+| ₿ BTCUSD | 1D + 4H | `detectors/bitcoin/` |
+| 🥇 XAUUSD | 1D + 4H + 15M (scalping) | `detectors/gold/` |
+| 📈 SPX500 | 1D + 4H | `detectors/spx/` |
 
-### 🕯️ Patrones de Velas Japonesas
-- Shooting Star (bajista)
-- Hammer (alcista)
-- Engulfing (bajista/alcista)
-- Marubozu (bajista/alcista)
-- Doji en zonas clave
-- **🆕 Evening Star** (reversión bajista)
-- **🆕 Morning Star** (reversión alcista)
+---
 
-### ⚡ Sistema de Scoring Mejorado
-- **Score máximo:** 24 puntos (antes 15)
-- **Filtro ADX:** Penaliza señales en mercados laterales (-3 pts)
-- **4 niveles de alerta:** Alerta (4+), Media (6+), Fuerte (8+), Máxima (10+)
-- **Confluencia múltiple:** Combina señales de precio, volumen, momentum y tendencia
+## Arquitectura del Sistema
 
-### 🔕 Anti-spam Inteligente
-- Solo notifica en velas nuevas o cambios significativos
-- Evita duplicados en la misma vela
-- Sistema de caché de alertas enviadas
+```
+app.py (Flask)
+├── detector_bitcoin_1d  ─┐
+├── detector_bitcoin_4h   │
+├── detector_gold_1d      ├─ Threads en background (cada 4-10 min)
+├── detector_gold_4h      │
+├── detector_gold_15m     │
+├── detector_spx_1d       │
+├── detector_spx_4h      ─┘
+└── signal_monitor ───── Revisa señales activas cada 5 min (TP/SL)
+```
 
-### 💚 Servidor Siempre Activo
-- Revisión cada 14 minutos
-- Mantiene el servidor activo sin timeouts
+**Base de datos:** Turso (SQLite en la nube) — almacena señales activas, estado y beneficio.
 
-### 🔄 Multi-threading
-- Ejecuta múltiples detectores simultáneamente
-- Optimizado para bajo consumo de recursos
+---
 
-### 📱 Alertas a Telegram
-- Notificaciones formateadas con HTML
-- Incluye: SL, TP1/TP2/TP3, R:R ratio
-- Indicadores visuales de fuerza de señal
+## Sistema de Señales
 
-**📚 Ver documentación completa:** [INDICADORES_IMPLEMENTADOS.md](INDICADORES_IMPLEMENTADOS.md)
+### Scoring
 
-## 📈 Instrumentos monitorizados
+Cada vela se puntúa con múltiples indicadores técnicos:
 
-- 🥇 **XAUUSD** (Oro) - `detector_gold.py`
-- 📊 **SPX500** (S&P 500) - `detector_spx.py`
-- ₿ **BTCUSD** (Bitcoin) - `detector_bitcoin.py`
+| Indicador | Peso | Notas |
+|---|---|---|
+| Zona soporte/resistencia | +2 | Zonas definidas por parámetros |
+| Patrón de vela (rechazo/rebote) | +2 | Shooting star, hammer, engulfing... |
+| Volumen alto en zona | +2 | `vol > vol_avg × vol_mult` |
+| RSI sobrecompra/sobreventa | +1-2 | Umbrales configurables |
+| Cruce EMA rápida/lenta | +1-2 | Cruce reciente suma extra |
+| Bandas de Bollinger | +2 | Toca banda extrema |
+| MACD cruce bajista/alcista | +2 | Confirmado con histograma |
+| ADX tendencia | +2 | ADX > 25 con DI alineado |
+| Evening/Morning Star | +2 | Patrón de reversión 3 velas |
+| OBV divergencia | +1 | Confirmación por volumen acumulado |
+| Divergencia RSI/precio | +1 | |
+| **Penalización mercado lateral** | **-3** | ADX < 20 |
 
-**Nota:** Los archivos `*_copy.py` contienen versiones con análisis de sentimiento de mercado mejorado.
+**Score máximo:** ~24 puntos (varía por detector)
 
-## 🔧 Requisitos
+### Niveles de alerta
 
-- Python 3.8+
-- Bot de Telegram creado con @BotFather
-- ID del chat de Telegram donde se enviarán las señales
+| Nivel | Score | Descripción |
+|---|---|---|
+| 👀 ALERTA | 4-5 | Observar, posible oportunidad |
+| ⚠️ MEDIA | 6-8 | Probabilidad moderada |
+| 🔴🟢 FUERTE | 9-11 | Alta probabilidad |
+| ⚡ MÁXIMA | 12+ | Confluencia múltiple fuerte |
 
-## 📦 Instalación
+### Filtros obligatorios (bloquean señal independientemente del score)
 
-1. **Clonar el repositorio**
+- **Liquidez BTC:** `vol < vol_avg × 0.5` → señal bloqueada (solo BTCUSD 1D y 4H)
+- **Anti-duplicado:** no se emite si ya existe señal ACTIVA para ese símbolo+dirección en BD
+- **Cancelación por precio:** precio demasiado lejos de la zona (configurable por `cancelar_dist`)
+
+---
+
+## Monitor de Señales
+
+El `signal_monitor.py` revisa cada 5 minutos todas las señales ACTIVAS en la BD y notifica cuando el precio alcanza un nivel:
+
+| Evento | Mensaje Telegram | Acción recomendada |
+|---|---|---|
+| TP1 alcanzado | 🎯 TP1 ALCANZADO | Cerrar 33% + mover SL a breakeven |
+| TP2 alcanzado | 🎯🎯 TP2 ALCANZADO | Cerrar 33% + mover SL a TP1 |
+| TP3 alcanzado | 🎯🎯🎯 TP3 ALCANZADO | Cerrar 100% restante |
+| SL alcanzado | ❌ STOP LOSS | Cerrar 100% |
+
+Las señales con más de 7 días activas se cierran automáticamente como CANCELADAS.
+
+---
+
+## Formato de Alertas Telegram
+
+```
+🔴 SELL FUERTE — BITCOIN 4H
+━━━━━━━━━━━━━━━━━━━━
+💰 Precio:     $95,500
+📌 SELL LIMIT: $96,000
+🛑 Stop Loss:  $98,000
+🎯 TP1: $85,000  R:R 2.3:1
+🎯 TP2: $75,000  R:R 6.5:1
+🎯 TP3: $65,000  R:R 11.1:1
+━━━━━━━━━━━━━━━━━━━━
+📊 Score: 12/15  📉 RSI: 68.2
+⏱️ TF: 4H  📅 2026-04-10
+```
+
+---
+
+## Instalación
+
+**Requisitos:** Python 3.8+, bot de Telegram, cuenta Turso (BD)
+
 ```bash
 git clone https://github.com/alumno109192/botTrading.git
 cd botTrading
-```
-
-2. **Crear entorno virtual e instalar dependencias**
-```bash
 python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-3. **Configurar variables de entorno**
-   - Copiar `.env.example` a `.env`
-   - Editar `.env` con tus credenciales
+Copiar `.env.example` a `.env` y rellenar:
 
 ```env
-TELEGRAM_TOKEN=tu_token_del_bot_aqui
-TELEGRAM_CHAT_ID=tu_chat_id_aqui
+TELEGRAM_TOKEN=tu_token_del_bot
+TELEGRAM_CHAT_ID=tu_chat_id
+TURSO_DATABASE_URL=libsql://tu-db.turso.io
+TURSO_AUTH_TOKEN=tu_token_turso
 ```
 
-## 🚀 Uso
+---
 
-### Ejecutar todos los detectores (RECOMENDADO)
+## Ejecución
 
 ```bash
-.\venv\Scripts\python.exe run_detectors.py
+# Todos los detectores + monitor (recomendado)
+.\venv\Scripts\python.exe app.py
+
+# Un detector individual
+.\venv\Scripts\python.exe detectors/bitcoin/detector_bitcoin_4h.py
 ```
 
-Esto iniciará:
-- 🥇 Detector de Oro (XAUUSD)
-- 📈 Detector de SPX500
+El servidor Flask escucha en `http://0.0.0.0:5000` con endpoint `/health` para keep-alive.
 
-Ambos se ejecutan en **hilos separados** y de forma independiente.
+---
 
-### Ejecutar detectores individuales
+## Utilidades
 
-**Solo Oro:**
 ```bash
-.\venv\Scripts\python.exe detector_gold.py
+# Limpiar señales duplicadas en la BD (ejecutar si hay duplicados visibles)
+.\venv\Scripts\python.exe limpiar_duplicados.py
 ```
 
-**Solo SPX500:**
-```bash
-.\venv\Scripts\python.exe detector_spx.py
-```
+---
 
-Ver más detalles en [EJECUTAR.md](EJECUTAR.md)
+## Variables de entorno
 
-## 📊 Niveles de Señal
+| Variable | Descripción |
+|---|---|
+| `TELEGRAM_TOKEN` | Token del bot (desde @BotFather) |
+| `TELEGRAM_CHAT_ID` | ID del chat donde enviar alertas |
+| `TURSO_DATABASE_URL` | URL de la BD Turso (`libsql://...`) |
+| `TURSO_AUTH_TOKEN` | Token de autenticación Turso |
 
-El sistema asigna un **score de 0-15 puntos** basado en múltiples condiciones técnicas:
+### Obtener TELEGRAM_TOKEN
+1. Abrir Telegram → buscar **@BotFather**
+2. Enviar `/newbot` y seguir instrucciones
+3. Copiar el token proporcionado
 
-- ⚡ **MÁXIMA** (10+ puntos): Confluencia muy fuerte de indicadores
-- 🔴/🟢 **FUERTE** (8-9 puntos): Alta probabilidad
-- ⚠️ **MEDIA** (6-7 puntos): Probabilidad moderada  
-- 👀 **ALERTA** (4-5 puntos): Observar, posible oportunidad
+### Obtener TELEGRAM_CHAT_ID
+1. Buscar **@userinfobot** en Telegram
+2. Iniciar conversación → te devuelve tu chat ID
 
-## 🛑 Detener la ejecución
+---
 
-Presiona **Ctrl + C** para detener todos los detectores de forma segura.
-## 📱 Formato de Alertas en Telegram
+## Seguridad
 
-Las señales se envían con información completa:
-
-```
-⚡ SELL MÁXIMA ⚡
-━━━━━━━━━━━━━━━━━━━━
-📈 Símbolo:    XAUUSD
-💰 Precio:     4783.2
-📌 SELL LIMIT: 4765.0
-🛑 Stop Loss:  4825.0
-🎯 TP1: 4627  R:R 2.3:1
-🎯 TP2: 4374  R:R 6.5:1
-🎯 TP3: 4099  R:R 11.1:1
-━━━━━━━━━━━━━━━━━━━━
-📊 Score: 12/15
-📉 RSI: 68.2
-⏱️ TF: 1D  📅 2026-04-01
-```
-
-## 🔒 Seguridad
-
-- ✅ El archivo `.env` está en `.gitignore` (no se sube a GitHub)
-- ✅ Usa contraseñas de aplicación de Google (no contraseña normal)
-- ✅ Tokens y credenciales se cargan desde variables de entorno
-
-## 🤝 Cómo obtener credenciales
-
-### TELEGRAM_TOKEN
-1. Abre Telegram y busca **@BotFather**
-2. Envía `/newbot` y sigue las instrucciones
-3. Copia el token que te proporciona
-
-### TELEGRAM_CHAT_ID
-1. Busca **@userinfobot** en Telegram
-2. Inicia conversación
-3. Te dará tu chat_id (para grupos, añade el bot y usa `getUpdates`)
-
-## 📄 Licencia
-
-MIT
+- `.env` en `.gitignore` — credenciales nunca se suben a GitHub
+- Tokens cargados exclusivamente desde variables de entorno
+- Queries a BD parametrizadas (sin concatenación de strings)

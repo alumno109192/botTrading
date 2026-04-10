@@ -66,6 +66,7 @@ SIMBOLOS = {
         'atr_length':         28,           # 14D × 2 para 4H
         'atr_sl_mult':        2.0,          # SL menos agresivo para 4H
         'vol_mult':           1.5,          # Volumen muy importante en cripto
+        'vol_min_mult':       0.5,          # Filtro obligatorio: vol < 50% del promedio bloquea señal
     }
 }
 
@@ -586,6 +587,14 @@ def analizar(simbolo, params):
     print(f"  📊 Score SELL: {score_sell}/15 | Score BUY: {score_buy}/15")
     print(f"  🔴 SELL → Alerta:{senal_sell_alerta} Media:{senal_sell_media} Fuerte:{senal_sell_fuerte} Máxima:{senal_sell_maxima}")
     print(f"  🟢 BUY  → Alerta:{senal_buy_alerta}  Media:{senal_buy_media}  Fuerte:{senal_buy_fuerte}  Máxima:{senal_buy_maxima}")
+
+    # ══════════════════════════════════
+    # FILTRO DE LIQUIDEZ OBLIGATORIO (BTC)
+    # ══════════════════════════════════
+    vol_min_mult = params.get('vol_min_mult', 0.5)
+    if vol < vol_avg * vol_min_mult:
+        print(f"  ⚠️  Volumen insuficiente ({round(vol):,} < {round(vol_avg * vol_min_mult):,}) — señal bloqueada")
+        return
 
     # ══════════════════════════════════
     # ANTI-SPAM

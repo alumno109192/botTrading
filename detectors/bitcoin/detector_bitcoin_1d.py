@@ -64,6 +64,7 @@ SIMBOLOS = {
         'atr_length':         14,
         'atr_sl_mult':        2.5,          # SL más amplio (volatilidad BTC)
         'vol_mult':           1.5,          # Volumen muy importante en cripto
+        'vol_min_mult':       0.5,          # Filtro obligatorio: vol < 50% del promedio bloquea señal
     }
 }
 
@@ -765,6 +766,14 @@ def analizar(simbolo, params):
         print(f"  📣 ALERTA SELL activada por SENTIMIENTO BAJISTA FUERTE ({sentimiento_bajista_score}/10) - Score técnico bajo ({score_sell}/21)")
     if senal_buy_alerta and score_buy < 4 and sentimiento_alcista_score >= 6:
         print(f"  📣 ALERTA BUY activada por SENTIMIENTO ALCISTA FUERTE ({sentimiento_alcista_score}/10) - Score técnico bajo ({score_buy}/21)")
+
+    # ══════════════════════════════════
+    # FILTRO DE LIQUIDEZ OBLIGATORIO (BTC)
+    # ══════════════════════════════════
+    vol_min_mult = params.get('vol_min_mult', 0.5)
+    if vol < vol_avg * vol_min_mult:
+        print(f"  ⚠️  Volumen insuficiente ({round(vol):,} < {round(vol_avg * vol_min_mult):,}) — señal bloqueada")
+        return
 
     # ══════════════════════════════════
     # ANTI-SPAM
