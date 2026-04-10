@@ -39,12 +39,6 @@ SIMBOLOS = {
         'zona_resist_low':    112.0,
         'zona_soporte_high':  95.0,
         'zona_soporte_low':   90.0,
-        'tp1_venta':          95.0,
-        'tp2_venta':          90.0,
-        'tp3_venta':          85.0,
-        'tp1_compra':         110.0,
-        'tp2_compra':         115.0,
-        'tp3_compra':         120.0,
         'tolerancia':         2.0,
         'limit_offset_pct':   0.3,
         'anticipar_velas':    3,
@@ -56,7 +50,10 @@ SIMBOLOS = {
         'ema_slow_len':       42,
         'ema_trend_len':      400,
         'atr_length':         28,
-        'atr_sl_mult':        1.8,
+        'atr_sl_mult':        1.5,
+        'atr_tp1_mult':       1.5,
+        'atr_tp2_mult':       2.5,
+        'atr_tp3_mult':       4.0,
         'vol_mult':           1.3,
     }
 }
@@ -270,13 +267,25 @@ def analizar(simbolo, params):
     elif score_buy >= 4:  sentimiento_general = "⚠️ ALCISTA MODERADO"; emoji_sentimiento = "🟡"
     else: sentimiento_general = "⚪ NEUTRAL/MIXTO"; emoji_sentimiento = "⚪"
 
-    sl_venta  = max(zrh, close + atr * asm)
-    sl_compra = min(zsl, close - atr * asm)
-    tp1_v = params['tp1_venta'];  tp2_v = params['tp2_venta'];  tp3_v = params['tp3_venta']
-    tp1_c = params['tp1_compra']; tp2_c = params['tp2_compra']; tp3_c = params['tp3_compra']
+    sl_venta  = round(sell_limit + atr * asm, 2)
+    sl_compra = round(buy_limit  - atr * asm, 2)
+    tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
+    tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
+    tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
+    tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
+    tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
+    tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
 
     def rr(limit, sl, tp):
         return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
+
+    # ── FILTRO R:R MÍNIMO 1.5 ──
+    rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
+    rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
+    if rr_sell_tp1 < 1.5:
+        print(f"  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.5")
+    if rr_buy_tp1 < 1.5:
+        print(f"  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.5")
 
     fecha = df.index[-2].strftime('%Y-%m-%d %H:%M')
     clave_simbolo = simbolo
@@ -293,7 +302,7 @@ def analizar(simbolo, params):
     def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = True
     def fmt(v): return f"${v:.2f}"
 
-    if score_sell >= 4 and not cancelar_sell and not ya_enviada('SELL_4H'):
+    if score_sell >= 4 and not cancelar_sell and rr_sell_tp1 >= 1.5 and not ya_enviada('SELL_4H'):
         if score_sell >= 10: nivel = "🔥 SELL MÁXIMA (4H)"; calidad = "✅ ALTA CALIDAD"
         elif score_sell >= 8: nivel = "🔴 SELL FUERTE (4H)"; calidad = "✅ BUENA CALIDAD"
         elif score_sell >= 6: nivel = "⚠️ SELL MEDIA (4H)"; calidad = "⚠️ PRECAUCIÓN"
@@ -323,7 +332,7 @@ def analizar(simbolo, params):
             except Exception as e: print(f"  ⚠️ Error BD: {e}")
         enviar_telegram(msg); marcar_enviada('SELL_4H')
 
-    if score_buy >= 4 and not cancelar_buy and not ya_enviada('BUY_4H'):
+    if score_buy >= 4 and not cancelar_buy and rr_buy_tp1 >= 1.5 and not ya_enviada('BUY_4H'):
         if score_buy >= 10: nivel = "🔥 BUY MÁXIMA (4H)"; calidad = "✅ ALTA CALIDAD"
         elif score_buy >= 8: nivel = "🟢 BUY FUERTE (4H)"; calidad = "✅ BUENA CALIDAD"
         elif score_buy >= 6: nivel = "⚠️ BUY MEDIA (4H)"; calidad = "⚠️ PRECAUCIÓN"

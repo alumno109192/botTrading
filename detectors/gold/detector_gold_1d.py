@@ -727,8 +727,8 @@ def analizar(simbolo, params):
     # ══════════════════════════════════
     # SL Y TP
     # ══════════════════════════════════
-    sl_venta  = max(zrh, close + atr * asm)
-    sl_compra = min(zsl, close - atr * asm)
+    sl_venta  = round(sell_limit + atr * asm, 2)
+    sl_compra = round(buy_limit  - atr * asm, 2)
 
     tp1_v = params['tp1_venta']
     tp2_v = params['tp2_venta']
@@ -739,6 +739,14 @@ def analizar(simbolo, params):
 
     def rr(limit, sl, tp):
         return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
+
+    # ── FILTRO R:R MÍNIMO 1.5 ──
+    rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
+    rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
+    if rr_sell_tp1 < 1.5:
+        print(f"  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.5")
+    if rr_buy_tp1 < 1.5:
+        print(f"  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.5")
 
     # ══════════════════════════════════
     # LOG EN CONSOLA
@@ -842,7 +850,7 @@ def analizar(simbolo, params):
             marcar_enviada('PREP_BUY')
 
     # ── SEÑALES VENTA ──
-    if senal_sell_alerta and not cancelar_sell:
+    if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.5:
         # Determinar nivel y agregar marcador de confluencia
         if senal_sell_maxima:
             nivel = "🔥 SELL MÁXIMA - CONFLUENCIA CONFIRMADA 🔥"
@@ -887,7 +895,7 @@ def analizar(simbolo, params):
             marcar_enviada(tipo_clave)
 
     # ── SEÑALES COMPRA ──
-    if senal_buy_alerta and not cancelar_buy:
+    if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.5:
         # Determinar nivel y agregar marcador de confluencia
         if senal_buy_maxima:
             nivel = "🔥 BUY MÁXIMA - CONFLUENCIA CONFIRMADA 🔥"
