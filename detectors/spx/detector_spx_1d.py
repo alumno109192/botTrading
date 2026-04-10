@@ -24,17 +24,17 @@ CHECK_INTERVAL = 10 * 60  # cada 10 minutos (balance óptimo para timeframe 1D)
 SIMBOLOS = {
     'SPX500': {
         'ticker_yf':          '^GSPC',      # SP500 en Yahoo Finance
-        'zona_resist_high':   6100.0,
-        'zona_resist_low':    5800.0,
-        'zona_soporte_high':  5200.0,
-        'zona_soporte_low':   4800.0,
-        'tp1_venta':          4941.0,
-        'tp2_venta':          4700.0,
-        'tp3_venta':          4400.0,
-        'tp1_compra':         5800.0,
-        'tp2_compra':         6000.0,
-        'tp3_compra':         6100.0,
-        'tolerancia':         50.0,         # Mayor que ORO
+        'zona_resist_high':   7000.0,       # ATH zona — máximo 1Y: 7002
+        'zona_resist_low':    6900.0,
+        'zona_soporte_high':  6600.0,
+        'zona_soporte_low':   6400.0,       # Mínimo semana 10-abr: 6534
+        'tp1_venta':          6700.0,
+        'tp2_venta':          6500.0,
+        'tp3_venta':          6200.0,
+        'tp1_compra':         6900.0,
+        'tp2_compra':         7000.0,
+        'tp3_compra':         7200.0,
+        'tolerancia':         75.0,         # Ampliado por rango actual
         'limit_offset_pct':   0.3,
         'anticipar_velas':    3,
         'cancelar_dist':      1.5,          # Mayor que ORO

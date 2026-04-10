@@ -41,17 +41,17 @@ CHECK_INTERVAL = 10 * 60  # cada 10 minutos (balance óptimo para timeframe 1D)
 SIMBOLOS = {
     'BTCUSD': {
         'ticker_yf':          'BTC-USD',    # Bitcoin en Yahoo Finance
-        'zona_resist_high':   105000.0,     # Resistencia psicológica 105k
-        'zona_resist_low':    95000.0,      # Resistencia psicológica 95k
-        'zona_soporte_high':  75000.0,      # Soporte psicológico 75k
-        'zona_soporte_low':   65000.0,      # Soporte psicológico 65k
-        'tp1_venta':          85000.0,      # TP1 conservador
-        'tp2_venta':          75000.0,      # TP2 zona soporte
-        'tp3_venta':          65000.0,      # TP3 soporte fuerte
-        'tp1_compra':         95000.0,      # TP1 conservador
-        'tp2_compra':         105000.0,     # TP2 resistencia
-        'tp3_compra':         115000.0,     # TP3 objetivo alcista
-        'tolerancia':         2000.0,       # Alta tolerancia (2k) por volatilidad BTC
+        'zona_resist_high':   88000.0,     # Resistencia overhead post-ATH
+        'zona_resist_low':    80000.0,      # Resistencia inmediata
+        'zona_soporte_high':  68000.0,      # Soporte actual — precio en zona
+        'zona_soporte_low':   63000.0,      # Soporte fuerte — mínimo 1Y: 60k
+        'tp1_venta':          72000.0,      # TP1 zona de precio actual
+        'tp2_venta':          68000.0,
+        'tp3_venta':          63000.0,
+        'tp1_compra':         80000.0,
+        'tp2_compra':         88000.0,
+        'tp3_compra':         95000.0,
+        'tolerancia':         2000.0,       # Alta tolerancia por volatilidad BTC
         'limit_offset_pct':   0.5,          # Mayor offset para entradas
         'anticipar_velas':    3,
         'cancelar_dist':      2.5,          # Mayor distancia por volatilidad

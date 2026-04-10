@@ -26,17 +26,17 @@ CHECK_INTERVAL = 10 * 60  # cada 10 minutos (balance óptimo para timeframe 1D)
 SIMBOLOS = {
     'XAUUSD': {
         'ticker_yf':          'GC=F',       # Oro en Yahoo Finance
-        'zona_resist_high':   4900.0,
-        'zona_resist_low':    4750.0,
-        'zona_soporte_high':  4400.0,
-        'zona_soporte_low':   4200.0,
-        'tp1_venta':          4627.0,
-        'tp2_venta':          4374.0,
-        'tp3_venta':          4099.0,
-        'tp1_compra':         4900.0,
-        'tp2_compra':         5100.0,
-        'tp3_compra':         5300.0,
-        'tolerancia':         30.0,
+        'zona_resist_high':   5200.0,
+        'zona_resist_low':    5000.0,
+        'zona_soporte_high':  4700.0,      # Mínimo semana: 4605
+        'zona_soporte_low':   4500.0,
+        'tp1_venta':          4750.0,
+        'tp2_venta':          4550.0,
+        'tp3_venta':          4300.0,
+        'tp1_compra':         5000.0,
+        'tp2_compra':         5200.0,
+        'tp3_compra':         5400.0,
+        'tolerancia':         40.0,
         'limit_offset_pct':   0.3,
         'anticipar_velas':    3,
         'cancelar_dist':      1.0,
