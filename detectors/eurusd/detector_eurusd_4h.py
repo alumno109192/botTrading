@@ -395,7 +395,16 @@ def analizar(simbolo, params):
     def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = True
     def fmt(v): return f"{v:.4f}"
 
-    if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not ya_enviada('PREP_SELL'):
+    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
+    if senal_sell_alerta and senal_buy_alerta:
+        if score_sell >= score_buy:
+            senal_buy_alerta = False
+            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+        else:
+            senal_sell_alerta = False
+            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
+    if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta and not ya_enviada('PREP_SELL'):
         msg = (f"🔔 <b>PREPARAR SELL LIMIT — EURUSD</b> 🔔\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"💰 <b>Precio:</b>     {fmt(close)}\n"
@@ -408,7 +417,7 @@ def analizar(simbolo, params):
                f"📊 Score: {score_sell}/21  RSI: {round(rsi,1)}  ⏱️ 4H  📅 {fecha}")
         enviar_telegram(msg); marcar_enviada('PREP_SELL')
 
-    if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not ya_enviada('PREP_BUY'):
+    if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not senal_sell_alerta and not ya_enviada('PREP_BUY'):
         msg = (f"🔔 <b>PREPARAR BUY LIMIT — EURUSD</b> 🔔\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"💰 <b>Precio:</b>    {fmt(close)}\n"

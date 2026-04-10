@@ -536,7 +536,16 @@ def analizar(simbolo, params):
     def fmt(v):
         return f"{v:.4f}"
 
-    if aproximando_resistencia and not en_zona_resist and not cancelar_sell:
+    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
+    if senal_sell_alerta and senal_buy_alerta:
+        if score_sell >= score_buy:
+            senal_buy_alerta = False
+            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+        else:
+            senal_sell_alerta = False
+            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
+    if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta:
         if not ya_enviada('PREP_SELL'):
             msg = (f"🔔 <b>PREPARAR SELL LIMIT — EURUSD</b> 🔔\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -553,7 +562,7 @@ def analizar(simbolo, params):
             enviar_telegram(msg)
             marcar_enviada('PREP_SELL')
 
-    if aproximando_soporte and not en_zona_soporte and not cancelar_buy:
+    if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not senal_sell_alerta:
         if not ya_enviada('PREP_BUY'):
             msg = (f"🔔 <b>PREPARAR BUY LIMIT — EURUSD</b> 🔔\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"

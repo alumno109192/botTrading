@@ -560,6 +560,15 @@ def analizar(simbolo, params):
     def marcar_enviada(tipo):
         alertas_enviadas[f"{clave_vela}_{tipo}"] = True
 
+    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
+    if senal_sell_alerta and senal_buy_alerta:
+        if score_sell >= score_buy:
+            senal_buy_alerta = False
+            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+        else:
+            senal_sell_alerta = False
+            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
     # ENVIAR SEÑALES (simplificado - sin preparaciones)
     if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.5:
         nivel = ("⚡ SELL MÁXIMA" if senal_sell_maxima else

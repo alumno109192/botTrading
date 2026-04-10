@@ -811,8 +811,17 @@ def analizar(simbolo, params):
     # ENVIAR ALERTAS
     # ═══════════════════════════════���══
 
+    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
+    if senal_sell_alerta and senal_buy_alerta:
+        if score_sell >= score_buy:
+            senal_buy_alerta = False
+            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+        else:
+            senal_sell_alerta = False
+            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
     # ── APROXIMACIÓN RESISTENCIA ──
-    if aproximando_resistencia and not en_zona_resist and not cancelar_sell:
+    if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta:
         if not ya_enviada('PREP_SELL'):
             msg = (f"🔔 <b>PREPARAR SELL LIMIT</b> 🔔\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -831,7 +840,7 @@ def analizar(simbolo, params):
             marcar_enviada('PREP_SELL')
 
     # ── APROXIMACIÓN SOPORTE ──
-    if aproximando_soporte and not en_zona_soporte and not cancelar_buy:
+    if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not senal_sell_alerta:
         if not ya_enviada('PREP_BUY'):
             msg = (f"🔔 <b>PREPARAR BUY LIMIT</b> 🔔\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
