@@ -11,9 +11,23 @@ from datetime import datetime
 import os
 import requests
 import sys
+import yfinance as yf
 
 # Forzar flush inmediato de logs (crítico para Render)
 sys.stdout.reconfigure(line_buffering=True)
+
+# ── PARCHE: serializar yf.download para evitar contaminación entre threads ──
+# yfinance comparte estado global interno; sin lock, close/high/low de un
+# símbolo puede aparecer en otro detector que corre simultáneamente.
+_yf_original_download = yf.download
+_yf_lock = threading.Lock()
+
+def _safe_yf_download(*args, **kwargs):
+    with _yf_lock:
+        return _yf_original_download(*args, **kwargs)
+
+yf.download = _safe_yf_download
+# ── fin parche ──
 
 # Importar los módulos de los detectores organizados
 from detectors.bitcoin import detector_bitcoin_1d

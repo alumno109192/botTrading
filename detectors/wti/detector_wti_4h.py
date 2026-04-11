@@ -35,10 +35,10 @@ CHECK_INTERVAL = 4 * 60
 SIMBOLOS = {
     'WTIUSD': {
         'ticker_yf':          'CL=F',
-        'zona_resist_high':   118.0,
-        'zona_resist_low':    112.0,
-        'zona_soporte_high':  95.0,
-        'zona_soporte_low':   90.0,
+        'zona_resist_high':   75.0,        # Resistencia actual abr-2026
+        'zona_resist_low':    70.0,
+        'zona_soporte_high':  62.0,        # Soporte actual abr-2026
+        'zona_soporte_low':   57.0,
         'tolerancia':         2.0,
         'limit_offset_pct':   0.3,
         'anticipar_velas':    3,

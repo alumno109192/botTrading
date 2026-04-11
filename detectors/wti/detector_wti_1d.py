@@ -32,10 +32,10 @@ CHECK_INTERVAL = 10 * 60
 SIMBOLOS = {
     'WTIUSD': {
         'ticker_yf':          'CL=F',       # Crude Oil WTI Futures en Yahoo Finance
-        'zona_resist_high':   118.0,       # Máximo spike semanal: 117.63
-        'zona_resist_low':    112.0,
-        'zona_soporte_high':  95.0,        # Consolidación actual
-        'zona_soporte_low':   90.0,        # Mínimo semana: 91.05
+        'zona_resist_high':   75.0,        # Resistencia actual abr-2026
+        'zona_resist_low':    70.0,
+        'zona_soporte_high':  62.0,        # Soporte actual abr-2026
+        'zona_soporte_low':   57.0,
         'tolerancia':         2.0,
         'limit_offset_pct':   0.3,
         'anticipar_velas':    3,
