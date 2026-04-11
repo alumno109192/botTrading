@@ -33,7 +33,8 @@ except Exception as e:
 # CONFIGURACIÓN 4H
 # ══════════════════════════════════════
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_TOKEN')
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID')
+TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_SWING') or 0) or None
 
 CHECK_INTERVAL = 4 * 60  # cada 4 minutos (balance óptimo para timeframe 4H)
 
@@ -86,6 +87,8 @@ def enviar_telegram(mensaje):
             "text":       mensaje,
             "parse_mode": "HTML"
         }
+        if TELEGRAM_THREAD_ID:
+            payload["message_thread_id"] = TELEGRAM_THREAD_ID
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code == 200:
             print(f"✅ Telegram enviado → {r.status_code}")

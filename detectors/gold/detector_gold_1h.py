@@ -28,7 +28,8 @@ except Exception as e:
     db = None
 
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_TOKEN')
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID')
+TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_SWING') or 0) or None
 
 # Verificar cada 60 segundos (velas 1H cierran cada 60 min)
 CHECK_INTERVAL = 60
@@ -69,6 +70,8 @@ def enviar_telegram(mensaje):
     try:
         url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
+        if TELEGRAM_THREAD_ID:
+            payload["message_thread_id"] = TELEGRAM_THREAD_ID
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code == 200:
             print(f"✅ Telegram enviado → {r.status_code}")
