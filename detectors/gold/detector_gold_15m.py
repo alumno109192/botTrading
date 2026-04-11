@@ -3,6 +3,10 @@ DETECTOR GOLD 15M - SCALPING
 Análisis de XAUUSD en timeframe 15 minutos para operaciones de corto plazo
 Optimizado para capturar movimientos rápidos con alta frecuencia
 """
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+import tf_bias
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -428,8 +432,39 @@ def analizar_simbolo(simbolo, params):
         def marcar_enviada(tipo):
             alertas_enviadas[f"{clave_vela}_{tipo}"] = True
         
-        # ══════════════════════════════════════
-        # ENVIAR SEÑALES SCALPING
+        # ══════════════════════════════════════        # EXCLUSIÓN MUTUA + SESGO MULTI-TF
+        # ════════════════════════════════════
+        _any_sell = senal_sell_scalp or senal_sell_media or senal_sell_fuerte
+        _any_buy  = senal_buy_scalp  or senal_buy_media  or senal_buy_fuerte
+        if _any_sell and _any_buy:
+            if score_sell >= score_buy:
+                senal_buy_scalp = senal_buy_media = senal_buy_fuerte = False
+                print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+            else:
+                senal_sell_scalp = senal_sell_media = senal_sell_fuerte = False
+                print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+            _any_sell = senal_sell_scalp or senal_sell_media or senal_sell_fuerte
+            _any_buy  = senal_buy_scalp  or senal_buy_media  or senal_buy_fuerte
+
+        _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
+        tf_bias.publicar_sesgo(simbolo, '15M', _sesgo_dir, max(score_sell, score_buy))
+        _conf_sell = ""; _conf_buy = ""
+        if _any_sell:
+            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BEARISH)
+            if not _ok:
+                print(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
+                senal_sell_scalp = senal_sell_media = senal_sell_fuerte = False
+            else:
+                _conf_sell = _desc
+        if _any_buy:
+            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BULLISH)
+            if not _ok:
+                print(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
+                senal_buy_scalp = senal_buy_media = senal_buy_fuerte = False
+            else:
+                _conf_buy = _desc
+
+        # ════════════════════════════════════        # ENVIAR SEÑALES SCALPING
         # ══════════════════════════════════════
         
         # ── SEÑALES VENTA ──
@@ -461,6 +496,9 @@ def analizar_simbolo(simbolo, params):
                        f"📊 <b>Score:</b> {score_sell}/{max_score} | <b>Calidad:</b> {calidad}\n"
                        f"📉 <b>RSI:</b> {round(rsi, 1)} | <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 15M  📅 {fecha}")
+                
+                if _conf_sell:
+                    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                 
                 # Guardar en BD
                 if db:
@@ -523,6 +561,9 @@ def analizar_simbolo(simbolo, params):
                        f"📊 <b>Score:</b> {score_buy}/{max_score} | <b>Calidad:</b> {calidad}\n"
                        f"📉 <b>RSI:</b> {round(rsi, 1)} | <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 15M  📅 {fecha}")
+                
+                if _conf_buy:
+                    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                 
                 if db:
                     senal_data = {

@@ -46,6 +46,7 @@ from detectors.wti import detector_wti_4h
 from detectors.silver import detector_silver_1d
 from detectors.silver import detector_silver_4h
 from detectors.gold import detector_gold_15m
+from detectors.gold import detector_gold_5m
 from detectors.spx import detector_spx_15m
 from detectors.eurusd import detector_eurusd_15m
 import signal_monitor
@@ -63,6 +64,7 @@ estado_sistema = {
         'gold_4h': 'iniciando',
         'gold_1h': 'iniciando',
         'gold_15m': 'iniciando',
+        'gold_5m': 'iniciando',
         'spx_1d': 'iniciando',
         'spx_4h': 'iniciando',
         'spx_15m': 'iniciando',
@@ -391,6 +393,21 @@ def iniciar_detectores():
         print("    ✓ Thread Gold 15M creado")
     except Exception as e:
         print(f"    ✗ Error creando thread Gold 15M: {e}")
+
+    try:
+        # Gold 5M Micro-Scalping
+        print("  📦 Creando thread: Gold 5M Micro-Scalp...")
+        hilo_gold_5m = threading.Thread(
+            target=ejecutar_detector,
+            args=("DETECTOR GOLD 5M", detector_gold_5m, "gold_5m"),
+            name="DetectorGold5M",
+            daemon=True
+        )
+        hilos.append(hilo_gold_5m)
+        threads_detectores['gold_5m'] = hilo_gold_5m
+        print("    ✓ Thread Gold 5M creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread Gold 5M: {e}")
 
     try:
         # SPX 15M Scalping

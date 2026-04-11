@@ -1,12 +1,16 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
 import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
-import os
 import time
 import json
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+import tf_bias
 
 # Cargar variables de entorno
 load_dotenv()
@@ -574,6 +578,33 @@ def analizar(simbolo, params):
         senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
 
     # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
+    if senal_sell_alerta and senal_buy_alerta:
+        if score_sell >= score_buy:
+            senal_buy_alerta = False
+            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+        else:
+            senal_sell_alerta = False
+            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
+    # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 4H) ──
+    _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
+    tf_bias.publicar_sesgo(simbolo, '4H', _sesgo_dir, max(score_sell, score_buy))
+    _conf_sell = ""; _conf_buy = ""
+    if senal_sell_alerta:
+        _ok, _desc = tf_bias.verificar_confluencia(simbolo, '4H', tf_bias.BIAS_BEARISH)
+        if not _ok:
+            print(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
+            senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+        else:
+            _conf_sell = _desc
+    if senal_buy_alerta:
+        _ok, _desc = tf_bias.verificar_confluencia(simbolo, '4H', tf_bias.BIAS_BULLISH)
+        if not _ok:
+            print(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
+            senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
+        else:
+            _conf_buy = _desc
+
     if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.5:
         nivel = ("⚡ SELL MÁXIMA" if senal_sell_maxima else
                  "🔴 SELL FUERTE" if senal_sell_fuerte else
@@ -599,6 +630,8 @@ def analizar(simbolo, params):
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
+            if _conf_sell:
+                msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
             
             if db:
                 senal_data = {
@@ -660,6 +693,8 @@ def analizar(simbolo, params):
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
+            if _conf_buy:
+                msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
             
             if db:
                 senal_data = {
