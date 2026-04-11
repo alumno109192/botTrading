@@ -6,6 +6,9 @@ import os
 import time
 from datetime import datetime
 from dotenv import load_dotenv
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+import tf_bias
 
 # Cargar variables de entorno
 load_dotenv()
@@ -794,6 +797,11 @@ def analizar(simbolo, params):
         else:
             senal_sell_alerta = False
             print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
+    # ── PUBLICAR SESGO MULTI-TF (SPX 1D) ──
+    _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
+    tf_bias.publicar_sesgo(simbolo, '1D', _sesgo_dir, max(score_sell, score_buy))
+    print(f"  📡 Sesgo SPX 1D publicado: {_sesgo_dir} (sell={score_sell} buy={score_buy})")
 
     # ── APROXIMACIÓN RESISTENCIA ──
     if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta:

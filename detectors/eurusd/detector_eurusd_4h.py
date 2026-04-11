@@ -10,6 +10,7 @@ import time
 import json
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+import tf_bias
 
 load_dotenv()
 
@@ -406,17 +407,46 @@ def analizar(simbolo, params):
         senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
 
     # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
-        msg = (f"🔔 <b>PREPARAR SELL LIMIT — EURUSD</b> 🔔\n"
-               f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"💰 <b>Precio:</b>     {fmt(close)}\n"
-               f"📌 <b>SELL LIMIT:</b> {fmt(sell_limit)}\n"
-               f"🛑 <b>Stop Loss:</b>  {fmt(sl_venta)}\n"
-               f"🎯 <b>TP1:</b> {fmt(tp1_v)}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-               f"🎯 <b>TP2:</b> {fmt(tp2_v)}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-               f"🎯 <b>TP3:</b> {fmt(tp3_v)}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
-               f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"📊 Score: {score_sell}/21  RSI: {round(rsi,1)}  ⏱️ 4H  📅 {fecha}")
-        enviar_telegram(msg); marcar_enviada('PREP_SELL')
+    if senal_sell_alerta and senal_buy_alerta:
+        if score_sell >= score_buy:
+            senal_buy_alerta = False
+            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+        else:
+            senal_sell_alerta = False
+            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
+    # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (EURUSD 4H) ──
+    _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
+    tf_bias.publicar_sesgo(simbolo, '4H', _sesgo_dir, max(score_sell, score_buy))
+    _conf_sell = ""; _conf_buy = ""
+    if senal_sell_alerta:
+        _ok, _desc = tf_bias.verificar_confluencia(simbolo, '4H', tf_bias.BIAS_BEARISH)
+        if not _ok:
+            print(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
+            senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+        else:
+            _conf_sell = _desc
+    if senal_buy_alerta:
+        _ok, _desc = tf_bias.verificar_confluencia(simbolo, '4H', tf_bias.BIAS_BULLISH)
+        if not _ok:
+            print(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
+            senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
+        else:
+            _conf_buy = _desc
+
+    if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta:
+        if not ya_enviada('PREP_SELL'):
+            msg = (f"🔔 <b>PREPARAR SELL LIMIT — EURUSD</b> 🔔\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"💰 <b>Precio:</b>     {fmt(close)}\n"
+                   f"📌 <b>SELL LIMIT:</b> {fmt(sell_limit)}\n"
+                   f"🛑 <b>Stop Loss:</b>  {fmt(sl_venta)}\n"
+                   f"🎯 <b>TP1:</b> {fmt(tp1_v)}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
+                   f"🎯 <b>TP2:</b> {fmt(tp2_v)}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
+                   f"🎯 <b>TP3:</b> {fmt(tp3_v)}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 Score: {score_sell}/21  RSI: {round(rsi,1)}  ⏱️ 4H  📅 {fecha}")
+            enviar_telegram(msg); marcar_enviada('PREP_SELL')
 
     if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not senal_sell_alerta and not ya_enviada('PREP_BUY'):
         msg = (f"🔔 <b>PREPARAR BUY LIMIT — EURUSD</b> 🔔\n"
@@ -455,6 +485,8 @@ def analizar(simbolo, params):
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
             if senal_contradictoria_sell:
                 msg += f"\n\n⚠️ <b>ADVERTENCIA:</b> Sentimiento alcista ({sentimiento_alcista_score}/10) contradice señal SELL"
+            if _conf_sell:
+                msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
             if db:
                 try:
                     db.guardar_senal({'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db, 'direccion': 'VENTA',
@@ -488,6 +520,8 @@ def analizar(simbolo, params):
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
             if senal_contradictoria_buy:
                 msg += f"\n\n⚠️ <b>ADVERTENCIA:</b> Sentimiento bajista ({sentimiento_bajista_score}/10) contradice señal BUY"
+            if _conf_buy:
+                msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
             if db:
                 try:
                     db.guardar_senal({'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db, 'direccion': 'COMPRA',

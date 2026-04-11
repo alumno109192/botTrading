@@ -6,6 +6,7 @@ TPs dinámicos basados en ATR (×1.5 / ×2.5 / ×4.0)
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+import tf_bias
 
 import yfinance as yf
 import pandas as pd
@@ -274,6 +275,25 @@ def analizar(simbolo, params):
                 senal_sell_fuerte = senal_sell_media = senal_sell_scalp = False
                 print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
 
+        # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (EURUSD 15M) ──
+        _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
+        tf_bias.publicar_sesgo(simbolo, '15M', _sesgo_dir, max(score_sell, score_buy))
+        _conf_sell = ""; _conf_buy = ""
+        if senal_sell_scalp:
+            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BEARISH)
+            if not _ok:
+                print(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
+                senal_sell_fuerte = senal_sell_media = senal_sell_scalp = False
+            else:
+                _conf_sell = _desc
+        if senal_buy_scalp:
+            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BULLISH)
+            if not _ok:
+                print(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
+                senal_buy_fuerte = senal_buy_media = senal_buy_scalp = False
+            else:
+                _conf_buy = _desc
+
         # ── SEÑAL SELL ──
         if senal_sell_scalp and not cancelar_sell:
             nivel      = ("🔥 SELL FUERTE" if senal_sell_fuerte else
@@ -297,6 +317,8 @@ def analizar(simbolo, params):
                        f"📐 <b>ATR 15M:</b> {pips(atr_v)} pip\n"
                        f"⏱️ <b>TF:</b> 15M  📅 {fecha}\n"
                        f"🔒 INTRADÍA — Cerrar antes del cierre de sesión")
+                if _conf_sell:
+                    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                 enviar_telegram(msg)
                 marcar_enviada(tipo_clave)
 
@@ -323,6 +345,8 @@ def analizar(simbolo, params):
                        f"📐 <b>ATR 15M:</b> {pips(atr_v)} pip\n"
                        f"⏱️ <b>TF:</b> 15M  📅 {fecha}\n"
                        f"🔒 INTRADÍA — Cerrar antes del cierre de sesión")
+                if _conf_buy:
+                    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                 enviar_telegram(msg)
                 marcar_enviada(tipo_clave)
 
