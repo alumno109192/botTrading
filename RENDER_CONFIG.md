@@ -36,7 +36,17 @@ Tu servicio necesita estas variables configuradas en Render:
 
 ### Obligatorias (para que funcione):
 - `TELEGRAM_TOKEN` - Token del bot de Telegram
-- `TELEGRAM_CHAT_ID` - ID del chat para notificaciones
+- `TELEGRAM_CHAT_ID` - ID del chat/grupo para notificaciones
+
+### Obligatorias para subcanales (topics del foro):
+- `THREAD_ID_SWING` - ID del topic "Swing" (detectores 1D/4H/1H)
+- `THREAD_ID_SCALPING` - ID del topic "Scalping" (detectores 15M/5M)
+
+> ⚠️ **Sin estas variables los mensajes van al chat general** en lugar de los subcanales correctos.
+> El código hace `int(os.environ.get('THREAD_ID_SCALPING') or 0) or None` — si no están configuradas el resultado es `None` y se omite el `message_thread_id`.
+>
+> **Cómo obtener los IDs:** manda un mensaje en el topic correspondiente y llama a:
+> `https://api.telegram.org/bot<TOKEN>/getUpdates` — busca el campo `message_thread_id`.
 
 ### Opcionales (para tracking en BD):
 - `TURSO_DATABASE_URL` - URL de base de datos Turso
