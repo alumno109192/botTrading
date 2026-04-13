@@ -367,12 +367,17 @@ def analizar(simbolo, params):
 
     # ── ALERTAS DE APROXIMACIÓN ────────────────────────────────
     if aproximando_resist and not en_zona_resist and not cancelar_sell and not ya_enviada('PREP_SELL'):
-        msg = (f"🔔 <b>PREPARAR SELL — ORO (1H) ⏰ INTRADÍA</b>\n"
+        msg = (f"🔔 <b>PREPARAR SELL — ORO (1H) ⏰ INTRA DÍA</b>
+"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"📢 Precio aproximándose a resistencia\n"
                f"💰 <b>Precio:</b>     ${close:.2f}\n"
                f"📌 <b>SELL LIMIT:</b> ${sell_limit:.2f}\n"
                f"🛑 <b>Stop Loss:</b>  ${sl_venta:.2f}  (+${round(sl_venta - close, 2)})\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1  (-${round(sell_limit - tp1_v, 2)})\n"
+               f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1  (-${round(sell_limit - tp2_v, 2)})\n"
+               f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1  (-${round(sell_limit - tp3_v, 2)})\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
@@ -386,8 +391,10 @@ def analizar(simbolo, params):
                f"💰 <b>Precio:</b>    ${close:.2f}\n"
                f"📌 <b>BUY LIMIT:</b> ${buy_limit:.2f}\n"
                f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(close - sl_compra, 2)})\n"
-               f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"               f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1  (+${round(tp1_c - buy_limit, 2)})\n"
+               f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1  (+${round(tp2_c - buy_limit, 2)})\n"
+               f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_limit, 2)})\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
                f"🔒 <i>Cerrar antes del cierre de sesión</i>")
         enviar_telegram(msg); marcar_enviada('PREP_BUY')
