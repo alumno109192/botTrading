@@ -845,13 +845,13 @@ def analizar(simbolo, params):
     # ── APROXIMACIÓN RESISTENCIA ──
     if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta:
         if not ya_enviada('PREP_SELL'):
-            msg = (f"🔔 <b>PREPARAR SELL LIMIT</b> 🔔\n"
+            msg = (f"🔔 <b>PRE-ALERTA SELL — ORO 1D</b> | Coloca orden limit\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📢 Precio aproximándose a resistencia\n"
-                   f"📈 <b>Símbolo:</b>  {simbolo}\n"
-                   f"💰 <b>Precio:</b>   {round(close, 2)}\n"
+                   f"⏳ <i>Precio aproximándose a resistencia — espera señal de confirmación</i>\n"
+                   f"💰 <b>Precio:</b>     {round(close, 2)}\n"
                    f"📌 <b>SELL LIMIT:</b> {round(sell_limit, 2)}\n"
                    f"🛑 <b>Stop Loss:</b>  {round(sl_venta, 2)}\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"🎯 <b>TP1:</b> {tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
                    f"🎯 <b>TP2:</b> {tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
                    f"🎯 <b>TP3:</b> {tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
@@ -864,13 +864,13 @@ def analizar(simbolo, params):
     # ── APROXIMACIÓN SOPORTE ──
     if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not senal_sell_alerta:
         if not ya_enviada('PREP_BUY'):
-            msg = (f"🔔 <b>PREPARAR BUY LIMIT</b> 🔔\n"
+            msg = (f"🔔 <b>PRE-ALERTA BUY — ORO 1D</b> | Coloca orden limit\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📢 Precio aproximándose a soporte\n"
-                   f"📈 <b>Símbolo:</b>  {simbolo}\n"
+                   f"⏳ <i>Precio aproximándose a soporte — espera señal de confirmación</i>\n"
                    f"💰 <b>Precio:</b>   {round(close, 2)}\n"
                    f"📌 <b>BUY LIMIT:</b>  {round(buy_limit, 2)}\n"
                    f"🛑 <b>Stop Loss:</b>  {round(sl_compra, 2)}\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"🎯 <b>TP1:</b> {tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
                    f"🎯 <b>TP2:</b> {tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
                    f"🎯 <b>TP3:</b> {tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
