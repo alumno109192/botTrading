@@ -20,9 +20,13 @@ TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
 # Mapeo de símbolos a tickers de yfinance
 SIMBOLO_TO_TICKER = {
-    'BTCUSD': 'BTC-USD',
-    'XAUUSD': 'GC=F',  # Gold Futures
-    'SPX500': '^GSPC'  # S&P 500
+    'BTCUSD':  'BTC-USD',
+    'XAUUSD':  'GC=F',      # Gold Futures
+    'SPX500':  '^GSPC',     # S&P 500
+    'NAS100':  '^IXIC',     # NASDAQ Composite
+    'EURUSD':  'EURUSD=X',  # EUR/USD Forex
+    'WTIUSD':  'CL=F',      # WTI Crude Oil Futures
+    'XAGUSD':  'SI=F',      # Silver Futures
 }
 
 def obtener_precio_actual(simbolo: str) -> float:
