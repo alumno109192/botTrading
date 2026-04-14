@@ -30,24 +30,26 @@ yf.download = _safe_yf_download
 # ── fin parche ──
 
 # Importar los módulos de los detectores organizados
-from detectors.bitcoin import detector_bitcoin_1d
-from detectors.bitcoin import detector_bitcoin_4h
+# ── PAUSADOS ──────────────────────────────────────────────
+# from detectors.bitcoin import detector_bitcoin_1d
+# from detectors.bitcoin import detector_bitcoin_4h
+# from detectors.spx import detector_spx_1d
+# from detectors.spx import detector_spx_4h
+# from detectors.spx import detector_spx_15m
+# from detectors.nasdaq import detector_nasdaq_1d
+# from detectors.nasdaq import detector_nasdaq_4h
+# from detectors.wti import detector_wti_1d
+# from detectors.wti import detector_wti_4h
+# from detectors.silver import detector_silver_1d
+# from detectors.silver import detector_silver_4h
+# ── ACTIVOS ───────────────────────────────────────────────
 from detectors.gold import detector_gold_1d
 from detectors.gold import detector_gold_4h
 from detectors.gold import detector_gold_1h
-from detectors.spx import detector_spx_1d
-from detectors.spx import detector_spx_4h
-from detectors.nasdaq import detector_nasdaq_1d
-from detectors.nasdaq import detector_nasdaq_4h
-from detectors.eurusd import detector_eurusd_1d
-from detectors.eurusd import detector_eurusd_4h
-from detectors.wti import detector_wti_1d
-from detectors.wti import detector_wti_4h
-from detectors.silver import detector_silver_1d
-from detectors.silver import detector_silver_4h
 from detectors.gold import detector_gold_15m
 from detectors.gold import detector_gold_5m
-from detectors.spx import detector_spx_15m
+from detectors.eurusd import detector_eurusd_1d
+from detectors.eurusd import detector_eurusd_4h
 from detectors.eurusd import detector_eurusd_15m
 import signal_monitor
 
@@ -148,20 +150,12 @@ def iniciar_detectores():
     print()
     print("  📊 DETECTORES TIMEFRAME 1D (Diario):")
     
-    try:
-        # Bitcoin 1D
-        print("  📦 Creando thread: Bitcoin 1D...")
-        hilo_btc_1d = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR BITCOIN 1D", detector_bitcoin_1d, "bitcoin_1d"),
-            name="DetectorBitcoin1D",
-            daemon=True
-        )
-        hilos.append(hilo_btc_1d)
-        threads_detectores['bitcoin_1d'] = hilo_btc_1d
-        print("    ✓ Thread Bitcoin 1D creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread Bitcoin 1D: {e}")
+    # ── PAUSADO: Bitcoin 1D ──────────────────────────────────
+    # hilo_btc_1d = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR BITCOIN 1D", detector_bitcoin_1d, "bitcoin_1d"),
+    #     name="DetectorBitcoin1D", daemon=True)
+    # hilos.append(hilo_btc_1d); threads_detectores['bitcoin_1d'] = hilo_btc_1d
     
     try:
         # Gold 1D
@@ -178,38 +172,22 @@ def iniciar_detectores():
     except Exception as e:
         print(f"    ✗ Error creando thread Gold 1D: {e}")
     
-    try:
-        # SPX 1D
-        print("  📦 Creando thread: SPX 1D...")
-        hilo_spx_1d = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR SPX 1D", detector_spx_1d, "spx_1d"),
-            name="DetectorSPX1D",
-            daemon=True
-        )
-        hilos.append(hilo_spx_1d)
-        threads_detectores['spx_1d'] = hilo_spx_1d
-        print("    ✓ Thread SPX 1D creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread SPX 1D: {e}")
+    # ── PAUSADO: SPX 1D ──────────────────────────────────────
+    # hilo_spx_1d = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR SPX 1D", detector_spx_1d, "spx_1d"),
+    #     name="DetectorSPX1D", daemon=True)
+    # hilos.append(hilo_spx_1d); threads_detectores['spx_1d'] = hilo_spx_1d
     
     print()
     print("  📊 DETECTORES TIMEFRAME 4H (4 Horas):")
     
-    try:
-        # Bitcoin 4H
-        print("  📦 Creando thread: Bitcoin 4H...")
-        hilo_btc_4h = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR BITCOIN 4H", detector_bitcoin_4h, "bitcoin_4h"),
-            name="DetectorBitcoin4H",
-            daemon=True
-        )
-        hilos.append(hilo_btc_4h)
-        threads_detectores['bitcoin_4h'] = hilo_btc_4h
-        print("    ✓ Thread Bitcoin 4H creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread Bitcoin 4H: {e}")
+    # ── PAUSADO: Bitcoin 4H ──────────────────────────────────
+    # hilo_btc_4h = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR BITCOIN 4H", detector_bitcoin_4h, "bitcoin_4h"),
+    #     name="DetectorBitcoin4H", daemon=True)
+    # hilos.append(hilo_btc_4h); threads_detectores['bitcoin_4h'] = hilo_btc_4h
     
     try:
         # Gold 4H
@@ -241,50 +219,26 @@ def iniciar_detectores():
     except Exception as e:
         print(f"    ✗ Error creando thread Gold 1H: {e}")
 
-    try:
-        # SPX 4H
-        print("  📦 Creando thread: SPX 4H...")
-        hilo_spx_4h = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR SPX 4H", detector_spx_4h, "spx_4h"),
-            name="DetectorSPX4H",
-            daemon=True
-        )
-        hilos.append(hilo_spx_4h)
-        threads_detectores['spx_4h'] = hilo_spx_4h
-        print("    ✓ Thread SPX 4H creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread SPX 4H: {e}")
+    # ── PAUSADO: SPX 4H ──────────────────────────────────────
+    # hilo_spx_4h = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR SPX 4H", detector_spx_4h, "spx_4h"),
+    #     name="DetectorSPX4H", daemon=True)
+    # hilos.append(hilo_spx_4h); threads_detectores['spx_4h'] = hilo_spx_4h
 
-    try:
-        # NAS100 1D
-        print("  📦 Creando thread: NAS100 1D...")
-        hilo_nas_1d = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR NAS100 1D", detector_nasdaq_1d, "nasdaq_1d"),
-            name="DetectorNAS1001D",
-            daemon=True
-        )
-        hilos.append(hilo_nas_1d)
-        threads_detectores['nasdaq_1d'] = hilo_nas_1d
-        print("    ✓ Thread NAS100 1D creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread NAS100 1D: {e}")
+    # ── PAUSADO: NAS100 1D ───────────────────────────────────
+    # hilo_nas_1d = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR NAS100 1D", detector_nasdaq_1d, "nasdaq_1d"),
+    #     name="DetectorNAS1001D", daemon=True)
+    # hilos.append(hilo_nas_1d); threads_detectores['nasdaq_1d'] = hilo_nas_1d
 
-    try:
-        # NAS100 4H
-        print("  📦 Creando thread: NAS100 4H...")
-        hilo_nas_4h = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR NAS100 4H", detector_nasdaq_4h, "nasdaq_4h"),
-            name="DetectorNAS1004H",
-            daemon=True
-        )
-        hilos.append(hilo_nas_4h)
-        threads_detectores['nasdaq_4h'] = hilo_nas_4h
-        print("    ✓ Thread NAS100 4H creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread NAS100 4H: {e}")
+    # ── PAUSADO: NAS100 4H ───────────────────────────────────
+    # hilo_nas_4h = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR NAS100 4H", detector_nasdaq_4h, "nasdaq_4h"),
+    #     name="DetectorNAS1004H", daemon=True)
+    # hilos.append(hilo_nas_4h); threads_detectores['nasdaq_4h'] = hilo_nas_4h
 
     try:
         # EURUSD 1D
@@ -316,65 +270,33 @@ def iniciar_detectores():
     except Exception as e:
         print(f"    ✗ Error creando thread EURUSD 4H: {e}")
 
-    try:
-        # WTI 1D
-        print("  📦 Creando thread: WTI 1D...")
-        hilo_wti_1d = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR WTI 1D", detector_wti_1d, "wti_1d"),
-            name="DetectorWTI1D",
-            daemon=True
-        )
-        hilos.append(hilo_wti_1d)
-        threads_detectores['wti_1d'] = hilo_wti_1d
-        print("    ✓ Thread WTI 1D creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread WTI 1D: {e}")
+    # ── PAUSADO: WTI 1D ──────────────────────────────────────
+    # hilo_wti_1d = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR WTI 1D", detector_wti_1d, "wti_1d"),
+    #     name="DetectorWTI1D", daemon=True)
+    # hilos.append(hilo_wti_1d); threads_detectores['wti_1d'] = hilo_wti_1d
 
-    try:
-        # WTI 4H
-        print("  📦 Creando thread: WTI 4H...")
-        hilo_wti_4h = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR WTI 4H", detector_wti_4h, "wti_4h"),
-            name="DetectorWTI4H",
-            daemon=True
-        )
-        hilos.append(hilo_wti_4h)
-        threads_detectores['wti_4h'] = hilo_wti_4h
-        print("    ✓ Thread WTI 4H creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread WTI 4H: {e}")
+    # ── PAUSADO: WTI 4H ──────────────────────────────────────
+    # hilo_wti_4h = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR WTI 4H", detector_wti_4h, "wti_4h"),
+    #     name="DetectorWTI4H", daemon=True)
+    # hilos.append(hilo_wti_4h); threads_detectores['wti_4h'] = hilo_wti_4h
 
-    try:
-        # Silver 1D
-        print("  📦 Creando thread: Silver 1D...")
-        hilo_sil_1d = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR SILVER 1D", detector_silver_1d, "silver_1d"),
-            name="DetectorSilver1D",
-            daemon=True
-        )
-        hilos.append(hilo_sil_1d)
-        threads_detectores['silver_1d'] = hilo_sil_1d
-        print("    ✓ Thread Silver 1D creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread Silver 1D: {e}")
+    # ── PAUSADO: Silver 1D ───────────────────────────────────
+    # hilo_sil_1d = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR SILVER 1D", detector_silver_1d, "silver_1d"),
+    #     name="DetectorSilver1D", daemon=True)
+    # hilos.append(hilo_sil_1d); threads_detectores['silver_1d'] = hilo_sil_1d
 
-    try:
-        # Silver 4H
-        print("  📦 Creando thread: Silver 4H...")
-        hilo_sil_4h = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR SILVER 4H", detector_silver_4h, "silver_4h"),
-            name="DetectorSilver4H",
-            daemon=True
-        )
-        hilos.append(hilo_sil_4h)
-        threads_detectores['silver_4h'] = hilo_sil_4h
-        print("    ✓ Thread Silver 4H creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread Silver 4H: {e}")
+    # ── PAUSADO: Silver 4H ───────────────────────────────────
+    # hilo_sil_4h = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR SILVER 4H", detector_silver_4h, "silver_4h"),
+    #     name="DetectorSilver4H", daemon=True)
+    # hilos.append(hilo_sil_4h); threads_detectores['silver_4h'] = hilo_sil_4h
 
     print()
     print("  📊 DETECTORES TIMEFRAME 15M (Scalping):")
@@ -409,20 +331,12 @@ def iniciar_detectores():
     except Exception as e:
         print(f"    ✗ Error creando thread Gold 5M: {e}")
 
-    try:
-        # SPX 15M Scalping
-        print("  📦 Creando thread: SPX 15M Scalping...")
-        hilo_spx_15m = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR SPX 15M", detector_spx_15m, "spx_15m"),
-            name="DetectorSPX15M",
-            daemon=True
-        )
-        hilos.append(hilo_spx_15m)
-        threads_detectores['spx_15m'] = hilo_spx_15m
-        print("    ✓ Thread SPX 15M creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread SPX 15M: {e}")
+    # ── PAUSADO: SPX 15M ─────────────────────────────────────
+    # hilo_spx_15m = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR SPX 15M", detector_spx_15m, "spx_15m"),
+    #     name="DetectorSPX15M", daemon=True)
+    # hilos.append(hilo_spx_15m); threads_detectores['spx_15m'] = hilo_spx_15m
 
     try:
         # EURUSD 15M Scalping
