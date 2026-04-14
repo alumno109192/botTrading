@@ -523,13 +523,13 @@ def analizar(simbolo, params):
     def rr(limit, sl, tp):
         return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
 
-    # ── FILTRO R:R MÍNIMO 1.5 ──
+    # ── FILTRO R:R MÍNIMO 1.2 ──
     rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
     rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
-    if rr_sell_tp1 < 1.5:
-        print(f"  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.5")
-    if rr_buy_tp1 < 1.5:
-        print(f"  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.5")
+    if rr_sell_tp1 < 1.2:
+        print(f"  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.2")
+    if rr_buy_tp1 < 1.2:
+        print(f"  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.2")
 
     fecha = df.index[-2].strftime('%Y-%m-%d %H:%M')
     
@@ -605,7 +605,7 @@ def analizar(simbolo, params):
         else:
             _conf_buy = _desc
 
-    if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.5:
+    if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
         nivel = ("⚡ SELL MÁXIMA" if senal_sell_maxima else
                  "🔴 SELL FUERTE" if senal_sell_fuerte else
                  "⚠️ SELL MEDIA"  if senal_sell_media  else
@@ -668,7 +668,7 @@ def analizar(simbolo, params):
             enviar_telegram(msg)
             marcar_enviada(tipo_clave)
 
-    if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.5:
+    if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
         nivel = ("⚡ BUY MÁXIMA"  if senal_buy_maxima else
                  "🟢 BUY FUERTE"  if senal_buy_fuerte else
                  "⚠️ BUY MEDIA"   if senal_buy_media  else

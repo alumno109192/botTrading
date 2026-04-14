@@ -397,13 +397,13 @@ def analizar(simbolo, params):
                f"🔒 <i>Cerrar antes del cierre de sesión</i>")
         enviar_telegram(msg); marcar_enviada('PREP_BUY')
 
-    # ── FILTRO R:R MÍNIMO 1.0 ────────────────────────────────
+    # ── FILTRO R:R MÍNIMO 1.2 ────────────────────────────────
     rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
     rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
-    if rr_sell_tp1 < 1.0:
-        print(f"  ⛔ SELL bloqueada: R:R TP1 = {rr_sell_tp1}:1 < 1.0 mínimo")
-    if rr_buy_tp1 < 1.0:
-        print(f"  ⛔ BUY bloqueada: R:R TP1 = {rr_buy_tp1}:1 < 1.0 mínimo")
+    if rr_sell_tp1 < 1.2:
+        print(f"  ⛔ SELL bloqueada: R:R TP1 = {rr_sell_tp1}:1 < 1.2 mínimo")
+    if rr_buy_tp1 < 1.2:
+        print(f"  ⛔ BUY bloqueada: R:R TP1 = {rr_buy_tp1}:1 < 1.2 mínimo")
     # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
     if senal_sell_alerta and senal_buy_alerta:
         if score_sell >= score_buy:
@@ -432,7 +432,7 @@ def analizar(simbolo, params):
         else:
             _conf_buy = _desc
     # ── SEÑALES SELL ────────────────────────────────────────────
-    if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.0:
+    if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
         if senal_sell_maxima:  nivel = "🔥 SELL MÁXIMA (1H)"; calidad = "✅ ALTA CALIDAD"
         elif senal_sell_fuerte: nivel = "🔴 SELL FUERTE (1H)"; calidad = "✅ BUENA CALIDAD"
         elif senal_sell_media:  nivel = "⚠️ SELL MEDIA (1H)";  calidad = "⚠️ PRECAUCIÓN"
@@ -474,7 +474,7 @@ def analizar(simbolo, params):
             enviar_telegram(msg); marcar_enviada(tipo_clave)
 
     # ── SEÑALES BUY ─────────────────────────────────────────────
-    if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.0:
+    if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
         if senal_buy_maxima:   nivel = "🔥 BUY MÁXIMA (1H)"; calidad = "✅ ALTA CALIDAD"
         elif senal_buy_fuerte:  nivel = "🟢 BUY FUERTE (1H)"; calidad = "✅ BUENA CALIDAD"
         elif senal_buy_media:   nivel = "⚠️ BUY MEDIA (1H)";  calidad = "⚠️ PRECAUCIÓN"

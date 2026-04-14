@@ -370,6 +370,17 @@ def analizar_simbolo(simbolo, params):
         # ENVIAR SEÑALES MICRO-SCALP
         # ══════════════════════════════════════
 
+
+        # ── FILTRO R:R MÍNIMO 1.2 ──
+        rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
+        rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
+        if rr_sell_tp1 < 1.2:
+            print(f'  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.2')
+            cancelar_sell = True
+        if rr_buy_tp1 < 1.2:
+            print(f'  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.2')
+            cancelar_buy = True
+
         # ── SEÑALES VENTA ──
         if (senal_sell_scalp or senal_sell_media or senal_sell_fuerte) and not cancelar_sell:
             nivel = ("🔥 SELL FUERTE" if senal_sell_fuerte else
