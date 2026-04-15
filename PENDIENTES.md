@@ -1,6 +1,6 @@
 # PENDIENTES — Issues y Mejoras del Bot
 > Creado: 15 abril 2026 | Precio de referencia: ~$4.833 XAUUSD
-> Última actualización: 15 abril 2026 (commit a aplicar)
+> Última actualización: 15 abril 2026 (commit 6e330cb) | Foco: XAUUSD
 
 ---
 
@@ -17,9 +17,9 @@
 | ~~P2: IndentationError en bloques SELL/BUY de 1D/4H/1H (else: vacío)~~ | ✅ `b17aef9` |
 | ~~P4: Score mínimo 1H subido de 4 a 5~~ | ✅ `b17aef9` |
 | ~~P5: TPs ATR en 1D (×3.0/×5.0/×8.0) y 4H (×2.0/×3.5/×5.5)~~ | ✅ `b17aef9` |
-| ~~P8: Score alerta 1D subido de 4 a 6 (ruta técnica) y de 2 a 3 (ruta sentimiento)~~ | ✅ pendiente commit |
-| ~~P9: `perdidas_consecutivas` 15M ahora se consulta desde BD (era código muerto)~~ | ✅ pendiente commit |
-| ~~P10: Filtro horario 4H (06:00-22:00 UTC) — evita señales en sesión asiática de baja liquidez~~ | ✅ pendiente commit |
+| ~~P8: Score alerta 1D subido de 4 a 6 (ruta técnica) y de 2 a 3 (ruta sentimiento)~~ | ✅ `6e330cb` |
+| ~~P9: `perdidas_consecutivas` 15M ahora se consulta desde BD (era código muerto)~~ | ✅ `6e330cb` |
+| ~~P10: Filtro horario 4H (06:00-22:00 UTC) — evita señales en sesión asiática de baja liquidez~~ | ✅ `6e330cb` |
 
 ---
 
@@ -268,7 +268,7 @@ No se ha confirmado si `THREAD_ID_SWING=304` es el valor real en producción. La
 | ~~P5~~ | ~~TPs ATR en 4H/1D~~ | ✅ `b17aef9` |
 | P6 | Limpiar archivos huérfanos | 🟡 Higiene | Pendiente |
 | P7 | Confirmar Thread IDs Telegram | 🟡 Señales tópico wrong | Pendiente |
-| P8 (SPX) | Filtro horario SPX (14:30-21:00 UTC) | 🔴 Señales en mercado cerrado | Pendiente |
-| P9 (BTC) | R:R mínimo Bitcoin ≥2.0 | 🔴 Acepta setups negativos | Pendiente |
+| P8 (SPX) | Filtro horario SPX (14:30-21:00 UTC) | 🔴 Señales en mercado cerrado | ⏸️ Aplazado — foco XAUUSD |
+| P9 (BTC) | R:R mínimo Bitcoin ≥2.0 | 🔴 Acepta setups negativos | ⏸️ Aplazado — foco XAUUSD |
 | — | yfinance delay 15M/5M | 🟡 Scalping con lag | Requiere otra API |
 | — | Backtesting básico | 🟡 Validar parámetros | Sin fecha |
