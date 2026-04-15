@@ -68,6 +68,9 @@ SIMBOLOS = {
         'ema_trend_len':      200,
         'atr_length':         14,
         'atr_sl_mult':        1.5,
+        'atr_tp1_mult':       3.0,    # TP1: 3.0× ATR (~$150-240 desde entry)
+        'atr_tp2_mult':       5.0,    # TP2: 5.0× ATR
+        'atr_tp3_mult':       8.0,    # TP3: 8.0× ATR (objetivo swing amplio)
         'vol_mult':           1.2,
     }
 }
@@ -740,12 +743,13 @@ def analizar(simbolo, params):
     sl_venta  = round(sell_limit + atr * asm, 2)
     sl_compra = round(buy_limit  - atr * asm, 2)
 
-    tp1_v = params['tp1_venta']
-    tp2_v = params['tp2_venta']
-    tp3_v = params['tp3_venta']
-    tp1_c = params['tp1_compra']
-    tp2_c = params['tp2_compra']
-    tp3_c = params['tp3_compra']
+    # TPs dinámicos basados en ATR (se adaptan automáticamente al rango de precio)
+    tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
+    tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
+    tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
+    tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
+    tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
+    tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
 
     def rr(limit, sl, tp):
         return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
@@ -909,7 +913,6 @@ def analizar(simbolo, params):
             if db and db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                 print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
                 return
-            else:
             msg = (f"{nivel}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📈 <b>Símbolo:</b>    {simbolo}\n"
@@ -969,7 +972,6 @@ def analizar(simbolo, params):
             if db and db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                 print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
                 return
-            else:
             msg = (f"{nivel}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📈 <b>Símbolo:</b>   {simbolo}\n"

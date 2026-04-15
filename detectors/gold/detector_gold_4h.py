@@ -70,6 +70,9 @@ SIMBOLOS = {
         'ema_trend_len':      400,          # 200D × 2 para 4H
         'atr_length':         28,           # 14D × 2 para 4H
         'atr_sl_mult':        1.2,          # Menos agresivo para 4H (era 1.5)
+        'atr_tp1_mult':       2.0,          # TP1: 2.0× ATR 4H (~$60-100 desde entry)
+        'atr_tp2_mult':       3.5,          # TP2: 3.5× ATR
+        'atr_tp3_mult':       5.5,          # TP3: 5.5× ATR (objetivo swing)
         'vol_mult':           1.2,
     }
 }
@@ -504,12 +507,13 @@ def analizar(simbolo, params):
     sl_venta  = round(sell_limit + atr * asm, 2)
     sl_compra = round(buy_limit  - atr * asm, 2)
 
-    tp1_v = params['tp1_venta']
-    tp2_v = params['tp2_venta']
-    tp3_v = params['tp3_venta']
-    tp1_c = params['tp1_compra']
-    tp2_c = params['tp2_compra']
-    tp3_c = params['tp3_compra']
+    # TPs dinámicos basados en ATR (se adaptan automáticamente al rango de precio)
+    tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
+    tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
+    tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
+    tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
+    tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
+    tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
 
     def rr(limit, sl, tp):
         return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
@@ -610,7 +614,6 @@ def analizar(simbolo, params):
             if db and db.existe_senal_reciente(simbolo_db, "VENTA", horas=2):
                 print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
                 return
-            else:
             msg = (f"{nivel}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
@@ -655,7 +658,6 @@ def analizar(simbolo, params):
             if db and db.existe_senal_reciente(simbolo_db, "COMPRA", horas=2):
                 print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
                 return
-            else:
             msg = (f"{nivel}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"💰 <b>Precio:</b>    ${round(close, 2)}\n"

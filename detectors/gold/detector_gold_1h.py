@@ -350,11 +350,11 @@ def analizar(simbolo, params):
     senal_sell_maxima = score_sell >= 12
     senal_sell_fuerte = score_sell >= 9
     senal_sell_media  = score_sell >= 6
-    senal_sell_alerta = score_sell >= 4
+    senal_sell_alerta = score_sell >= 5
     senal_buy_maxima  = score_buy  >= 12
     senal_buy_fuerte  = score_buy  >= 9
     senal_buy_media   = score_buy  >= 6
-    senal_buy_alerta  = score_buy  >= 4
+    senal_buy_alerta  = score_buy  >= 5
 
     def rr(limit, sl, tp):
         return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
@@ -456,7 +456,6 @@ def analizar(simbolo, params):
         if not ya_enviada(tipo_clave):
             if db and db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
                 print(f"  ℹ️  Señal VENTA 1H duplicada"); return
-            else:
             msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"💰 <b>Precio:</b>     ${close:.2f}\n"
@@ -501,7 +500,6 @@ def analizar(simbolo, params):
         if not ya_enviada(tipo_clave):
             if db and db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
                 print(f"  ℹ️  Señal COMPRA 1H duplicada"); return
-            else:
             msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"💰 <b>Precio:</b>    ${close:.2f}\n"
