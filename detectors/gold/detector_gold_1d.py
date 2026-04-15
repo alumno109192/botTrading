@@ -11,6 +11,8 @@ import json
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import tf_bias
+from dxy_bias import get_dxy_bias, ajustar_score_por_dxy
+from economic_calendar import hay_evento_impacto
 
 # Cargar variables de entorno
 load_dotenv()
@@ -421,6 +423,12 @@ def calcular_zonas_sr(df, atr, lookback, zone_mult):
 def analizar(simbolo, params):
     print(f"\n🔍 Analizando {simbolo}...")
 
+    # ── Filtro calendario económico ──
+    bloqueado, descripcion = hay_evento_impacto(ventana_minutos=60)
+    if bloqueado:
+        print(f"  🚫 [1D] Señal bloqueada por evento macro: {descripcion}")
+        return
+
     # ── Descargar datos ──
     try:
         df = yf.download(params['ticker_yf'], period='2y', interval='1d', progress=False)
@@ -696,6 +704,10 @@ def analizar(simbolo, params):
     # Penalización si mercado lateral (ADX bajo)
     if adx_lateral:
         score_buy = max(0, score_buy - 3)  # Reducir score en mercados laterales
+
+    # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
+    dxy_bias = get_dxy_bias()
+    score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
 
     # ══════════════════════════════════
     # ANÁLISIS DE SENTIMIENTO DEL MERCADO

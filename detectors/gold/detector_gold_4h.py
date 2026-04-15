@@ -11,6 +11,8 @@ import json
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import tf_bias
+from dxy_bias import get_dxy_bias, ajustar_score_por_dxy
+from economic_calendar import hay_evento_impacto
 
 # Cargar variables de entorno
 load_dotenv()
@@ -270,6 +272,12 @@ def analizar(simbolo, params):
         print(f"  ⏸️  [4H] Fuera de sesión (06-22 UTC) — análisis saltado")
         return
 
+    # ── Filtro calendario económico ──
+    bloqueado, descripcion = hay_evento_impacto(ventana_minutos=60)
+    if bloqueado:
+        print(f"  🚫 [4H] Señal bloqueada por evento macro: {descripcion}")
+        return
+
     # Descargar datos 4H
     try:
         df = yf.download(params['ticker_yf'], period='60d', interval='4h', progress=False)
@@ -515,6 +523,10 @@ def analizar(simbolo, params):
     
     if adx_lateral:
         score_buy = max(0, score_buy - 3)
+
+    # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
+    dxy_bias = get_dxy_bias()
+    score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
 
     # NIVELES DE SEÑAL 4H (MÁS ESTRICTOS)
     senal_sell_maxima = score_sell >= 14

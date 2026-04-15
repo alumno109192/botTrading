@@ -7,6 +7,9 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import tf_bias
+from dxy_bias import get_dxy_bias, ajustar_score_por_dxy
+from economic_calendar import hay_evento_impacto
+from data_provider import get_ohlcv
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -246,9 +249,17 @@ def analizar_simbolo(simbolo, params):
         print(f"  ⏸️  [15M] Fuera de sesión (07-17 UTC) — análisis saltado")
         return
 
+    # ── Filtro calendario económico ──
+    bloqueado, descripcion = hay_evento_impacto(ventana_minutos=45)
+    if bloqueado:
+        print(f"  🚫 [15M] Señal bloqueada por evento macro: {descripcion}")
+        return
+
     try:
         # Descargar datos (15m requiere menos historial)
-        df = yf.download(params['ticker_yf'], period='5d', interval='15m', progress=False)
+        df, is_delayed = get_ohlcv(params['ticker_yf'], period='5d', interval='15m')
+        if is_delayed:
+            print("  ⚠️  [15M] Datos con 15 min de delay (yfinance free). Señales de entrada pueden estar desfasadas.")
         
         if df.empty or len(df) < 100:
             print(f"⚠️ Datos insuficientes para {simbolo}")
@@ -258,14 +269,15 @@ def analizar_simbolo(simbolo, params):
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.droplevel(1)
         
-        # Renombrar columnas (GC=F puede no tener 'Adj Close')
-        if len(df.columns) == 6:
-            df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-        elif len(df.columns) == 5:
-            df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-        else:
-            print(f"⚠️ Columnas inesperadas ({len(df.columns)}): {df.columns.tolist()}")
-            return
+        # Renombrar columnas solo si es necesario (data_provider ya las normaliza)
+        if 'Open' not in df.columns:
+            if len(df.columns) == 6:
+                df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+            elif len(df.columns) == 5:
+                df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            else:
+                print(f"⚠️ Columnas inesperadas ({len(df.columns)}): {df.columns.tolist()}")
+                return
         
         # Calcular indicadores
         close = df['Close'].iloc[-1]
@@ -370,7 +382,14 @@ def analizar_simbolo(simbolo, params):
         # ══════════════════════════════════════
         senal_sell_fuerte = score_sell >= 8
         senal_buy_fuerte  = score_buy  >= 8
-        
+
+        # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
+        dxy_bias = get_dxy_bias()
+        score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
+        # Recalcular umbrales tras ajuste DXY
+        senal_sell_fuerte = score_sell >= 8
+        senal_buy_fuerte  = score_buy  >= 8
+
         # Cancelaciones (más estrictas en scalping)
         cancelar_sell = (close < zsh) or (rsi < 30)
         cancelar_buy  = (close > zrh) or (rsi > 70)

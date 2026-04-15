@@ -2,6 +2,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import tf_bias
+from dxy_bias import get_dxy_bias, ajustar_score_por_dxy
+from economic_calendar import hay_evento_impacto
 
 import yfinance as yf
 import pandas as pd
@@ -180,6 +182,12 @@ def analizar(simbolo, params):
 
     if not en_sesion_activa():
         print(f"  ⏸️  [1H] Fuera de sesión (07-17 UTC) — análisis saltado")
+        return
+
+    # ── Filtro calendario económico ──
+    bloqueado, descripcion = hay_evento_impacto(ventana_minutos=60)
+    if bloqueado:
+        print(f"  🚫 [1H] Señal bloqueada por evento macro: {descripcion}")
         return
 
     print(f"\n🔍 Analizando {simbolo} [1H intradía]...")
@@ -364,6 +372,10 @@ def analizar(simbolo, params):
         (1 if macd_positivo              else 0)
     )
     if adx_lateral: score_buy = max(0, score_buy - 3)
+
+    # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
+    dxy_bias = get_dxy_bias()
+    score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
 
     # Umbrales 1H (estrictos para filtrar ruido intradía)
     senal_sell_maxima = score_sell >= 12
