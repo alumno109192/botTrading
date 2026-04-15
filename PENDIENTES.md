@@ -1,6 +1,6 @@
 # PENDIENTES — Issues y Mejoras del Bot
 > Creado: 15 abril 2026 | Precio de referencia: ~$4.833 XAUUSD
-> Última actualización: 15 abril 2026 (commit 282d845)
+> Última actualización: 15 abril 2026 (commit b17aef9)
 
 ---
 
@@ -13,12 +13,16 @@
 | ~~TPs 4H compra actualizados (4860/4960/5200)~~ | ✅ `282d845` |
 | ~~.gitignore: logfile.txt, .claude/, _get_thread_ids.py~~ | ✅ `282d845` |
 | ~~Mejoras sesiones anteriores: retry backoff, OBV vectorizado, session filter 1H~~ | ✅ `282d845` |
+| ~~P1: TP1 compra 1D encima de resistencia~~ | ✅ `b17aef9` |
+| ~~P2: IndentationError en bloques SELL/BUY de 1D/4H/1H (else: vacío)~~ | ✅ `b17aef9` |
+| ~~P4: Score mínimo 1H subido de 4 a 5~~ | ✅ `b17aef9` |
+| ~~P5: TPs ATR en 1D (×3.0/×5.0/×8.0) y 4H (×2.0/×3.5/×5.5)~~ | ✅ `b17aef9` |
 
 ---
 
 ## 📅 PRÓXIMA SEMANA — Mejoras críticas a aplicar
 
-### 🔴 P1 — TP1 compra en 1D queda por encima de la resistencia
+### ~~🔴 P1 — TP1 compra en 1D queda por encima de la resistencia~~ ✅ COMPLETADO b17aef9
 
 **Archivo:** `detectors/gold/detector_gold_1d.py`
 
@@ -41,7 +45,9 @@ Un trade BUY que entra desde soporte (~$4756) tiene que atravesar la resistencia
 
 ---
 
-### 🔴 P2 — Anti-spam 1D/4H/1H usa dict en memoria (se pierde en cada restart de Render)
+### ~~🔴 P2 — Anti-spam 1D/4H/1H usa dict en memoria~~ ✅ COMPLETADO b17aef9
+
+> También corregido en este commit: `IndentationError` en los bloques de señal de los tres detectores — el `else:` vacío que impedía que el bot arrancara.
 
 **Detectors afectados:** `detector_gold_1d.py`, `detector_gold_4h.py`, `detector_gold_1h.py`
 
@@ -90,7 +96,7 @@ Gold se movió de ~$3.300 a ~$4.833 en pocos meses. Las zonas configuradas hoy (
 
 ---
 
-### 🟡 P4 — Score mínimo ALERTA en 1H es 4 (debería ser al menos 5)
+### ~~🟡 P4 — Score mínimo ALERTA en 1H es 4 (debería ser al menos 5)~~ ✅ COMPLETADO b17aef9
 
 El detector 1H usa `senal_sell_alerta = score_sell >= 4` mientras 4H ya usa `>= 5`. Un score de 4 sobre ~21 posibles (~19%) genera demasiadas señales de baja calidad en el timeframe más activo.
 
@@ -107,7 +113,7 @@ senal_buy_alerta  = score_buy  >= 5
 
 ---
 
-### 🟡 P5 — TPs fijos en 1D y 4H → migrar a ATR para mantenimiento cero
+### ~~🟡 P5 — TPs fijos en 1D y 4H → migrar a ATR para mantenimiento cero~~ ✅ COMPLETADO b17aef9
 
 El problema de zonas/TPs desactualizados que paró el bot durante semanas se repite si los TPs son fijos. El detector 1H ya usa `atr_tp1_mult / atr_tp2_mult / atr_tp3_mult` y se adapta automáticamente.
 
@@ -252,12 +258,12 @@ No se ha confirmado si `THREAD_ID_SWING=304` es el valor real en producción. La
 
 | # | Issue | Impacto | Estado |
 |---|---|---|---|
-| P1 | TP1 compra 1D encima de resistencia | 🔴 Win rate compras 1D bajo | Próxima semana |
-| P2 | Anti-spam persistente vía BD (1D/4H/1H) | 🔴 Duplicados en restart | Próxima semana |
-| P3 | Protocolo revisión semanal de zonas | 🔴 Bot puede pararse de nuevo | Próxima semana |
-| P4 | Score mínimo 1H: 4→5 | 🟡 Señales ruido | Próxima semana |
-| P5 | TPs ATR en 4H/1D | 🟡 Mantenimiento manual | Próxima semana |
-| P6 | Limpiar archivos huérfanos | 🟡 Higiene | Próxima semana |
-| P7 | Confirmar Thread IDs Telegram | 🟡 Señales tópico wrong | Próxima semana |
+| ~~P1~~ | ~~TP1 compra 1D encima de resistencia~~ | ✅ `b17aef9` |
+| ~~P2~~ | ~~Anti-spam persistente vía BD (1D/4H/1H) + IndentationError~~ | ✅ `b17aef9` |
+| P3 | Protocolo revisión semanal de zonas | 🔴 Bot puede pararse de nuevo | Pendiente |
+| ~~P4~~ | ~~Score mínimo 1H: 4→5~~ | ✅ `b17aef9` |
+| ~~P5~~ | ~~TPs ATR en 4H/1D~~ | ✅ `b17aef9` |
+| P6 | Limpiar archivos huérfanos | 🟡 Higiene | Pendiente |
+| P7 | Confirmar Thread IDs Telegram | 🟡 Señales tópico wrong | Pendiente |
 | — | yfinance delay 15M/5M | 🟡 Scalping con lag | Requiere otra API |
 | — | Backtesting básico | 🟡 Validar parámetros | Sin fecha |
