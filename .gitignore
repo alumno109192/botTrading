@@ -27,3 +27,13 @@ Thumbs.db
 # Flask
 instance/
 .webassets-cache
+
+# Logs
+logfile.txt
+*.log
+
+# Claude AI workspace
+.claude/
+
+# Scripts temporales
+_get_thread_ids.py

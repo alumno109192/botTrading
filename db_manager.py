@@ -212,6 +212,24 @@ class DatabaseManager:
             return True
         return False
     
+    def existe_senal_activa_tf(self, simbolo: str) -> bool:
+        """
+        Bloquea nueva señal si ya existe UNA ACTIVA para este símbolo,
+        independientemente de la dirección (COMPRA o VENTA).
+        Usa el mismo formato de simbolo que guardar_senal: XAUUSD_1D, XAUUSD_4H, etc.
+        """
+        query = """
+        SELECT COUNT(*) as count
+        FROM senales
+        WHERE simbolo = ?
+        AND estado = 'ACTIVA'
+        """
+        result = self.ejecutar_query(query, (simbolo,))
+        if result.rows and int(result.rows[0]['count']) > 0:
+            print(f"⚠️ Ya existe señal ACTIVA en {simbolo} (cualquier dirección) — bloqueado")
+            return True
+        return False
+
     def obtener_senales_activas(self) -> List[Dict]:
         """
         Obtiene todas las señales que aún están activas (no cerradas)

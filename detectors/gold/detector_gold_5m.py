@@ -49,17 +49,19 @@ CHECK_INTERVAL = 60  # cada 1 minuto (micro-scalping máxima frecuencia)
 SIMBOLOS = {
     'XAUUSD': {
         'ticker_yf':          'GC=F',
-        'zona_resist_high':   3350.0,
-        'zona_resist_low':    3330.0,
-        'zona_soporte_high':  3250.0,
-        'zona_soporte_low':   3230.0,
-        'tp1_venta':          3310.0,       # TP1 (-$20)
-        'tp2_venta':          3295.0,       # TP2 (-$35)
-        'tp3_venta':          3270.0,       # TP3 (-$60)
-        'tp1_compra':         3270.0,       # TP1 (+$20)
-        'tp2_compra':         3285.0,       # TP2 (+$35)
-        'tp3_compra':         3310.0,       # TP3 (+$60)
-        'tolerancia':         5.0,          # Tolerancia muy ajustada
+        # Zonas actualizadas con precio ~$4833 (14-abr-2026)
+        # Revisar cada 2-3 días o si precio se mueve >$80
+        'zona_resist_high':   4870.0,       # Resistencia: zona $4850-4870
+        'zona_resist_low':    4850.0,
+        'zona_soporte_high':  4815.0,       # Soporte: zona $4800-4815
+        'zona_soporte_low':   4800.0,
+        'tp1_venta':          4828.0,       # TP1 (-$22-42 desde zona resist)
+        'tp2_venta':          4813.0,       # TP2 (-$37-57)
+        'tp3_venta':          4793.0,       # TP3 (-$57-77)
+        'tp1_compra':         4827.0,       # TP1 (+$12-27 desde zona soporte)
+        'tp2_compra':         4842.0,       # TP2 (+$27-42)
+        'tp3_compra':         4858.0,       # TP3 (+$43-58)
+        'tolerancia':         7.0,          # Tolerancia muy ajustada (~0.15% de $4833)
         'limit_offset_pct':   0.08,         # Offset mínimo (micro-scalp)
         'anticipar_velas':    2,
         'cancelar_dist':      1.0,
@@ -89,22 +91,25 @@ ultima_senal_timestamp = None
 # TELEGRAM
 # ══════════════════════════════════════
 def enviar_telegram(mensaje):
-    try:
-        url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "text":       mensaje,
-            "parse_mode": "HTML"
-        }
-        if TELEGRAM_THREAD_ID:
-            payload["message_thread_id"] = TELEGRAM_THREAD_ID
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code == 200:
-            print(f"✅ Telegram enviado → {r.status_code}")
-        else:
-            print(f"❌ Error Telegram → {r.status_code}: {r.text[:100]}")
-    except Exception as e:
-        print(f"❌ Error Telegram: {e}")
+    """Envía mensaje a Telegram con 3 reintentos y backoff exponencial."""
+    url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
+    if TELEGRAM_THREAD_ID:
+        payload["message_thread_id"] = TELEGRAM_THREAD_ID
+    for intento in range(1, 4):
+        try:
+            r = requests.post(url, json=payload, timeout=10)
+            if r.status_code == 200:
+                print(f"✅ Telegram enviado (intento {intento})")
+                return True
+            else:
+                print(f"❌ Telegram intento {intento} → HTTP {r.status_code}: {r.text[:80]}")
+        except Exception as e:
+            print(f"❌ Telegram intento {intento} → excepción: {e}")
+        if intento < 3:
+            time.sleep(2 ** intento)
+    print("❌ Telegram: falló tras 3 intentos")
+    return False
 
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
@@ -171,8 +176,18 @@ def analizar_price_action(df):
 # ══════════════════════════════════════
 # FUNCIÓN PRINCIPAL DE ANÁLISIS
 # ══════════════════════════════════════
+def en_sesion_activa():
+    """Solo operar en sesión London/NY: 07:00-17:00 UTC."""
+    from datetime import timezone as tz
+    hora_utc = datetime.now(tz.utc).hour
+    return 7 <= hora_utc < 17
+
 def analizar_simbolo(simbolo, params):
     global perdidas_consecutivas, ultima_senal_timestamp
+
+    if not en_sesion_activa():
+        print(f"  ⏸️  [5M] Fuera de sesión (07-17 UTC) — análisis saltado")
+        return
 
     try:
         df = yf.download(params['ticker_yf'], period='2d', interval='5m', progress=False)
@@ -273,13 +288,9 @@ def analizar_simbolo(simbolo, params):
 
         max_score = 15
 
+        # Umbrales 5M — solo FUERTE llega a Telegram
         senal_sell_fuerte = score_sell >= 8
-        senal_sell_media  = score_sell >= 5
-        senal_sell_scalp  = score_sell >= 3
-
-        senal_buy_fuerte  = score_buy >= 8
-        senal_buy_media   = score_buy >= 5
-        senal_buy_scalp   = score_buy >= 3
+        senal_buy_fuerte  = score_buy  >= 8
 
         cancelar_sell = (close < zsl) or (rsi < 28)
         cancelar_buy  = (close > zrh) or (rsi > 72)
@@ -331,173 +342,118 @@ def analizar_simbolo(simbolo, params):
         def marcar_enviada(tipo):
             alertas_enviadas[f"{clave_vela}_{tipo}"] = True
 
-        # ══════════════════════════════════════
-        # EXCLUSIÓN MUTUA + SESGO MULTI-TF
-        # ══════════════════════════════════════
-        _any_sell = senal_sell_scalp or senal_sell_media or senal_sell_fuerte
-        _any_buy  = senal_buy_scalp  or senal_buy_media  or senal_buy_fuerte
-
-        if _any_sell and _any_buy:
+        # ── EXCLUSIÓN MUTUA ──
+        if senal_sell_fuerte and senal_buy_fuerte:
             if score_sell >= score_buy:
-                senal_buy_scalp = senal_buy_media = senal_buy_fuerte = False
+                senal_buy_fuerte = False
                 print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
             else:
-                senal_sell_scalp = senal_sell_media = senal_sell_fuerte = False
+                senal_sell_fuerte = False
                 print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
-            _any_sell = senal_sell_scalp or senal_sell_media or senal_sell_fuerte
-            _any_buy  = senal_buy_scalp  or senal_buy_media  or senal_buy_fuerte
 
         _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
         tf_bias.publicar_sesgo(simbolo, '5M', _sesgo_dir, max(score_sell, score_buy))
         _conf_sell = ""; _conf_buy = ""
 
-        if _any_sell:
+        if senal_sell_fuerte:
             _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BEARISH)
             if not _ok:
                 print(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
-                senal_sell_scalp = senal_sell_media = senal_sell_fuerte = False
+                senal_sell_fuerte = False
             else:
                 _conf_sell = _desc
-        if _any_buy:
+        if senal_buy_fuerte:
             _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BULLISH)
             if not _ok:
                 print(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
-                senal_buy_scalp = senal_buy_media = senal_buy_fuerte = False
+                senal_buy_fuerte = False
             else:
                 _conf_buy = _desc
 
-        # ══════════════════════════════════════
-        # ENVIAR SEÑALES MICRO-SCALP
-        # ══════════════════════════════════════
-
-
-        # ── FILTRO R:R MÍNIMO 1.2 ──
+        # ── FILTRO R:R MÍNIMO 1.5 (Micro-Scalp 5M) ──
+        RR_MINIMO = 1.5
         rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
         rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
-        if rr_sell_tp1 < 1.2:
-            print(f'  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.2')
+        if rr_sell_tp1 < RR_MINIMO:
+            print(f'  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < {RR_MINIMO}')
             cancelar_sell = True
-        if rr_buy_tp1 < 1.2:
-            print(f'  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.2')
+        if rr_buy_tp1 < RR_MINIMO:
+            print(f'  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < {RR_MINIMO}')
             cancelar_buy = True
 
-        # ── SEÑALES VENTA ──
-        if (senal_sell_scalp or senal_sell_media or senal_sell_fuerte) and not cancelar_sell:
-            nivel = ("🔥 SELL FUERTE" if senal_sell_fuerte else
-                     "🔴 SELL MEDIA"  if senal_sell_media  else
-                     "⚡ SCALP SELL")
-            tipo_clave = ("SELL_FUE" if senal_sell_fuerte else
-                          "SELL_MED" if senal_sell_media  else
-                          "SCALP_SEL")
+        simbolo_db = f"{simbolo}_5M"
 
-            if not ya_enviada(tipo_clave):
-                if db and db.existe_senal_reciente(f"{simbolo}_5M", 'VENTA', horas=1):
-                    print(f"  ℹ️  Señal VENTA 5M duplicada")
-                    return
-
-                calidad = "🔥 ALTA" if senal_sell_fuerte else "⚠️ MEDIA" if senal_sell_media else "⚡ MICRO"
-
-                msg = (f"{nivel} — <b>GOLD 5M MICRO-SCALP</b>\n"
+        # ── SEÑALES VENTA — solo FUERTE ──
+        if senal_sell_fuerte and not cancelar_sell:
+            if db and db.existe_senal_activa_tf(simbolo_db):
+                print(f"  ℹ️  SELL 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
+            else:
+                msg = (f"🔥 SELL FUERTE — <b>GOLD 5M MICRO-SCALP</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
                        f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 2)}\n"
                        f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
                        f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
                        f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_sell}/{max_score} | <b>Calidad:</b> {calidad}\n"
-                       f"📉 <b>RSI:</b> {round(rsi, 1)} | <b>ADX:</b> {round(adx, 1)}\n"
+                       f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 5M  📅 {fecha}\n"
                        f"🔒 MICRO-SCALP — Cerrar máx 30 min")
-
                 if _conf_sell:
                     msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
-
                 if db:
                     try:
                         db.guardar_senal({
-                            'timestamp': datetime.now(timezone.utc),
-                            'simbolo': f"{simbolo}_5M",
-                            'direccion': 'VENTA',
-                            'precio_entrada': sell_limit,
-                            'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v,
-                            'sl': sl_venta,
+                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                            'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                            'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                             'score': score_sell,
-                            'timeframe': '5M',
-                            'indicadores': json.dumps({
-                                'rsi': round(rsi, 1), 'adx': round(adx, 1),
-                                'atr': round(atr, 2),
-                                'ema_fast': round(ema_fast.iloc[-1], 2),
-                                'ema_slow': round(ema_slow.iloc[-1], 2)
-                            }),
+                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
+                                                       'atr': round(atr, 2)}),
                             'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}",
-                            'version_detector': '5M-MICRO-v1.0'
+                            'version_detector': '5M-MICRO-v2.0'
                         })
                     except Exception as e:
                         print(f"  ⚠️ Error guardando señal: {e}")
-
                 enviar_telegram(msg)
-                marcar_enviada(tipo_clave)
 
-        # ── SEÑALES COMPRA ──
-        if (senal_buy_scalp or senal_buy_media or senal_buy_fuerte) and not cancelar_buy:
-            nivel = ("🔥 BUY FUERTE" if senal_buy_fuerte else
-                     "🟢 BUY MEDIA"  if senal_buy_media  else
-                     "⚡ SCALP BUY")
-            tipo_clave = ("BUY_FUE" if senal_buy_fuerte else
-                          "BUY_MED" if senal_buy_media  else
-                          "SCALP_BUY")
-
-            if not ya_enviada(tipo_clave):
-                if db and db.existe_senal_reciente(f"{simbolo}_5M", 'COMPRA', horas=1):
-                    print(f"  ℹ️  Señal COMPRA 5M duplicada")
-                    return
-
-                calidad = "🔥 ALTA" if senal_buy_fuerte else "⚠️ MEDIA" if senal_buy_media else "⚡ MICRO"
-
-                msg = (f"{nivel} — <b>GOLD 5M MICRO-SCALP</b>\n"
+        # ── SEÑALES COMPRA — solo FUERTE ──
+        if senal_buy_fuerte and not cancelar_buy:
+            if db and db.existe_senal_activa_tf(simbolo_db):
+                print(f"  ℹ️  BUY 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
+            else:
+                msg = (f"🔥 BUY FUERTE — <b>GOLD 5M MICRO-SCALP</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
                        f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 2)}\n"
                        f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
+                       f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
                        f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
                        f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_buy}/{max_score} | <b>Calidad:</b> {calidad}\n"
-                       f"📉 <b>RSI:</b> {round(rsi, 1)} | <b>ADX:</b> {round(adx, 1)}\n"
+                       f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 5M  📅 {fecha}\n"
                        f"🔒 MICRO-SCALP — Cerrar máx 30 min")
-
                 if _conf_buy:
                     msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
-
                 if db:
                     try:
                         db.guardar_senal({
-                            'timestamp': datetime.now(timezone.utc),
-                            'simbolo': f"{simbolo}_5M",
-                            'direccion': 'COMPRA',
-                            'precio_entrada': buy_limit,
-                            'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
-                            'sl': sl_compra,
+                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                            'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                            'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                             'score': score_buy,
-                            'timeframe': '5M',
-                            'indicadores': json.dumps({
-                                'rsi': round(rsi, 1), 'adx': round(adx, 1),
-                                'atr': round(atr, 2),
-                                'ema_fast': round(ema_fast.iloc[-1], 2),
-                                'ema_slow': round(ema_slow.iloc[-1], 2)
-                            }),
+                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
+                                                       'atr': round(atr, 2)}),
                             'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}",
-                            'version_detector': '5M-MICRO-v1.0'
+                            'version_detector': '5M-MICRO-v2.0'
                         })
                     except Exception as e:
                         print(f"  ⚠️ Error guardando señal: {e}")
-
                 enviar_telegram(msg)
-                marcar_enviada(tipo_clave)
 
     except Exception as e:
         print(f"❌ Error analizando {simbolo} [5M]: {e}")

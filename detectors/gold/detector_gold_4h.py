@@ -48,16 +48,16 @@ CHECK_INTERVAL = 4 * 60  # cada 4 minutos (balance óptimo para timeframe 4H)
 SIMBOLOS = {
     'XAUUSD': {
         'ticker_yf':          'GC=F',       # Oro en Yahoo Finance
-        'zona_resist_high':   5200.0,
-        'zona_resist_low':    5000.0,
-        'zona_soporte_high':  4700.0,
-        'zona_soporte_low':   4500.0,
-        'tp1_venta':          4800.0,
+        'zona_resist_high':   4940.0,       # Resistencia 4H: zona $4870-4940 (actualizado 15-abr-2026, precio ~$4833)
+        'zona_resist_low':    4870.0,
+        'zona_soporte_high':  4780.0,       # Soporte 4H: zona $4700-4780
+        'zona_soporte_low':   4700.0,
+        'tp1_venta':          4750.0,       # desde ~$4870 entry, caída $120
         'tp2_venta':          4600.0,
         'tp3_venta':          4400.0,
-        'tp1_compra':         5000.0,
-        'tp2_compra':         5200.0,
-        'tp3_compra':         5400.0,
+        'tp1_compra':         4860.0,       # desde ~$4778 entry, subida $82 (justo bajo resistencia)
+        'tp2_compra':         4960.0,       # a través de resistencia
+        'tp3_compra':         5200.0,       # objetivo swing completo
         'tolerancia':         40.0,
         'limit_offset_pct':   0.3,
         'anticipar_velas':    3,
@@ -84,24 +84,25 @@ ultimo_analisis = {}
 # TELEGRAM
 # ══════════════════════════════════════
 def enviar_telegram(mensaje):
-    try:
-        url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "text":       mensaje,
-            "parse_mode": "HTML"
-        }
-        if TELEGRAM_THREAD_ID:
-            payload["message_thread_id"] = TELEGRAM_THREAD_ID
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code == 200:
-            print(f"✅ Telegram enviado → {r.status_code}")
-        else:
-            print(f"❌ Error Telegram → Status {r.status_code}")
-            print(f"   Respuesta: {r.text}")
-            print(f"   Mensaje (primeros 200 chars): {mensaje[:200]}...")
-    except Exception as e:
-        print(f"❌ Error Telegram (excepción): {e}")
+    """Envía mensaje a Telegram con 3 reintentos y backoff exponencial."""
+    url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
+    if TELEGRAM_THREAD_ID:
+        payload["message_thread_id"] = TELEGRAM_THREAD_ID
+    for intento in range(1, 4):
+        try:
+            r = requests.post(url, json=payload, timeout=10)
+            if r.status_code == 200:
+                print(f"✅ Telegram enviado (intento {intento})")
+                return True
+            else:
+                print(f"❌ Telegram intento {intento} → HTTP {r.status_code}: {r.text[:80]}")
+        except Exception as e:
+            print(f"❌ Telegram intento {intento} → excepción: {e}")
+        if intento < 3:
+            time.sleep(2 ** intento)
+    print("❌ Telegram: falló tras 3 intentos")
+    return False
 
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
@@ -148,19 +149,9 @@ def calcular_macd(series, fast=24, slow=52, signal=18):
     return macd_line, signal_line, histogram
 
 def calcular_obv(df):
-    """On-Balance Volume"""
-    obv = pd.Series(index=df.index, dtype=float)
-    obv.iloc[0] = df['Volume'].iloc[0]
-    
-    for i in range(1, len(df)):
-        if df['Close'].iloc[i] > df['Close'].iloc[i-1]:
-            obv.iloc[i] = obv.iloc[i-1] + df['Volume'].iloc[i]
-        elif df['Close'].iloc[i] < df['Close'].iloc[i-1]:
-            obv.iloc[i] = obv.iloc[i-1] - df['Volume'].iloc[i]
-        else:
-            obv.iloc[i] = obv.iloc[i-1]
-    
-    return obv
+    """On-Balance Volume (vectorizado)."""
+    direction = np.sign(df['Close'].diff()).fillna(0)
+    return (direction * df['Volume']).cumsum()
 
 def calcular_adx(df, length=28):
     """ADX para 4H (periodo x2)"""
@@ -614,59 +605,41 @@ def analizar(simbolo, params):
                       "SELL_FUE" if senal_sell_fuerte else
                       "SELL_MED" if senal_sell_media  else
                       "SELL_ALE")
+        simbolo_db = f"{simbolo}_4H"
         if not ya_enviada(tipo_clave):
-            if db and db.existe_senal_reciente(f"{simbolo}_4H", 'VENTA', horas=2):
+            if db and db.existe_senal_reciente(simbolo_db, "VENTA", horas=2):
                 print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
                 return
-            
-            msg = (f"{nivel} — <b>GOLD 4H</b> {nivel.split()[0]}\n"
+            else:
+            msg = (f"{nivel}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
                    f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 2)}\n"
                    f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
                    f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
                    f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_sell}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                   f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
             if _conf_sell:
                 msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
-            
             if db:
-                senal_data = {
-                    'timestamp': datetime.now(timezone.utc),
-                    'simbolo': f"{simbolo}_4H",
-                    'direccion': 'VENTA',
-                    'precio_entrada': sell_limit,
-                    'tp1': tp1_v,
-                    'tp2': tp2_v,
-                    'tp3': tp3_v,
-                    'sl': sl_venta,
-                    'score': score_sell,
-                    'timeframe': '4H',
-                    'indicadores': json.dumps({
-                        'rsi': round(rsi, 1),
-                        'ema_fast': round(ema_fast, 2),
-                        'ema_slow': round(ema_slow, 2),
-                        'atr': round(atr, 2),
-                        'bb_upper': round(bb_upper, 2),
-                        'bb_lower': round(bb_lower, 2),
-                        'macd': round(macd, 2),
-                        'adx': round(adx, 2)
-                    }),
-                    'patron_velas': f"Evening Star: {evening_star}, Shooting Star: {shooting_star}",
-                    'version_detector': 'GOLD 4H-v1.0'
-                }
-                
                 try:
-                    senal_id = db.guardar_senal(senal_data)
-                    print(f"  💾 Señal VENTA 4H guardada en DB con ID: {senal_id}")
+                    db.guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                        'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                        'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                        'score': score_sell,
+                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
+                                                   'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                        'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
+                        'version_detector': 'GOLD 4H-v2.0'
+                    })
                 except Exception as e:
-                    print(f"  ⚠️ Error guardando señal en DB: {e}")
-            
+                    print(f"  ⚠️ Error guardando en BD: {e}")
             enviar_telegram(msg)
-            marcar_enviada(tipo_clave)
 
     if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
         nivel = ("⚡ BUY MÁXIMA"  if senal_buy_maxima else
@@ -677,59 +650,41 @@ def analizar(simbolo, params):
                       "BUY_FUE" if senal_buy_fuerte else
                       "BUY_MED" if senal_buy_media  else
                       "BUY_ALE")
+        simbolo_db = f"{simbolo}_4H"
         if not ya_enviada(tipo_clave):
-            if db and db.existe_senal_reciente(f"{simbolo}_4H", 'COMPRA', horas=2):
+            if db and db.existe_senal_reciente(simbolo_db, "COMPRA", horas=2):
                 print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
                 return
-            
-            msg = (f"{nivel} — <b>GOLD 4H</b> {nivel.split()[0]}\n"
+            else:
+            msg = (f"{nivel}\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
                    f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 2)}\n"
                    f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
                    f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
                    f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_buy}/15  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                   f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
             if _conf_buy:
                 msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
-            
             if db:
-                senal_data = {
-                    'timestamp': datetime.now(timezone.utc),
-                    'simbolo': f"{simbolo}_4H",
-                    'direccion': 'COMPRA',
-                    'precio_entrada': buy_limit,
-                    'tp1': tp1_c,
-                    'tp2': tp2_c,
-                    'tp3': tp3_c,
-                    'sl': sl_compra,
-                    'score': score_buy,
-                    'timeframe': '4H',
-                    'indicadores': json.dumps({
-                        'rsi': round(rsi, 1),
-                        'ema_fast': round(ema_fast, 2),
-                        'ema_slow': round(ema_slow, 2),
-                        'atr': round(atr, 2),
-                        'bb_upper': round(bb_upper, 2),
-                        'bb_lower': round(bb_lower, 2),
-                        'macd': round(macd, 2),
-                        'adx': round(adx, 2)
-                    }),
-                    'patron_velas': f"Morning Star: {morning_star}, Hammer: {hammer}",
-                    'version_detector': 'GOLD 4H-v1.0'
-                }
-                
                 try:
-                    senal_id = db.guardar_senal(senal_data)
-                    print(f"  💾 Señal COMPRA 4H guardada en DB con ID: {senal_id}")
+                    db.guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                        'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                        'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                        'score': score_buy,
+                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
+                                                   'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                        'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
+                        'version_detector': 'GOLD 4H-v2.0'
+                    })
                 except Exception as e:
-                    print(f"  ⚠️ Error guardando señal en DB: {e}")
-            
+                    print(f"  ⚠️ Error guardando en BD: {e}")
             enviar_telegram(msg)
-            marcar_enviada(tipo_clave)
 
 # ══════════════════════════════════════
 # BUCLE PRINCIPAL

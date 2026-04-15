@@ -48,9 +48,10 @@ from detectors.gold import detector_gold_4h
 from detectors.gold import detector_gold_1h
 from detectors.gold import detector_gold_15m
 from detectors.gold import detector_gold_5m
-from detectors.eurusd import detector_eurusd_1d
-from detectors.eurusd import detector_eurusd_4h
-from detectors.eurusd import detector_eurusd_15m
+# ── PAUSADO: EURUSD ───────────────────────────────────────
+# from detectors.eurusd import detector_eurusd_1d
+# from detectors.eurusd import detector_eurusd_4h
+# from detectors.eurusd import detector_eurusd_15m
 import signal_monitor
 
 app = Flask(__name__)
@@ -60,25 +61,14 @@ estado_sistema = {
     'iniciado': datetime.now().isoformat(),
     'ultima_actividad_cron': None,
     'detectores': {
-        'bitcoin_1d': 'iniciando',
-        'bitcoin_4h': 'iniciando',
         'gold_1d': 'iniciando',
         'gold_4h': 'iniciando',
         'gold_1h': 'iniciando',
         'gold_15m': 'iniciando',
         'gold_5m': 'iniciando',
-        'spx_1d': 'iniciando',
-        'spx_4h': 'iniciando',
-        'spx_15m': 'iniciando',
-        'nasdaq_1d': 'iniciando',
-        'nasdaq_4h': 'iniciando',
         'eurusd_1d': 'iniciando',
         'eurusd_4h': 'iniciando',
         'eurusd_15m': 'iniciando',
-        'wti_1d': 'iniciando',
-        'wti_4h': 'iniciando',
-        'silver_1d': 'iniciando',
-        'silver_4h': 'iniciando',
         'monitor': 'iniciando'
     }
 }
@@ -130,16 +120,18 @@ def keep_alive():
 def iniciar_detectores():
     """Inicia todos los detectores en background"""
     print("="*60)
-    print("🚀 SISTEMA DE DETECCIÓN DE SEÑALES INICIADO")
+    print("🥇 GOLD SIGNAL BOT — XAUUSD ONLY")
     print("="*60)
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
-    print("📊 Detectores activos (Timeframes 1D + 4H):")
-    print("  ₿  BTCUSD   → 1D + 4H  (2 detectores)")
-    print("  🥇 XAUUSD   → 1D + 4H  (2 detectores)")
-    print("  📈 SPX500   → 1D + 4H  (2 detectores)")
-    print("  🔍 MONITOR  → Tracking de señales")
-    print("  📊 TOTAL: 7 threads de detección")
+    print("📊 Detectores activos — XAUUSD (Gold):")
+    print("  🥇 1D  → Swing (señales fuertes, R:R ≥ 2.5)")
+    print("  🥇 4H  → Swing (R:R ≥ 2.0, score ≥ 12)")
+    print("  🥇 1H  → Intraday (R:R ≥ 2.0, sesión 07-17 UTC)")
+    print("  🥇 15M → Scalping (R:R ≥ 1.5, sesión 07-17 UTC)")
+    print("  🥇 5M  → Micro-Scalp (R:R ≥ 1.5, sesión 07-17 UTC)")
+    print("  🔍 MONITOR → Tracking TP/SL")
+    print("  📊 TOTAL: 6 threads activos")
     print("="*60)
     print()
     
@@ -240,35 +232,19 @@ def iniciar_detectores():
     #     name="DetectorNAS1004H", daemon=True)
     # hilos.append(hilo_nas_4h); threads_detectores['nasdaq_4h'] = hilo_nas_4h
 
-    try:
-        # EURUSD 1D
-        print("  📦 Creando thread: EURUSD 1D...")
-        hilo_eur_1d = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR EURUSD 1D", detector_eurusd_1d, "eurusd_1d"),
-            name="DetectorEURUSD1D",
-            daemon=True
-        )
-        hilos.append(hilo_eur_1d)
-        threads_detectores['eurusd_1d'] = hilo_eur_1d
-        print("    ✓ Thread EURUSD 1D creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread EURUSD 1D: {e}")
+    # ── PAUSADO: EURUSD 1D ──────────────────────────────────
+    # hilo_eur_1d = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR EURUSD 1D", detector_eurusd_1d, "eurusd_1d"),
+    #     name="DetectorEURUSD1D", daemon=True)
+    # hilos.append(hilo_eur_1d); threads_detectores['eurusd_1d'] = hilo_eur_1d
 
-    try:
-        # EURUSD 4H
-        print("  📦 Creando thread: EURUSD 4H...")
-        hilo_eur_4h = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR EURUSD 4H", detector_eurusd_4h, "eurusd_4h"),
-            name="DetectorEURUSD4H",
-            daemon=True
-        )
-        hilos.append(hilo_eur_4h)
-        threads_detectores['eurusd_4h'] = hilo_eur_4h
-        print("    ✓ Thread EURUSD 4H creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread EURUSD 4H: {e}")
+    # ── PAUSADO: EURUSD 4H ──────────────────────────────────
+    # hilo_eur_4h = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR EURUSD 4H", detector_eurusd_4h, "eurusd_4h"),
+    #     name="DetectorEURUSD4H", daemon=True)
+    # hilos.append(hilo_eur_4h); threads_detectores['eurusd_4h'] = hilo_eur_4h
 
     # ── PAUSADO: WTI 1D ──────────────────────────────────────
     # hilo_wti_1d = threading.Thread(
@@ -338,20 +314,12 @@ def iniciar_detectores():
     #     name="DetectorSPX15M", daemon=True)
     # hilos.append(hilo_spx_15m); threads_detectores['spx_15m'] = hilo_spx_15m
 
-    try:
-        # EURUSD 15M Scalping
-        print("  📦 Creando thread: EURUSD 15M Scalping...")
-        hilo_eur_15m = threading.Thread(
-            target=ejecutar_detector,
-            args=("DETECTOR EURUSD 15M", detector_eurusd_15m, "eurusd_15m"),
-            name="DetectorEURUSD15M",
-            daemon=True
-        )
-        hilos.append(hilo_eur_15m)
-        threads_detectores['eurusd_15m'] = hilo_eur_15m
-        print("    ✓ Thread EURUSD 15M creado")
-    except Exception as e:
-        print(f"    ✗ Error creando thread EURUSD 15M: {e}")
+    # ── PAUSADO: EURUSD 15M ─────────────────────────────────
+    # hilo_eur_15m = threading.Thread(
+    #     target=ejecutar_detector,
+    #     args=("DETECTOR EURUSD 15M", detector_eurusd_15m, "eurusd_15m"),
+    #     name="DetectorEURUSD15M", daemon=True)
+    # hilos.append(hilo_eur_15m); threads_detectores['eurusd_15m'] = hilo_eur_15m
 
     print()
 
@@ -397,10 +365,8 @@ def iniciar_detectores():
             print(f"  [{i}/{len(hilos)}] ✗ Error iniciando {hilo.name}: {e}")
     
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ✅ Proceso de inicio completado")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Detectores 1D:  7 (Bitcoin, Gold, SPX, NAS100, EURUSD, WTI, Silver)")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Detectores 4H:  7 (Bitcoin, Gold, SPX, NAS100, EURUSD, WTI, Silver)")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Detectores 15M: 3 (Gold, SPX, EURUSD) ⚡ SCALPING")
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Otros: 2 (Monitor + Keep-alive)")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🥇 XAUUSD: 1D + 4H + 1H + 15M + 5M")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Otros: Monitor + Keep-alive")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Total threads: {len(threads_detectores)} detectores + 1 keep-alive")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive activo (ping cada 1 min)\n")
     sys.stdout.flush()
