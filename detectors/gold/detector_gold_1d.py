@@ -46,17 +46,9 @@ CHECK_INTERVAL = 10 * 60  # cada 10 minutos (balance óptimo para timeframe 1D)
 SIMBOLOS = {
     'XAUUSD': {
         'ticker_yf':          'GC=F',       # Oro en Yahoo Finance
-        'zona_resist_high':   4980.0,       # Resistencia 1D: zona $4900-4980 (actualizado 15-abr-2026, precio ~$4833)
-        'zona_resist_low':    4900.0,
-        'zona_soporte_high':  4760.0,       # Soporte 1D: zona $4650-4760
-        'zona_soporte_low':   4650.0,
-        'tp1_venta':          4750.0,
-        'tp2_venta':          4550.0,
-        'tp3_venta':          4300.0,
-        'tp1_compra':         5000.0,
-        'tp2_compra':         5200.0,
-        'tp3_compra':         5400.0,
-        'tolerancia':         40.0,
+        # Zonas S/R calculadas automáticamente en analizar() — sin mantenimiento manual
+        'sr_lookback':        30,           # 30 velas 1D ≈ 6 semanas de historia
+        'sr_zone_mult':       0.8,          # ancho de zona = atr × 0.8
         'limit_offset_pct':   0.3,
         'anticipar_velas':    3,
         'cancelar_dist':      1.0,
@@ -310,10 +302,10 @@ def calcular_sentimiento_bajista(row, prev, p2, df, params):
         score += 1
     
     # 4. En zona de resistencia (2 puntos)
-    zrh = params['zona_resist_high']
-    zrl = params['zona_resist_low']
-    tol = params['tolerancia']
-    if (high >= zrl - tol) and (high <= zrh + tol):
+    zrh = float(df['High'].iloc[-31:-1].max())
+    zrl = zrh - (df['High'] - df['Low']).iloc[-14:-1].mean()
+    tol_s = (df['High'] - df['Low']).iloc[-14:-1].mean() * 0.4
+    if (high >= zrl - tol_s) and (high <= zrh + tol_s):
         factores.append("En zona resistencia")
         score += 2
     
@@ -371,10 +363,10 @@ def calcular_sentimiento_alcista(row, prev, p2, df, params):
         factores.append(f"RSI bajo ({rsi:.1f})")
         score += 1
     
-    # 4. En zona de soporte (2 puntos)
-    zsh = params['zona_soporte_high']
-    zsl = params['zona_soporte_low']
-    tol = params['tolerancia']
+    # 4. En zona de soporte (2 puntos) — dinámica (mirrors calcular_zonas_sr logic)
+    zsl = float(df['Low'].iloc[-31:-1].min())
+    zsh = zsl + (df['High'] - df['Low']).iloc[-14:-1].mean()
+    tol = (df['High'] - df['Low']).iloc[-14:-1].mean() * 0.4
     if (low >= zsl - tol) and (low <= zsh + tol):
         factores.append("En zona soporte")
         score += 2
@@ -401,6 +393,31 @@ def calcular_sentimiento_alcista(row, prev, p2, df, params):
 # ══════════════════════════════════════
 # LÓGICA PRINCIPAL — replica Pine Script
 # ══════════════════════════════════════
+def calcular_zonas_sr(df, atr, lookback, zone_mult):
+    """
+    Detecta automáticamente zonas S/R desde swing highs/lows históricos.
+    No requiere mantenimiento manual — se adapta al precio actual y la volatilidad.
+    
+    Returns: (zrl, zrh, zsl, zsh)
+        zrl/zrh = límites bajo/alto de la zona de resistencia
+        zsl/zsh = límites bajo/alto de la zona de soporte
+    """
+    highs = df['High'].iloc[-lookback-1:-1]
+    lows  = df['Low'].iloc[-lookback-1:-1]
+    
+    resist_pivot  = float(highs.max())
+    support_pivot = float(lows.min())
+    zone_width = atr * zone_mult
+    
+    # Resistencia: zona centrada en el swing high (más banda bajo el pivot, donde venden)
+    zrh = round(resist_pivot + zone_width * 0.25, 2)
+    zrl = round(resist_pivot - zone_width * 0.75, 2)
+    # Soporte: zona centrada en el swing low (más banda sobre el pivot, donde compran)
+    zsh = round(support_pivot + zone_width * 0.75, 2)
+    zsl = round(support_pivot - zone_width * 0.25, 2)
+    return zrl, zrh, zsl, zsh
+
+
 def analizar(simbolo, params):
     print(f"\n🔍 Analizando {simbolo}...")
 
@@ -491,12 +508,9 @@ def analizar(simbolo, params):
     is_bearish  = row['is_bearish']
     is_bullish  = row['is_bullish']
 
-    # ── Parámetros de zona ──
-    zrh  = params['zona_resist_high']
-    zrl  = params['zona_resist_low']
-    zsh  = params['zona_soporte_high']
-    zsl  = params['zona_soporte_low']
-    tol  = params['tolerancia']
+    # ── Parámetros de zona (calculados automáticamente) ──
+    zrl, zrh, zsl, zsh = calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
+    tol  = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
     lop  = params['limit_offset_pct']
     cd   = params['cancelar_dist']
     av   = params['anticipar_velas']
@@ -504,6 +518,7 @@ def analizar(simbolo, params):
     rsms = params['rsi_min_sell']
     rsmb = params['rsi_max_buy']
     asm  = params['atr_sl_mult']
+    print(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
 
     # ── Precios límite ──
     sell_limit = zrl + (zrh - zrl) * (lop / 100 * 10)
