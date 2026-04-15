@@ -378,36 +378,71 @@ def analizar(simbolo, params):
     def ya_enviada(tipo): return alertas_enviadas.get(f"{clave_vela}_{tipo}", False)
     def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = True
 
-    # ── ALERTAS DE APROXIMACIÓN ────────────────────────────────
+    # ── ALERTAS DE APROXIMACIÓN → SEÑAL ACCIONABLE (pon la orden limit ahora) ──
     if aproximando_resist and not en_zona_resist and not cancelar_sell and not ya_enviada('PREP_SELL'):
-        msg = (f"🔔 <b>PRE-ALERTA SELL — ORO 1H</b> | Coloca orden limit\n"
+        nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
+              "🔴 SELL FUERTE" if senal_sell_fuerte else
+              "⚡ SELL MEDIA"  if senal_sell_media  else
+              "👀 SELL ALERTA")
+        msg = (f"⚡ <b>SEÑAL SELL — ORO (XAUUSD) 1H</b> | PON ORDEN LIMIT AHORA\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"⏳ <i>Precio aproximándose a resistencia — espera señal de confirmación</i>\n"
-               f"💰 <b>Precio:</b>     ${close:.2f}\n"
-               f"📌 <b>SELL LIMIT:</b> ${sell_limit:.2f}\n"
-               f"🛑 <b>Stop Loss:</b>  ${sl_venta:.2f}  (+${round(sl_venta - close, 2)})\n"
+               f"📊 <b>Nivel:</b> {nv}\n"
+               f"💰 <b>Precio actual:</b> ${close:.2f}\n"
+               f"📌 <b>SELL LIMIT:</b>   ${sell_limit:.2f}  ← pon la orden aquí\n"
+               f"🛑 <b>Stop Loss:</b>   ${sl_venta:.2f}  (+${round(sl_venta - sell_limit, 2)})\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1  (-${round(sell_limit - tp1_v, 2)})\n"
                f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1  (-${round(sell_limit - tp2_v, 2)})\n"
                f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1  (-${round(sell_limit - tp3_v, 2)})\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
-               f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
+               f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+               f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 INTRADÍA")
+        if db and not db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
+            try:
+                db.guardar_senal({
+                    'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                    'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                    'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                    'score': score_sell,
+                    'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                    'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
+                    'version_detector': 'GOLD 1H-v2.0'
+                })
+            except Exception as e:
+                print(f"  ⚠️ Error BD: {e}")
         enviar_telegram(msg); marcar_enviada('PREP_SELL')
 
     if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not ya_enviada('PREP_BUY'):
-        msg = (f"🔔 <b>PREPARAR BUY — ORO (1H) ⏰ INTRADÍA</b>\n"
+        nv = ("🔥 BUY MÁXIMA" if senal_buy_maxima else
+              "🟢 BUY FUERTE" if senal_buy_fuerte else
+              "⚡ BUY MEDIA"  if senal_buy_media  else
+              "👀 BUY ALERTA")
+        msg = (f"⚡ <b>SEÑAL BUY — ORO (XAUUSD) 1H</b> | PON ORDEN LIMIT AHORA\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"📢 Precio aproximándose a soporte\n"
-               f"💰 <b>Precio:</b>    ${close:.2f}\n"
-               f"📌 <b>BUY LIMIT:</b> ${buy_limit:.2f}\n"
-               f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(close - sl_compra, 2)})\n"
-               f"━━━━━━━━━━━━━━━━━━━━\n"               f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1  (+${round(tp1_c - buy_limit, 2)})\n"
+               f"📊 <b>Nivel:</b> {nv}\n"
+               f"💰 <b>Precio actual:</b> ${close:.2f}\n"
+               f"📌 <b>BUY LIMIT:</b>    ${buy_limit:.2f}  ← pon la orden aquí\n"
+               f"🛑 <b>Stop Loss:</b>   ${sl_compra:.2f}  (-${round(buy_limit - sl_compra, 2)})\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1  (+${round(tp1_c - buy_limit, 2)})\n"
                f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1  (+${round(tp2_c - buy_limit, 2)})\n"
                f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_limit, 2)})\n"
-               f"━━━━━━━━━━━━━━━━━━━━\n"               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
-               f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
-               f"🔒 <i>Cerrar antes del cierre de sesión</i>")
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+               f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 INTRADÍA")
+        if db and not db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
+            try:
+                db.guardar_senal({
+                    'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                    'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                    'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                    'score': score_buy,
+                    'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                    'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
+                    'version_detector': 'GOLD 1H-v2.0'
+                })
+            except Exception as e:
+                print(f"  ⚠️ Error BD: {e}")
         enviar_telegram(msg); marcar_enviada('PREP_BUY')
 
     # ── FILTRO R:R MÍNIMO 1.2 ────────────────────────────────
@@ -444,92 +479,123 @@ def analizar(simbolo, params):
             senal_buy_maxima = senal_buy_fuerte = False
         else:
             _conf_buy = _desc
-    # ── SEÑALES SELL ────────────────────────────────────────────
+    # ── SEÑALES SELL (en zona) — confirmación si ya hubo señal accionable ──
     if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
-        if senal_sell_maxima:  nivel = "🔥 SELL MÁXIMA (1H)"; calidad = "✅ ALTA CALIDAD"
-        elif senal_sell_fuerte: nivel = "🔴 SELL FUERTE (1H)"; calidad = "✅ BUENA CALIDAD"
-        elif senal_sell_media:  nivel = "⚠️ SELL MEDIA (1H)";  calidad = "⚠️ PRECAUCIÓN"
-        else:                   nivel = "👀 SELL ALERTA (1H)"; calidad = "ℹ️ MONITOREAR"
-        tipo_clave = ("SELL_MAX" if senal_sell_maxima else
-                      "SELL_FUE" if senal_sell_fuerte else
-                      "SELL_MED" if senal_sell_media  else "SELL_ALE")
-        if not ya_enviada(tipo_clave):
-            if db and db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
-                print(f"  ℹ️  Señal VENTA 1H duplicada"); return
-            msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"💰 <b>Precio:</b>     ${close:.2f}\n"
-                   f"📌 <b>SELL LIMIT:</b> ${sell_limit:.2f}\n"
-                   f"🛑 <b>Stop Loss:</b>  ${sl_venta:.2f}  (+${round(sl_venta - sell_limit, 2)})\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                   f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                   f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                   f"📐 <b>ATR:</b> ${atr:.2f}\n"
-                   f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
-                   f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
-            if _conf_sell:
-                msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
-            if db:
-                try:
-                    db.guardar_senal({
-                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                        'direccion': 'VENTA', 'precio_entrada': sell_limit,
-                        'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
-                        'score': score_sell,
-                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
-                        'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
-                        'version_detector': 'GOLD 1H-v2.0'
-                    })
-                except Exception as e:
-                    print(f"  ⚠️ Error BD: {e}")
-            enviar_telegram(msg)
+        if ya_enviada('PREP_SELL') and not (senal_sell_fuerte or senal_sell_maxima):
+            print(f"  ℹ️  SELL ALERTA/MEDIA ignorada: señal accionable ya enviada")
+        else:
+            if senal_sell_maxima:  nivel = "🔥 SELL MÁXIMA (1H)"
+            elif senal_sell_fuerte: nivel = "🔴 SELL FUERTE (1H)"
+            elif senal_sell_media:  nivel = "⚠️ SELL MEDIA (1H)"
+            else:                   nivel = "👀 SELL ALERTA (1H)"
+            tipo_clave = ("SELL_MAX" if senal_sell_maxima else
+                          "SELL_FUE" if senal_sell_fuerte else
+                          "SELL_MED" if senal_sell_media  else "SELL_ALE")
+            if not ya_enviada(tipo_clave):
+                if ya_enviada('PREP_SELL'):
+                    # Breve confirmación — señal accionable ya fue enviada antes
+                    msg = (f"✅ <b>CONFIRMACIÓN SELL — ORO 1H</b>\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"{nivel} — precio ahora en zona\n"
+                           f"💰 <b>Precio:</b> ${close:.2f}\n"
+                           f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                           f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
+                    enviar_telegram(msg)
+                    marcar_enviada(tipo_clave)
+                else:
+                    # Precio saltó directo a la zona sin pre-alerta → señal completa con DB
+                    if db and db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
+                        print(f"  ℹ️  Señal VENTA 1H duplicada"); return
+                    msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"💰 <b>Precio:</b>     ${close:.2f}\n"
+                           f"📌 <b>SELL LIMIT:</b> ${sell_limit:.2f}\n"
+                           f"🛑 <b>Stop Loss:</b>  ${sl_venta:.2f}  (+${round(sl_venta - sell_limit, 2)})\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
+                           f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
+                           f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                           f"📐 <b>ATR:</b> ${atr:.2f}\n"
+                           f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
+                           f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
+                    if _conf_sell:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
+                    if db:
+                        try:
+                            db.guardar_senal({
+                                'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                                'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                                'score': score_sell,
+                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                                'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
+                                'version_detector': 'GOLD 1H-v2.0'
+                            })
+                        except Exception as e:
+                            print(f"  ⚠️ Error BD: {e}")
+                    enviar_telegram(msg)
+                    marcar_enviada(tipo_clave)
 
-    # ── SEÑALES BUY ─────────────────────────────────────────────
+    # ── SEÑALES BUY (en zona) — confirmación si ya hubo señal accionable ──
     if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
-        if senal_buy_maxima:   nivel = "🔥 BUY MÁXIMA (1H)"; calidad = "✅ ALTA CALIDAD"
-        elif senal_buy_fuerte:  nivel = "🟢 BUY FUERTE (1H)"; calidad = "✅ BUENA CALIDAD"
-        elif senal_buy_media:   nivel = "⚠️ BUY MEDIA (1H)";  calidad = "⚠️ PRECAUCIÓN"
-        else:                   nivel = "👀 BUY ALERTA (1H)"; calidad = "ℹ️ MONITOREAR"
-        tipo_clave = ("BUY_MAX" if senal_buy_maxima else
-                      "BUY_FUE" if senal_buy_fuerte else
-                      "BUY_MED" if senal_buy_media  else
-                      "BUY_ALE")
-        if not ya_enviada(tipo_clave):
-            if db and db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
-                print(f"  ℹ️  Señal COMPRA 1H duplicada"); return
-            msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"💰 <b>Precio:</b>    ${close:.2f}\n"
-                   f"📌 <b>BUY LIMIT:</b> ${buy_limit:.2f}\n"
-                   f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(buy_limit - sl_compra, 2)})\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                   f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                   f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                   f"📐 <b>ATR:</b> ${atr:.2f}\n"
-                   f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
-                   f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
-            if _conf_buy:
-                msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
-            if db:
-                try:
-                    db.guardar_senal({
-                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                        'direccion': 'COMPRA', 'precio_entrada': buy_limit,
-                        'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
-                        'score': score_buy,
-                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
-                        'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
-                        'version_detector': 'GOLD 1H-v2.0'
-                    })
-                except Exception as e:
-                    print(f"  ⚠️ Error BD: {e}")
-            enviar_telegram(msg)
+        if ya_enviada('PREP_BUY') and not (senal_buy_fuerte or senal_buy_maxima):
+            print(f"  ℹ️  BUY ALERTA/MEDIA ignorada: señal accionable ya enviada")
+        else:
+            if senal_buy_maxima:   nivel = "🔥 BUY MÁXIMA (1H)"
+            elif senal_buy_fuerte:  nivel = "🟢 BUY FUERTE (1H)"
+            elif senal_buy_media:   nivel = "⚠️ BUY MEDIA (1H)"
+            else:                   nivel = "👀 BUY ALERTA (1H)"
+            tipo_clave = ("BUY_MAX" if senal_buy_maxima else
+                          "BUY_FUE" if senal_buy_fuerte else
+                          "BUY_MED" if senal_buy_media  else "BUY_ALE")
+            if not ya_enviada(tipo_clave):
+                if ya_enviada('PREP_BUY'):
+                    # Breve confirmación — señal accionable ya fue enviada antes
+                    msg = (f"✅ <b>CONFIRMACIÓN BUY — ORO 1H</b>\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"{nivel} — precio ahora en zona\n"
+                           f"💰 <b>Precio:</b> ${close:.2f}\n"
+                           f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                           f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
+                    enviar_telegram(msg)
+                    marcar_enviada(tipo_clave)
+                else:
+                    # Precio saltó directo a la zona sin pre-alerta → señal completa con DB
+                    if db and db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
+                        print(f"  ℹ️  Señal COMPRA 1H duplicada"); return
+                    msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"💰 <b>Precio:</b>    ${close:.2f}\n"
+                           f"📌 <b>BUY LIMIT:</b> ${buy_limit:.2f}\n"
+                           f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(buy_limit - sl_compra, 2)})\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
+                           f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
+                           f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                           f"📐 <b>ATR:</b> ${atr:.2f}\n"
+                           f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
+                           f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
+                    if _conf_buy:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                    if db:
+                        try:
+                            db.guardar_senal({
+                                'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                                'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                                'score': score_buy,
+                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                                'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
+                                'version_detector': 'GOLD 1H-v2.0'
+                            })
+                        except Exception as e:
+                            print(f"  ⚠️ Error BD: {e}")
+                    enviar_telegram(msg)
+                    marcar_enviada(tipo_clave)
 
     # ── CANCELACIONES ───────────────────────────────────────────
     if cancelar_sell and not ya_enviada('CANCEL_SELL'):
