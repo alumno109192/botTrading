@@ -290,22 +290,22 @@ class DatabaseManager:
         """
         now = datetime.now(timezone.utc).isoformat()
         
-        # Actualizar flags correspondientes
+        # Actualiza flags correspondientes sin cerrar la señal — solo TP3/SL la cierran
         if nuevo_estado == 'TP1':
             query = """
             UPDATE senales 
-            SET tp1_alcanzado = TRUE, fecha_tp1 = ?, estado = ?
+            SET tp1_alcanzado = TRUE, fecha_tp1 = ?
             WHERE id = ?
             """
-            self.ejecutar_query(query, (now, nuevo_estado, senal_id))
+            self.ejecutar_query(query, (now, senal_id))
             
         elif nuevo_estado == 'TP2':
             query = """
             UPDATE senales 
-            SET tp2_alcanzado = TRUE, fecha_tp2 = ?, estado = ?
+            SET tp2_alcanzado = TRUE, fecha_tp2 = ?
             WHERE id = ?
             """
-            self.ejecutar_query(query, (now, nuevo_estado, senal_id))
+            self.ejecutar_query(query, (now, senal_id))
             
         elif nuevo_estado == 'TP3':
             query = """

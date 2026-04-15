@@ -17,6 +17,19 @@ load_dotenv()
 # Configuración de Telegram
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+THREAD_ID_SWING     = os.environ.get('THREAD_ID_SWING')      # 1D / 4H
+THREAD_ID_INTRADAY  = os.environ.get('THREAD_ID_INTRADAY')   # 1H
+THREAD_ID_SCALPING  = os.environ.get('THREAD_ID_SCALPING')   # 15M / 5M
+
+def obtener_thread_id(simbolo: str):
+    """Devuelve el message_thread_id de Telegram según el timeframe del símbolo."""
+    sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
+    if sufijo in ('15M', '5M'):
+        return THREAD_ID_SCALPING
+    if sufijo == '1H':
+        return THREAD_ID_INTRADAY
+    # 4H, 1D y sin sufijo → Swing
+    return THREAD_ID_SWING
 
 # Mapeo de símbolos a tickers de yfinance
 SIMBOLO_TO_TICKER = {
@@ -63,8 +76,8 @@ def obtener_precio_actual(simbolo: str) -> float:
         return None
 
 
-def enviar_notificacion_telegram(mensaje: str):
-    """Envía una notificación a Telegram"""
+def enviar_notificacion_telegram(mensaje: str, simbolo: str = None):
+    """Envía una notificación a Telegram al hilo correcto según el símbolo"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         data = {
@@ -72,9 +85,13 @@ def enviar_notificacion_telegram(mensaje: str):
             'text': mensaje,
             'parse_mode': 'HTML'
         }
-        
+        if simbolo:
+            thread_id = obtener_thread_id(simbolo)
+            if thread_id:
+                data['message_thread_id'] = thread_id
+
         response = requests.post(url, data=data, timeout=10)
-        
+
         if response.status_code == 200:
             print(f"✅ Notificación enviada: {mensaje[:50]}...")
         else:
@@ -123,7 +140,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
 🔴 Cerrar el 100% restante de la posición
 🏆 ¡Operación completada con éxito!
         """
-        enviar_notificacion_telegram(mensaje)
+        enviar_notificacion_telegram(mensaje, simbolo)
         return
     
     # Verificar TP2
@@ -145,7 +162,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
 🔒 Mover SL a TP1 (${tp1:.2f})
 ⏳ Dejar correr hacia TP3 (${tp3:.2f})
         """
-        enviar_notificacion_telegram(mensaje)
+        enviar_notificacion_telegram(mensaje, simbolo)
         return
     
     # Verificar TP1
@@ -167,7 +184,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
 🔒 Mover SL a breakeven (${precio_entrada:.2f})
 ⏳ Dejar correr hacia TP2 (${tp2:.2f})
         """
-        enviar_notificacion_telegram(mensaje)
+        enviar_notificacion_telegram(mensaje, simbolo)
         return
     
     # Verificar SL (Stop Loss)
@@ -187,7 +204,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
 📋 <b>ACCIÓN RECOMENDADA:</b>
 🔴 Cerrar el 100% de la posición
         """
-        enviar_notificacion_telegram(mensaje)
+        enviar_notificacion_telegram(mensaje, simbolo)
         return
 
 
@@ -221,7 +238,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
 🔴 Cerrar el 100% restante de la posición
 🏆 ¡Operación completada con éxito!
         """
-        enviar_notificacion_telegram(mensaje)
+        enviar_notificacion_telegram(mensaje, simbolo)
         return
     
     # Verificar TP2
@@ -243,7 +260,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
 🔒 Mover SL a TP1 (${tp1:.2f})
 ⏳ Dejar correr hacia TP3 (${tp3:.2f})
         """
-        enviar_notificacion_telegram(mensaje)
+        enviar_notificacion_telegram(mensaje, simbolo)
         return
     
     # Verificar TP1
@@ -265,7 +282,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
 🔒 Mover SL a breakeven (${precio_entrada:.2f})
 ⏳ Dejar correr hacia TP2 (${tp2:.2f})
         """
-        enviar_notificacion_telegram(mensaje)
+        enviar_notificacion_telegram(mensaje, simbolo)
         return
     
     # Verificar SL (Stop Loss)
@@ -285,7 +302,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
 📋 <b>ACCIÓN RECOMENDADA:</b>
 🔴 Cerrar el 100% de la posición
         """
-        enviar_notificacion_telegram(mensaje)
+        enviar_notificacion_telegram(mensaje, simbolo)
         return
 
 

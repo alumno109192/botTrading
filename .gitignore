@@ -37,3 +37,7 @@ logfile.txt
 
 # Scripts temporales
 _get_thread_ids.py
+
+# Documentos Claude-web (no son código)
+CONTEXTO_PROYECTO.md
+PLAN_MEJORA_Y_APP.md
