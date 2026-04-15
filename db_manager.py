@@ -230,6 +230,32 @@ class DatabaseManager:
             return True
         return False
 
+    def contar_perdidas_consecutivas(self, simbolo: str) -> int:
+        """
+        Cuenta cuántas señales consecutivas más recientes terminaron en SL
+        para el símbolo dado. Se detiene al encontrar la primera señal con TP.
+        
+        Returns:
+            Número de pérdidas consecutivas (0 si no hay historial o la última fue TP)
+        """
+        query = """
+        SELECT estado FROM senales
+        WHERE simbolo = ?
+        AND estado IN ('SL', 'TP1', 'TP2', 'TP3')
+        ORDER BY timestamp DESC
+        LIMIT 10
+        """
+        result = self.ejecutar_query(query, (simbolo,))
+        if not result.rows:
+            return 0
+        count = 0
+        for row in result.rows:
+            if row['estado'] == 'SL':
+                count += 1
+            else:
+                break
+        return count
+
     def obtener_senales_activas(self) -> List[Dict]:
         """
         Obtiene todas las señales que aún están activas (no cerradas)

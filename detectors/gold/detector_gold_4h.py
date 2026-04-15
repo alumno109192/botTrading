@@ -243,8 +243,20 @@ def detectar_morning_star(df, idx):
 # ══════════════════════════════════════
 # LÓGICA PRINCIPAL
 # ══════════════════════════════════════
+def en_sesion_activa_4h():
+    """Filtro horario 4H: sesión London/NY ampliada (06:00-22:00 UTC).
+    Evita señales en la ventana puramente asiática nocturna (22:00-06:00 UTC)
+    donde Gold tiene menor liquidez y spreads más amplios."""
+    from datetime import timezone as tz
+    hora_utc = datetime.now(tz.utc).hour
+    return 6 <= hora_utc < 22
+
 def analizar(simbolo, params):
     print(f"\n🔍 Analizando {simbolo} [4H]...")
+
+    if not en_sesion_activa_4h():
+        print(f"  ⏸️  [4H] Fuera de sesión (06-22 UTC) — análisis saltado")
+        return
 
     # Descargar datos 4H
     try:

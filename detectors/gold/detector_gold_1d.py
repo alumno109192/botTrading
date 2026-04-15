@@ -727,15 +727,15 @@ def analizar(simbolo, params):
     senal_sell_maxima = score_sell >= 10 and sentimiento_bajista_score >= 6
     senal_sell_fuerte = score_sell >= 8 and sentimiento_bajista_score >= 4
     senal_sell_media  = score_sell >= 6 and sentimiento_bajista_score >= 3
-    # ALERTA: Score técnico ≥4 normal, O sentimiento FUERTE (≥6) con score mínimo ≥2
-    senal_sell_alerta = (score_sell >= 4 and not senal_contradictoria_sell) or (sentimiento_bajista_score >= 6 and score_sell >= 2)
+    # ALERTA: Score técnico ≥6 normal, O sentimiento FUERTE (≥6) con score mínimo ≥3
+    senal_sell_alerta = (score_sell >= 6 and not senal_contradictoria_sell) or (sentimiento_bajista_score >= 6 and score_sell >= 3)
     
     # BUY - Solo con confluencia o muy alto score técnico
     senal_buy_maxima  = score_buy >= 10 and sentimiento_alcista_score >= 6
     senal_buy_fuerte  = score_buy >= 8 and sentimiento_alcista_score >= 4
     senal_buy_media   = score_buy >= 6 and sentimiento_alcista_score >= 3
-    # ALERTA: Score técnico ≥4 normal, O sentimiento FUERTE (≥6) con score mínimo ≥2
-    senal_buy_alerta  = (score_buy >= 4 and not senal_contradictoria_buy) or (sentimiento_alcista_score >= 6 and score_buy >= 2)
+    # ALERTA: Score técnico ≥6 normal, O sentimiento FUERTE (≥6) con score mínimo ≥3
+    senal_buy_alerta  = (score_buy >= 6 and not senal_contradictoria_buy) or (sentimiento_alcista_score >= 6 and score_buy >= 3)
 
     # ══════════════════════════════════
     # SL Y TP
@@ -803,9 +803,9 @@ def analizar(simbolo, params):
     if senal_contradictoria_buy:
         print(f"  ⚠️  ADVERTENCIA: Señal BUY contradice sentimiento bajista")
     # Informar cuando se activa por sentimiento dominante
-    if senal_sell_alerta and score_sell < 4 and sentimiento_bajista_score >= 6:
+    if senal_sell_alerta and score_sell < 6 and sentimiento_bajista_score >= 6:
         print(f"  📣 ALERTA SELL activada por SENTIMIENTO BAJISTA FUERTE ({sentimiento_bajista_score}/10) - Score técnico bajo ({score_sell}/21)")
-    if senal_buy_alerta and score_buy < 4 and sentimiento_alcista_score >= 6:
+    if senal_buy_alerta and score_buy < 6 and sentimiento_alcista_score >= 6:
         print(f"  📣 ALERTA BUY activada por SENTIMIENTO ALCISTA FUERTE ({sentimiento_alcista_score}/10) - Score técnico bajo ({score_buy}/21)")
 
     # ══════════════════════════════════

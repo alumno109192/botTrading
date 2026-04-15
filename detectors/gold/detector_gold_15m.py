@@ -415,13 +415,13 @@ def analizar_simbolo(simbolo, params):
         print(f"  🔴 SELL Fuerte:{senal_sell_fuerte}  🟢 BUY Fuerte:{senal_buy_fuerte}")
         print(f"  📉 RSI: {round(rsi, 1)} | ADX: {round(adx, 1)} | ATR: {round(atr, 2)}")
         
-        # ── CONTROL DE PÉRDIDAS CONSECUTIVAS ──
+        # ── CONTROL DE PÉRDIDAS CONSECUTIVAS (consultado desde BD) ──
+        perdidas_consecutivas = db.contar_perdidas_consecutivas(f"{simbolo}_15M") if db else 0
         if perdidas_consecutivas >= params['max_perdidas_dia']:
             if not (senal_sell_fuerte or senal_buy_fuerte):
                 print(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas — esperando señal fuerte")
                 return
             print(f"  ✅ Señal fuerte detectada tras {perdidas_consecutivas} pérdidas — reanudando")
-            perdidas_consecutivas = 0
         
         # ══════════════════════════════════════
         # ANTI-SPAM
