@@ -49,19 +49,13 @@ CHECK_INTERVAL = 60  # cada 1 minuto (micro-scalping máxima frecuencia)
 SIMBOLOS = {
     'XAUUSD': {
         'ticker_yf':          'GC=F',
-        # Zonas actualizadas con precio ~$4833 (14-abr-2026)
-        # Revisar cada 2-3 días o si precio se mueve >$80
-        'zona_resist_high':   4870.0,       # Resistencia: zona $4850-4870
-        'zona_resist_low':    4850.0,
-        'zona_soporte_high':  4815.0,       # Soporte: zona $4800-4815
-        'zona_soporte_low':   4800.0,
-        'tp1_venta':          4828.0,       # TP1 (-$22-42 desde zona resist)
-        'tp2_venta':          4813.0,       # TP2 (-$37-57)
-        'tp3_venta':          4793.0,       # TP3 (-$57-77)
-        'tp1_compra':         4827.0,       # TP1 (+$12-27 desde zona soporte)
-        'tp2_compra':         4842.0,       # TP2 (+$27-42)
-        'tp3_compra':         4858.0,       # TP3 (+$43-58)
-        'tolerancia':         7.0,          # Tolerancia muy ajustada (~0.15% de $4833)
+        # Zonas S/R calculadas automáticamente — sin mantenimiento manual
+        'sr_lookback':        100,          # 100 velas 5M ≈ 8 horas de historia
+        'sr_zone_mult':       0.8,          # ancho de zona = atr × 0.8
+        # TPs calculados automáticamente como múltiplo de ATR — sin mantenimiento manual
+        'atr_tp1_mult':       1.0,          # TP1: 1.0× ATR 5M (~$15-25 desde entry)
+        'atr_tp2_mult':       2.0,          # TP2: 2.0× ATR
+        'atr_tp3_mult':       3.0,          # TP3: 3.0× ATR (objetivo micro-scalp amplio)
         'limit_offset_pct':   0.08,         # Offset mínimo (micro-scalp)
         'anticipar_velas':    2,
         'cancelar_dist':      1.0,
@@ -157,6 +151,23 @@ def patron_doji(df):
     rng  = df['High'].iloc[-1] - df['Low'].iloc[-1]
     return body < (rng * 0.1) if rng > 0 else False
 
+def calcular_zonas_sr(df, atr, lookback, zone_mult):
+    """
+    Detecta automáticamente zonas S/R desde swing highs/lows históricos.
+    No requiere mantenimiento manual — se adapta al precio actual y la volatilidad.
+    """
+    highs = df['High'].iloc[-lookback-1:-1]
+    lows  = df['Low'].iloc[-lookback-1:-1]
+    resist_pivot  = float(highs.max())
+    support_pivot = float(lows.min())
+    zone_width = atr * zone_mult
+    zrh = round(resist_pivot + zone_width * 0.25, 2)
+    zrl = round(resist_pivot - zone_width * 0.75, 2)
+    zsh = round(support_pivot + zone_width * 0.75, 2)
+    zsl = round(support_pivot - zone_width * 0.25, 2)
+    return zrl, zrh, zsl, zsh
+
+
 def analizar_price_action(df):
     score = 0
     vela = df.iloc[-1]; vela_ant = df.iloc[-2]
@@ -220,11 +231,9 @@ def analizar_simbolo(simbolo, params):
         atr = calcular_atr(df, atr_len).iloc[-1]
         adx = calcular_adx(df).iloc[-1]
 
-        zrh = params['zona_resist_high']
-        zrl = params['zona_resist_low']
-        zsh = params['zona_soporte_high']
-        zsl = params['zona_soporte_low']
-        tol = params['tolerancia']
+        zrl, zrh, zsl, zsh = calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
+        tol = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
+        print(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
 
         en_zona_resist       = (zrl <= close <= zrh)
         en_zona_soporte      = (zsl <= close <= zsh)
@@ -299,8 +308,12 @@ def analizar_simbolo(simbolo, params):
         sl_venta  = close + (atr * asm)
         sl_compra = close - (atr * asm)
 
-        tp1_v = params['tp1_venta'];  tp2_v = params['tp2_venta'];  tp3_v = params['tp3_venta']
-        tp1_c = params['tp1_compra']; tp2_c = params['tp2_compra']; tp3_c = params['tp3_compra']
+        tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
+        tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
+        tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
+        tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
+        tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
+        tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
 
         offset_pct = params['limit_offset_pct']
         sell_limit = close * (1 + offset_pct / 100)
