@@ -12,9 +12,11 @@ Uso:
     if is_delayed:
         print("⚠️ Datos con 15 min de delay (yfinance free)")
 
-Obtener clave Twelve Data gratuita:
-    https://twelvedata.com/apikey  →  Sign Up → Free plan (800 req/día)
-    Añadir al .env:  TWELVE_DATA_API_KEY=tu_clave
+Obtener claves Twelve Data gratuitas (2 cuentas = 1600 req/día):
+    https://twelvedata.com/apikey  →  Sign Up → Free plan (800 req/día c/u)
+    Añadir al .env:
+        TWELVE_DATA_API_KEY=clave_cuenta_1
+        TWELVE_DATA_API_KEY_2=clave_cuenta_2  ← opcional, backup automático
 """
 import os
 import yfinance as yf
@@ -25,8 +27,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TWELVE_DATA_API_KEY = os.environ.get('TWELVE_DATA_API_KEY')
-POLYGON_API_KEY     = os.environ.get('POLYGON_API_KEY')
+TWELVE_DATA_API_KEY   = os.environ.get('TWELVE_DATA_API_KEY')
+TWELVE_DATA_API_KEY_2 = os.environ.get('TWELVE_DATA_API_KEY_2')
+POLYGON_API_KEY       = os.environ.get('POLYGON_API_KEY')
 
 # Mapa de tickers yfinance → símbolo Twelve Data
 _TICKER_MAP_TWELVE = {
@@ -61,13 +64,21 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
     El DataFrame siempre tiene columnas: Open, High, Low, Close, Volume
     """
     if interval in _INTRADAY_INTERVALS:
-        # ── Intentar Twelve Data primero (gratuito) ──
+        # ── Intentar Twelve Data clave 1 ──
         if TWELVE_DATA_API_KEY and ticker_yf in _TICKER_MAP_TWELVE:
-            df, ok = _get_twelve_data(ticker_yf, period, interval)
+            df, ok = _get_twelve_data(ticker_yf, period, interval, TWELVE_DATA_API_KEY)
             if ok and not df.empty and len(df) >= 10:
-                print(f"  ✅ [data_provider] Twelve Data — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                print(f"  ✅ [data_provider] Twelve Data (key1) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
                 return df, False
-            print(f"  ⚠️ [data_provider] Twelve Data falló — intentando siguiente fuente")
+            print(f"  ⚠️ [data_provider] Twelve Data key1 falló — intentando key2")
+
+        # ── Intentar Twelve Data clave 2 (backup) ──
+        if TWELVE_DATA_API_KEY_2 and ticker_yf in _TICKER_MAP_TWELVE:
+            df, ok = _get_twelve_data(ticker_yf, period, interval, TWELVE_DATA_API_KEY_2)
+            if ok and not df.empty and len(df) >= 10:
+                print(f"  ✅ [data_provider] Twelve Data (key2) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                return df, False
+            print(f"  ⚠️ [data_provider] Twelve Data key2 falló — intentando siguiente fuente")
 
         # ── Intentar Polygon.io (de pago) ──
         if POLYGON_API_KEY and ticker_yf in _TICKER_MAP_POLYGON:
@@ -94,9 +105,9 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
     return df, True
 
 
-def _get_twelve_data(ticker_yf: str, period: str, interval: str) -> tuple:
+def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str) -> tuple:
     """
-    Descarga datos desde Twelve Data API (plan gratuito: 800 req/día).
+    Descarga datos desde Twelve Data API (plan gratuito: 800 req/día por clave).
     Retorna: (DataFrame, success: bool)
 
     Documentación: https://twelvedata.com/docs#time-series
@@ -125,7 +136,7 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str) -> tuple:
             f"&interval={interval_td}"
             f"&outputsize={outputsize}"
             f"&timezone=UTC"
-            f"&apikey={TWELVE_DATA_API_KEY}"
+            f"&apikey={api_key}"
         )
 
         r = requests.get(url, timeout=15)
