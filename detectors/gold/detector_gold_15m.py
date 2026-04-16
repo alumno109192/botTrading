@@ -399,17 +399,17 @@ def analizar_simbolo(simbolo, params):
         sl_venta  = close + (atr * asm)
         sl_compra = close - (atr * asm)
         
+        # Límites de entrada
+        offset_pct = params['limit_offset_pct']
+        sell_limit = close * (1 + offset_pct / 100)
+        buy_limit  = close * (1 - offset_pct / 100)
+
         tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
         tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
         tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
         tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
         tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
         tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
-        
-        # Límites de entrada
-        offset_pct = params['limit_offset_pct']
-        sell_limit = close * (1 + offset_pct / 100)
-        buy_limit  = close * (1 - offset_pct / 100)
         
         def rr(limit, sl, tp):
             return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
