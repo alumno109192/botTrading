@@ -42,35 +42,46 @@ SIMBOLO_TO_TICKER = {
     'XAGUSD':  'SI=F',      # Silver Futures
 }
 
-def obtener_precio_actual(simbolo: str) -> float:
+def obtener_precio_actual(simbolo: str) -> tuple:
     """
-    Obtiene el precio actual de un símbolo usando yfinance
-    
+    Obtiene el precio actual y extremos recientes de un símbolo usando yfinance.
+
+    Retorna una tupla (precio_actual, precio_max, precio_min) donde precio_max y
+    precio_min son el máximo y mínimo de las últimas 5 velas de 1 minuto.
+    Usar precio_max/precio_min en vez de precio_actual para detectar TPs/SLs que
+    se tocaron brevemente entre ciclos del monitor.
+
     Args:
         simbolo: BTCUSD, XAUUSD, SPX500 (puede incluir sufijos como _4H, _1D, _15M)
-        
+
     Returns:
-        Precio actual o None si hay error
+        (precio_actual, precio_max_5m, precio_min_5m) o None si hay error
     """
     try:
         # Extraer símbolo base (sin sufijos _4H, _1D, _15M, etc.)
         simbolo_base = simbolo.split('_')[0]
-        
+
         ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
         if not ticker:
             print(f"⚠️ Símbolo desconocido: {simbolo} (base: {simbolo_base})")
             return None
-        
+
         data = yf.Ticker(ticker)
         hist = data.history(period='1d', interval='1m')
-        
+
         if hist.empty:
             print(f"⚠️ No hay datos para {simbolo}")
             return None
-        
-        precio = float(hist['Close'].iloc[-1])
-        return precio
-        
+
+        precio_actual = float(hist['Close'].iloc[-1])
+
+        # Extremos de los últimos 5 minutos para detectar picos/valles entre polls
+        ventana = hist.tail(5)
+        precio_max = float(ventana['High'].max())
+        precio_min = float(ventana['Low'].min())
+
+        return (precio_actual, precio_max, precio_min)
+
     except Exception as e:
         print(f"❌ Error obteniendo precio de {simbolo}: {e}")
         return None
@@ -110,23 +121,29 @@ def calcular_beneficio_pct(precio_entrada: float, precio_actual: float,
         return ((precio_entrada - precio_actual) / precio_entrada) * 100
 
 
-def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseManager):
-    """Verifica niveles para señales de COMPRA"""
+def verificar_niveles_compra(senal: dict, precio_actual: float,
+                            precio_min: float, precio_max: float,
+                            db: DatabaseManager):
+    """Verifica niveles para señales de COMPRA.
+
+    Usa precio_max (High de los últimos 5m) para detectar TPs alcanzados
+    brevemente entre polls, y precio_min (Low) para el SL.
+    """
     senal_id = senal['id']
     simbolo = senal['simbolo']
-    
+
     # Convertir valores numéricos de BD a float (fix para Turso que retorna strings)
     precio_entrada = float(senal['precio_entrada'])
     tp1 = float(senal['tp1'])
     tp2 = float(senal['tp2'])
     tp3 = float(senal['tp3'])
     sl = float(senal['sl'])
-    
-    # Verificar TP3 (mayor prioridad)
-    if precio_actual >= tp3 and not senal['tp3_alcanzado']:
-        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
+
+    # Verificar TP3 (mayor prioridad) — usa High reciente para capturar picos entre polls
+    if precio_max >= tp3 and not senal['tp3_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, tp3, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
-        
+
         mensaje = f"""
 🎯🎯🎯 <b>TP3 ALCANZADO!</b>
 
@@ -142,12 +159,12 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
-    
-    # Verificar TP2
-    if precio_actual >= tp2 and not senal['tp2_alcanzado']:
-        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
+
+    # Verificar TP2 — usa High reciente
+    if precio_max >= tp2 and not senal['tp2_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, tp2, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
-        
+
         mensaje = f"""
 🎯🎯 <b>TP2 ALCANZADO</b>
 
@@ -164,12 +181,12 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
-    
-    # Verificar TP1
-    if precio_actual >= tp1 and not senal['tp1_alcanzado']:
-        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
+
+    # Verificar TP1 — usa High reciente
+    if precio_max >= tp1 and not senal['tp1_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, tp1, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
-        
+
         mensaje = f"""
 🎯 <b>TP1 ALCANZADO</b>
 
@@ -186,10 +203,10 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
-    
-    # Verificar SL (Stop Loss)
-    if precio_actual <= sl and not senal['sl_alcanzado']:
-        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
+
+    # Verificar SL (Stop Loss) — usa Low reciente para capturar caídas entre polls
+    if precio_min <= sl and not senal['sl_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'SL', beneficio)
         
         mensaje = f"""
@@ -208,23 +225,29 @@ def verificar_niveles_compra(senal: dict, precio_actual: float, db: DatabaseMana
         return
 
 
-def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManager):
-    """Verifica niveles para señales de VENTA"""
+def verificar_niveles_venta(senal: dict, precio_actual: float,
+                           precio_min: float, precio_max: float,
+                           db: DatabaseManager):
+    """Verifica niveles para señales de VENTA.
+
+    Usa precio_min (Low de los últimos 5m) para detectar TPs alcanzados
+    brevemente entre polls, y precio_max (High) para el SL.
+    """
     senal_id = senal['id']
     simbolo = senal['simbolo']
-    
+
     # Convertir valores numéricos de BD a float (fix para Turso que retorna strings)
     precio_entrada = float(senal['precio_entrada'])
     tp1 = float(senal['tp1'])
     tp2 = float(senal['tp2'])
     tp3 = float(senal['tp3'])
     sl = float(senal['sl'])
-    
-    # Verificar TP3 (menor precio)
-    if precio_actual <= tp3 and not senal['tp3_alcanzado']:
-        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
+
+    # Verificar TP3 (menor precio) — usa Low reciente para capturar picos entre polls
+    if precio_min <= tp3 and not senal['tp3_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, tp3, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
-        
+
         mensaje = f"""
 🎯🎯🎯 <b>TP3 ALCANZADO!</b>
 
@@ -240,12 +263,12 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
-    
-    # Verificar TP2
-    if precio_actual <= tp2 and not senal['tp2_alcanzado']:
-        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
+
+    # Verificar TP2 — usa Low reciente
+    if precio_min <= tp2 and not senal['tp2_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, tp2, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
-        
+
         mensaje = f"""
 🎯🎯 <b>TP2 ALCANZADO</b>
 
@@ -262,12 +285,12 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
-    
-    # Verificar TP1
-    if precio_actual <= tp1 and not senal['tp1_alcanzado']:
-        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
+
+    # Verificar TP1 — usa Low reciente
+    if precio_min <= tp1 and not senal['tp1_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, tp1, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
-        
+
         mensaje = f"""
 🎯 <b>TP1 ALCANZADO</b>
 
@@ -284,12 +307,12 @@ def verificar_niveles_venta(senal: dict, precio_actual: float, db: DatabaseManag
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
-    
-    # Verificar SL (Stop Loss)
-    if precio_actual >= sl and not senal['sl_alcanzado']:
-        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
+
+    # Verificar SL (Stop Loss) — usa High reciente para capturar subidas entre polls
+    if precio_max >= sl and not senal['sl_alcanzado']:
+        beneficio = calcular_beneficio_pct(precio_entrada, sl, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'SL', beneficio)
-        
+
         mensaje = f"""
 ❌ <b>STOP LOSS ACTIVADO</b>
 
@@ -376,43 +399,45 @@ def monitor_senales():
                 for senal in senales_activas:
                     simbolo = senal['simbolo']
                     direccion = senal['direccion']
-                    
-                    # Obtener precio actual
-                    precio_actual = obtener_precio_actual(simbolo)
-                    
-                    if precio_actual is None:
+
+                    # Obtener precio actual + extremos de los últimos 5m (OHLC)
+                    precios = obtener_precio_actual(simbolo)
+
+                    if precios is None:
                         print(f"  ⚠️ No se pudo obtener precio de {simbolo}")
                         continue
-                    
-                    # Registrar precio en historial
+
+                    precio_actual, precio_max, precio_min = precios
+
+                    # Registrar precio actual en historial
                     db.registrar_precio(senal['id'], precio_actual)
-                    
+
                     # Convertir precio_entrada a float (fix Turso strings)
                     precio_entrada = float(senal['precio_entrada'])
-                    
+
                     # Mostrar estado actual
                     beneficio_actual = calcular_beneficio_pct(
-                        precio_entrada, 
-                        precio_actual, 
+                        precio_entrada,
+                        precio_actual,
                         direccion
                     )
-                    
+
                     tp1 = float(senal['tp1'])
                     tp2 = float(senal['tp2'])
                     tp3 = float(senal['tp3'])
                     sl  = float(senal['sl'])
                     print(f"  📊 {simbolo} | {direccion} | "
                           f"Entrada: ${precio_entrada:.2f} | "
-                          f"Actual: ${precio_actual:.2f} | "
+                          f"Actual: ${precio_actual:.2f} (H:{precio_max:.2f} L:{precio_min:.2f}) | "
                           f"Beneficio: {beneficio_actual:+.2f}% | "
                           f"TP1: ${tp1:.2f}  TP2: ${tp2:.2f}  TP3: ${tp3:.2f} | "
                           f"SL: ${sl:.2f}")
-                    
-                    # Verificar niveles alcanzados
+
+                    # Verificar niveles alcanzados usando extremos OHLC
                     if direccion == 'COMPRA':
-                        verificar_niveles_compra(senal, precio_actual, db)
+                        verificar_niveles_compra(senal, precio_actual, precio_min, precio_max, db)
                     else:  # VENTA
-                        verificar_niveles_venta(senal, precio_actual, db)
+                        verificar_niveles_venta(senal, precio_actual, precio_min, precio_max, db)
             
             # Cerrar señales muy antiguas (más de 7 días)
             if ciclo % 12 == 0:  # Cada hora (12 ciclos * 5 min = 60 min)
