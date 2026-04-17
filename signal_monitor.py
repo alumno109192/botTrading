@@ -397,10 +397,16 @@ def monitor_senales():
                         direccion
                     )
                     
+                    tp1 = float(senal['tp1'])
+                    tp2 = float(senal['tp2'])
+                    tp3 = float(senal['tp3'])
+                    sl  = float(senal['sl'])
                     print(f"  📊 {simbolo} | {direccion} | "
                           f"Entrada: ${precio_entrada:.2f} | "
                           f"Actual: ${precio_actual:.2f} | "
-                          f"Beneficio: {beneficio_actual:+.2f}%")
+                          f"Beneficio: {beneficio_actual:+.2f}% | "
+                          f"TP1: ${tp1:.2f}  TP2: ${tp2:.2f}  TP3: ${tp3:.2f} | "
+                          f"SL: ${sl:.2f}")
                     
                     # Verificar niveles alcanzados
                     if direccion == 'COMPRA':
