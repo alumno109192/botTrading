@@ -1,8 +1,10 @@
 # Bot Trading — Detectores de Señales Técnicas
 
-Sistema automatizado de detección de señales de trading. Analiza BTCUSD, XAUUSD y SPX500 con indicadores técnicos, envía alertas a Telegram y hace seguimiento de señales activas con recomendaciones de gestión de posición.
+Sistema automatizado de detección de señales de trading basado en análisis técnico multi-indicador. Analiza múltiples activos (XAUUSD, EURUSD, BTCUSD, SPX500, etc.) en timeframes 1D→5M, genera alertas a Telegram y hace seguimiento automático de TP/SL.
 
-Desplegado en **Render** como servicio web Flask con detectores en background threads.
+Desplegado en **Render** como servicio web Flask con detectores en background threads. Base de datos en Turso (SQLite Cloud).
+
+🚀 **[DOCUMENTACIÓN COMPLETA →](docs/INDEX.md)** | 📖 [Guía de Inicio](docs/GUIA_INICIO.md) | 🏗️ [Arquitectura](docs/ARQUITECTURA.md) | 📊 [Indicadores](docs/INDICADORES.md)
 
 ---
 
