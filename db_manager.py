@@ -107,9 +107,19 @@ class DatabaseManager:
                     row_dict = {}
                     for i, col in enumerate(columns):
                         # Manejar valores que vienen en formato {"type": "integer", "value": "123"}
+                        # CRÍTICO: Turso devuelve booleanos e integers como strings — convertir
+                        # al tipo nativo correcto, si no `not senal['tp1_alcanzado']` donde
+                        # tp1_alcanzado = "0" siempre es False (string no vacío = truthy).
                         cell = row[i] if i < len(row) else None
                         if isinstance(cell, dict) and 'value' in cell:
-                            row_dict[col] = cell['value']
+                            cell_type = cell.get('type', 'text')
+                            cell_val  = cell['value']
+                            if cell_type == 'integer':
+                                row_dict[col] = int(cell_val) if cell_val is not None else 0
+                            elif cell_type in ('float', 'real'):
+                                row_dict[col] = float(cell_val) if cell_val is not None else 0.0
+                            else:
+                                row_dict[col] = cell_val
                         else:
                             row_dict[col] = cell
                     rows_dicts.append(row_dict)

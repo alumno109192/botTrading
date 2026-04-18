@@ -504,6 +504,14 @@ def main():
                     "🎯 TPs: $20 / $35 / $60\n"
                     "🔒 Operaciones máx 30 min")
 
+    # Cargar pérdidas consecutivas desde BD al arrancar (sobrevive reinicios)
+    if db:
+        try:
+            perdidas_consecutivas = db.contar_perdidas_consecutivas('XAUUSD_5M')
+            print(f"📊 [5M] Pérdidas consecutivas cargadas desde BD: {perdidas_consecutivas}")
+        except Exception:
+            pass
+
     ciclo = 0
     while True:
         ciclo += 1

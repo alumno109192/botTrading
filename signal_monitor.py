@@ -4,12 +4,16 @@ Revisa cada 5 minutos todas las señales activas y verifica si alcanzaron TP o S
 """
 
 import time
+import threading
 import yfinance as yf
 import requests
 import os
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from db_manager import DatabaseManager
+
+# Lock propio para serializar llamadas a yf.Ticker.history() (yfinance no es thread-safe)
+_yf_lock = threading.Lock()
 
 # Cargar variables de entorno
 load_dotenv()
@@ -50,7 +54,8 @@ def _fetch_precios_ticker(ticker: str) -> tuple | None:
     para todas las señales que compartan el mismo subyacente.
     """
     try:
-        hist = yf.Ticker(ticker).history(period='1d', interval='1m')
+        with _yf_lock:
+            hist = yf.Ticker(ticker).history(period='1d', interval='1m')
         if hist.empty:
             return None
         precio_actual = float(hist['Close'].iloc[-1])
@@ -97,7 +102,7 @@ def enviar_notificacion_telegram(mensaje: str, simbolo: str = None):
             if thread_id:
                 data['message_thread_id'] = thread_id
 
-        response = requests.post(url, data=data, timeout=10)
+        response = requests.post(url, json=data, timeout=10)
 
         if response.status_code == 200:
             print(f"✅ Notificación enviada: {mensaje[:50]}...")
@@ -464,6 +469,7 @@ def monitor_senales():
                     simbolo   = senal['simbolo']
                     senal_id  = senal['id']
                     categoria = _categoria_senal(simbolo)
+                    intervalo = _intervalo_para(categoria)
 
                     base   = simbolo.split('_')[0]
                     ticker = SIMBOLO_TO_TICKER.get(base)
