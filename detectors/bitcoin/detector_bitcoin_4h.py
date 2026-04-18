@@ -11,6 +11,10 @@ import tf_bias
 
 # Cargar variables de entorno
 load_dotenv()
+from telegram_utils import enviar_telegram as _enviar_telegram_base
+
+def enviar_telegram(mensaje):
+    return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
 
 # Inicializar base de datos solo si las variables están configuradas
 db = None
@@ -78,190 +82,31 @@ SIMBOLOS = {
 alertas_enviadas = {}
 ultimo_analisis = {}  # Guarda última fecha y scores analizados
 
-# ══════════════════════════════════════
-# TELEGRAM
-# ══════════════════════════════════════
-def enviar_telegram(mensaje):
-    try:
-        url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "text":       mensaje,
-            "parse_mode": "HTML"
-        }
-        if TELEGRAM_THREAD_ID:
-            payload["message_thread_id"] = TELEGRAM_THREAD_ID
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code == 200:
-            print(f"✅ Telegram enviado → {r.status_code}")
-        else:
-            print(f"❌ Error Telegram → Status {r.status_code}")
-            print(f"   Respuesta: {r.text}")
-            print(f"   Mensaje (primeros 200 chars): {mensaje[:200]}...")
-    except Exception as e:
-        print(f"❌ Error Telegram (excepción): {e}")
 
-# ══════════════════════════════════════
+# ═# ═# ═# ═# ═# ═# ═# ═# ═# ═══════════════════════════════
 # INDICADORES TÉCNICOS
-# ══════════════════════════════════════
-def calcular_rsi(series, length):
-    delta = series.diff()
-    gain  = delta.clip(lower=0)
-    loss  = -delta.clip(upper=0)
-    avg_g = gain.ewm(com=length - 1, min_periods=length).mean()
-    avg_l = loss.ewm(com=length - 1, min_periods=length).mean()
-    rs    = avg_g / avg_l
-    return 100 - (100 / (1 + rs))
-
-def calcular_ema(series, length):
-    return series.ewm(span=length, adjust=False).mean()
-
-def calcular_atr(df, length):
-    high       = df['High']
-    low        = df['Low']
-    close_prev = df['Close'].shift(1)
-    tr = pd.concat([
-        high - low,
-        (high - close_prev).abs(),
-        (low  - close_prev).abs()
-    ], axis=1).max(axis=1)
-    return tr.ewm(com=length - 1, min_periods=length).mean()
-
-# ══════════════════════════════════════
-# NUEVOS INDICADORES — ALTA PRIORIDAD
-# ══════════════════════════════════════
-
-def calcular_bollinger_bands(series, length=40, std_dev=2):
-    """
-    Bandas de Bollinger para 4H (periodo x2)
-    Retorna: (bb_upper, bb_mid, bb_lower, bb_width)
-    """
-    bb_mid = series.rolling(window=length).mean()
-    std = series.rolling(window=length).std()
-    bb_upper = bb_mid + (std * std_dev)
-    bb_lower = bb_mid - (std * std_dev)
-    bb_width = (bb_upper - bb_lower) / bb_mid
-    return bb_upper, bb_mid, bb_lower, bb_width
-
-def calcular_macd(series, fast=24, slow=52, signal=18):
-    """
-    MACD para 4H (periodos x2)
-    Retorna: (macd_line, signal_line, histogram)
-    """
-    ema_fast = series.ewm(span=fast, adjust=False).mean()
-    ema_slow = series.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    histogram = macd_line - signal_line
-    return macd_line, signal_line, histogram
-
-def calcular_obv(df):
-    """
-    On-Balance Volume
-    """
-    obv = pd.Series(index=df.index, dtype=float)
-    obv.iloc[0] = df['Volume'].iloc[0]
-    
-    for i in range(1, len(df)):
-        if df['Close'].iloc[i] > df['Close'].iloc[i-1]:
-            obv.iloc[i] = obv.iloc[i-1] + df['Volume'].iloc[i]
-        elif df['Close'].iloc[i] < df['Close'].iloc[i-1]:
-            obv.iloc[i] = obv.iloc[i-1] - df['Volume'].iloc[i]
-        else:
-            obv.iloc[i] = obv.iloc[i-1]
-    
-    return obv
-
-def calcular_adx(df, length=28):
-    """
-    ADX para 4H (periodo x2)
-    Retorna: (adx, di_plus, di_minus)
-    """
-    high = df['High']
-    low = df['Low']
-    close = df['Close']
-    
-    tr = pd.concat([
-        high - low,
-        (high - close.shift(1)).abs(),
-        (low - close.shift(1)).abs()
-    ], axis=1).max(axis=1)
-    
-    up_move = high - high.shift(1)
-    down_move = low.shift(1) - low
-    
-    plus_dm = pd.Series(0.0, index=df.index)
-    minus_dm = pd.Series(0.0, index=df.index)
-    
-    plus_dm[(up_move > down_move) & (up_move > 0)] = up_move
-    minus_dm[(down_move > up_move) & (down_move > 0)] = down_move
-    
-    atr = tr.ewm(com=length - 1, min_periods=length).mean()
-    plus_di = 100 * (plus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
-    minus_di = 100 * (minus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
-    
-    dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
-    adx = dx.ewm(com=length - 1, min_periods=length).mean()
-    
-    return adx, plus_di, minus_di
-
-def detectar_evening_star(df, idx):
-    """
-    Evening Star: Patrón de reversión bajista (3 velas)
-    """
-    if idx < 2:
-        return False
-    
-    v1 = df.iloc[idx - 2]
-    v2 = df.iloc[idx - 1]
-    v3 = df.iloc[idx]
-    
-    v1_bullish = v1['Close'] > v1['Open']
-    v1_body = abs(v1['Close'] - v1['Open'])
-    v1_range = v1['High'] - v1['Low']
-    v1_large_body = v1_body > v1_range * 0.6
-    
-    v2_body = abs(v2['Close'] - v2['Open'])
-    v2_range = v2['High'] - v2['Low']
-    v2_small = v2_body < v2_range * 0.3
-    v2_gap_up = v2['Open'] > v1['Close']
-    
-    v3_bearish = v3['Close'] < v3['Open']
-    v3_body = abs(v3['Close'] - v3['Open'])
-    v3_range = v3['High'] - v3['Low']
-    v3_large_body = v3_body > v3_range * 0.6
-    v3_closes_in_v1 = v3['Close'] < (v1['Open'] + v1['Close']) / 2
-    
-    return v1_bullish and v1_large_body and v2_small and v2_gap_up and v3_bearish and v3_large_body and v3_closes_in_v1
-
-def detectar_morning_star(df, idx):
-    """
-    Morning Star: Patrón de reversión alcista (3 velas)
-    """
-    if idx < 2:
-        return False
-    
-    v1 = df.iloc[idx - 2]
-    v2 = df.iloc[idx - 1]
-    v3 = df.iloc[idx]
-    
-    v1_bearish = v1['Close'] < v1['Open']
-    v1_body = abs(v1['Close'] - v1['Open'])
-    v1_range = v1['High'] - v1['Low']
-    v1_large_body = v1_body > v1_range * 0.6
-    
-    v2_body = abs(v2['Close'] - v2['Open'])
-    v2_range = v2['High'] - v2['Low']
-    v2_small = v2_body < v2_range * 0.3
-    v2_gap_down = v2['Open'] < v1['Close']
-    
-    v3_bullish = v3['Close'] > v3['Open']
-    v3_body = abs(v3['Close'] - v3['Open'])
-    v3_range = v3['High'] - v3['Low']
-    v3_large_body = v3_body > v3_range * 0.6
-    v3_closes_in_v1 = v3['Close'] > (v1['Open'] + v1['Close']) / 2
-    
-    return v1_bearish and v1_large_body and v2_small and v2_gap_down and v3_bullish and v3_large_body and v3_closes_in_v1
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+# INDICADORES TÉCNICOS
+# ═══════════════════════════════
+from shared_indicators import (calcular_rsi, calcular_ema, calcular_atr,
+    calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
+    detectar_evening_star, detectar_morning_star)
 
 # ══════════════════════════════════════
 # LÓGICA PRINCIPAL

@@ -16,9 +16,10 @@ Uso:
 """
 
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ─────────────────────────────────────
+TTL_SESGO_HORAS = 2  # sesgos más viejos que esto se tratan como sin_datos
 _lock       = threading.Lock()
 _bias_store = {}   # {simbolo: {tf: {bias, score, ts}}}
 # ─────────────────────────────────────
@@ -82,10 +83,15 @@ def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple
             entrada = sesgo_simbolo.get(tf)
             if entrada is None:
                 sin_datos.append(tf)
-            elif entrada['bias'] == direccion:
-                confirmados.append((tf, entrada['score']))
-            elif entrada['bias'] != BIAS_NEUTRAL:
-                contrarios.append((tf, entrada['bias'], entrada['score']))
+            else:
+                # Expirar sesgos más viejos que TTL_SESGO_HORAS
+                edad_horas = (datetime.now() - entrada['ts']).total_seconds() / 3600
+                if edad_horas > TTL_SESGO_HORAS:
+                    sin_datos.append(tf)
+                elif entrada['bias'] == direccion:
+                    confirmados.append((tf, entrada['score']))
+                elif entrada['bias'] != BIAS_NEUTRAL:
+                    contrarios.append((tf, entrada['bias'], entrada['score']))
 
         desc = _build_desc(sesgo_simbolo, tfs_superiores, tf_actual,
                            confirmados, contrarios, sin_datos)
@@ -99,8 +105,8 @@ def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple
         if len(confirmados) == 0 and len(contrarios) == 0:
             return True, f"⏳ TFs superiores sin datos — señal permitida\n{desc}"
 
-        # Mayoría confirma → permitir
-        if len(confirmados) >= len(contrarios):
+        # Mayóría estricta confirma → permitir; empate → bloquear
+        if len(confirmados) > len(contrarios):
             return True, desc
 
         return False, f"⚠️ Bloqueada — mayoría de TFs no confirma\n{desc}"

@@ -17,6 +17,7 @@ import yfinance as yf
 import pandas as pd
 import threading
 from datetime import datetime, timezone, timedelta
+from yf_lock import _yf_lock
 
 # ── Cache en memoria (se reinicia al reiniciar el proceso) ──
 _cache: dict = {'bias': None, 'timestamp': None}
@@ -46,7 +47,14 @@ def get_dxy_bias() -> str | None:
             return _cache['bias']
 
     try:
-        dxy = yf.download("DX-Y.NYB", period="10d", interval="1h", progress=False)
+        with _yf_lock:
+            # Double-check cache después de adquirir lock (otros threads pueden haber actualizado)
+            with _cache_lock:
+                if (_cache['bias'] is not None
+                        and _cache['timestamp'] is not None
+                        and (datetime.now(timezone.utc) - _cache['timestamp']) < timedelta(minutes=_CACHE_TTL_MINUTES)):
+                    return _cache['bias']
+            dxy = yf.download("DX-Y.NYB", period="10d", interval="1h", progress=False)
 
         if isinstance(dxy.columns, pd.MultiIndex):
             dxy.columns = dxy.columns.get_level_values(0)

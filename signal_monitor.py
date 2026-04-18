@@ -12,8 +12,9 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from db_manager import DatabaseManager
 
-# Lock propio para serializar llamadas a yf.Ticker.history() (yfinance no es thread-safe)
-_yf_lock = threading.Lock()
+# Lock compartido con app.py para serializar TODAS las llamadas a yfinance
+# (tanto yf.download() como yf.Ticker().history())
+from yf_lock import _yf_lock
 
 # Cargar variables de entorno
 load_dotenv()
@@ -141,15 +142,24 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     senal_id = senal['id']
     simbolo = senal['simbolo']
 
-    # Convertir valores numéricos de BD a float (fix para Turso que retorna strings)
-    precio_entrada = float(senal['precio_entrada'])
-    tp1 = float(senal['tp1'])
-    tp2 = float(senal['tp2'])
-    tp3 = float(senal['tp3'])
-    sl = float(senal['sl'])
+    # Convertir valores numéricos de BD — guard para valores None (columnas no rellenadas)
+    try:
+        precio_entrada = float(senal['precio_entrada'])
+        tp1 = float(senal['tp1'])
+        tp2 = float(senal['tp2'])
+        tp3 = float(senal['tp3'])
+        sl  = float(senal['sl'])
+    except (TypeError, ValueError):
+        print(f"\u26a0\ufe0f [monitor] Se\u00f1al {senal_id} tiene precios nulos/inv\u00e1lidos — saltando")
+        return
+    # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
+    tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
+    tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
+    tp3_alcanzado = bool(int(senal.get('tp3_alcanzado') or 0))
+    sl_alcanzado  = bool(int(senal.get('sl_alcanzado')  or 0))
 
     # Verificar TP3 (mayor prioridad) — usa High reciente para capturar picos entre polls
-    if precio_max >= tp3 and not senal['tp3_alcanzado']:
+    if precio_max >= tp3 and not tp3_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp3, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
 
@@ -170,7 +180,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         return
 
     # Verificar TP2 — usa High reciente
-    if precio_max >= tp2 and not senal['tp2_alcanzado']:
+    if precio_max >= tp2 and not tp2_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp2, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
 
@@ -192,7 +202,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         return
 
     # Verificar TP1 — usa High reciente
-    if precio_max >= tp1 and not senal['tp1_alcanzado']:
+    if precio_max >= tp1 and not tp1_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp1, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
 
@@ -214,7 +224,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         return
 
     # Verificar SL (Stop Loss) — usa Low reciente para capturar caídas entre polls
-    if precio_min <= sl and not senal['sl_alcanzado']:
+    if precio_min <= sl and not sl_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'SL', beneficio)
         
@@ -245,15 +255,24 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     senal_id = senal['id']
     simbolo = senal['simbolo']
 
-    # Convertir valores numéricos de BD a float (fix para Turso que retorna strings)
-    precio_entrada = float(senal['precio_entrada'])
-    tp1 = float(senal['tp1'])
-    tp2 = float(senal['tp2'])
-    tp3 = float(senal['tp3'])
-    sl = float(senal['sl'])
+    # Convertir valores numéricos de BD — guard para valores None (columnas no rellenadas)
+    try:
+        precio_entrada = float(senal['precio_entrada'])
+        tp1 = float(senal['tp1'])
+        tp2 = float(senal['tp2'])
+        tp3 = float(senal['tp3'])
+        sl  = float(senal['sl'])
+    except (TypeError, ValueError):
+        print(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
+        return
+    # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
+    tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
+    tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
+    tp3_alcanzado = bool(int(senal.get('tp3_alcanzado') or 0))
+    sl_alcanzado  = bool(int(senal.get('sl_alcanzado')  or 0))
 
     # Verificar TP3 (menor precio) — usa Low reciente para capturar picos entre polls
-    if precio_min <= tp3 and not senal['tp3_alcanzado']:
+    if precio_min <= tp3 and not tp3_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp3, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
 
@@ -274,7 +293,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         return
 
     # Verificar TP2 — usa Low reciente
-    if precio_min <= tp2 and not senal['tp2_alcanzado']:
+    if precio_min <= tp2 and not tp2_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp2, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
 
@@ -296,7 +315,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         return
 
     # Verificar TP1 — usa Low reciente
-    if precio_min <= tp1 and not senal['tp1_alcanzado']:
+    if precio_min <= tp1 and not tp1_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp1, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
 
@@ -318,7 +337,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         return
 
     # Verificar SL (Stop Loss) — usa High reciente para capturar subidas entre polls
-    if precio_max >= sl and not senal['sl_alcanzado']:
+    if precio_max >= sl and not sl_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, sl, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'SL', beneficio)
 
@@ -487,7 +506,7 @@ def monitor_senales():
 
                     precio_actual, precio_max, precio_min = precios
 
-                    db.registrar_precio(senal_id, precio_actual)
+                    db.registrar_precio(senal_id, precio_actual, senal_data=senal)
 
                     precio_entrada = float(senal['precio_entrada'])
                     direccion      = senal['direccion']
@@ -532,6 +551,11 @@ def monitor_senales():
         except Exception as e:
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en monitor: {e}")
             print("🔄 Reintentando en 60 segundos...")
+            try:
+                db = DatabaseManager()
+                print("✅ Reconexón a BD exitosa")
+            except Exception as re_err:
+                print(f"⚠️  Reconexón fallida: {re_err}")
             time.sleep(60)
 
 

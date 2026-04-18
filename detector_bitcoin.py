@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno
 load_dotenv()
+from telegram_utils import enviar_telegram
 
 # Inicializar base de datos solo si las variables están configuradas
 db = None
@@ -73,21 +74,6 @@ SIMBOLOS = {
 alertas_enviadas = {}
 ultimo_analisis = {}  # Guarda última fecha y scores analizados
 
-# ══════════════════════════════════════
-# TELEGRAM
-# ══════════════════════════════════════
-def enviar_telegram(mensaje):
-    try:
-        url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "text":       mensaje,
-            "parse_mode": "HTML"
-        }
-        r = requests.post(url, json=payload, timeout=10)
-        print(f"✅ Telegram enviado → {r.status_code}")
-    except Exception as e:
-        print(f"❌ Error Telegram: {e}")
 
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS

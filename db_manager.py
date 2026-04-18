@@ -14,10 +14,33 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
+
+class _Result:
+    """Resultado compatible de queries Turso."""
+    __slots__ = ('rows', 'columns')
+
+    def __init__(self, rows_data, columns):
+        self.rows = rows_data
+        self.columns = columns
+
+
 class DatabaseManager:
     """Gestiona la conexión y operaciones con la base de datos Turso"""
-    
+    _instance = None
+    _singleton_lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
         """Inicializa la conexión a Turso usando URL y TOKEN del .env"""
         self.db_url = os.environ.get('TURSO_DATABASE_URL')
         self.db_token = os.environ.get('TURSO_AUTH_TOKEN')
@@ -92,12 +115,6 @@ class DatabaseManager:
             # Parsear respuesta
             data = response.json()
             
-            # Crear objeto de resultado compatible
-            class Result:
-                def __init__(self, rows_data, columns):
-                    self.rows = rows_data
-                    self.columns = columns
-            
             # Extraer resultados
             if data and 'results' in data and len(data['results']) > 0:
                 result_data = data['results'][0].get('response', {}).get('result', {})
@@ -127,9 +144,9 @@ class DatabaseManager:
                             row_dict[col] = cell
                     rows_dicts.append(row_dict)
                 
-                return Result(rows_dicts, columns)
+                return _Result(rows_dicts, columns)
             
-            return Result([], [])
+            return _Result([], [])
             
         except Exception as e:
             print(f"❌ Error ejecutando query: {e}")
@@ -138,44 +155,49 @@ class DatabaseManager:
             raise
     
     def ejecutar_insert(self, query: str, params: tuple = ()) -> int:
-        """Ejecuta un INSERT y retorna el ID insertado (atómico via lock)"""
-        with self._insert_lock:
-            try:
-                # INSERT + last_insert_rowid() en el mismo pipeline para atomicidad
-                converted_params = [self._convert_param(p) for p in params] if params else []
-                payload = {
-                    'requests': [
-                        {
-                            'type': 'execute',
-                            'stmt': {'sql': query, 'args': converted_params}
-                        },
-                        {
-                            'type': 'execute',
-                            'stmt': {'sql': 'SELECT last_insert_rowid() as id', 'args': []}
-                        }
-                    ]
-                }
-                response = requests.post(
-                    f'{self.api_url}/v2/pipeline',
-                    headers=self.headers,
-                    json=payload,
-                    timeout=30
-                )
-                if response.status_code != 200:
-                    raise Exception(f"HTTP {response.status_code}: {response.text}")
-                data = response.json()
-                if data and 'results' in data and len(data['results']) >= 2:
-                    result_data = data['results'][1].get('response', {}).get('result', {})
-                    rows = result_data.get('rows', [])
-                    if rows:
-                        cell = rows[0][0]
-                        if isinstance(cell, dict):
-                            return int(cell.get('value', 0))
-                        return int(cell) if cell is not None else None
-                return None
-            except Exception as e:
-                print(f"❌ Error en INSERT: {e}")
-                raise
+        """Ejecuta un INSERT y retorna el ID insertado.
+
+        INSERT + last_insert_rowid() se envían en un único pipeline (una sola
+        petición HTTP) por lo que son atómicos a nivel de base de datos.
+        No se necesita lock Python-side ya que cada sesión Turso gestiona su
+        propia secuencia de rowid de forma aislada.
+        """
+        try:
+            # INSERT + last_insert_rowid() en el mismo pipeline para atomicidad
+            converted_params = [self._convert_param(p) for p in params] if params else []
+            payload = {
+                'requests': [
+                    {
+                        'type': 'execute',
+                        'stmt': {'sql': query, 'args': converted_params}
+                    },
+                    {
+                        'type': 'execute',
+                        'stmt': {'sql': 'SELECT last_insert_rowid() as id', 'args': []}
+                    }
+                ]
+            }
+            response = requests.post(
+                f'{self.api_url}/v2/pipeline',
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            if response.status_code != 200:
+                raise Exception(f"HTTP {response.status_code}: {response.text}")
+            data = response.json()
+            if data and 'results' in data and len(data['results']) >= 2:
+                result_data = data['results'][1].get('response', {}).get('result', {})
+                rows = result_data.get('rows', [])
+                if rows:
+                    cell = rows[0][0]
+                    if isinstance(cell, dict):
+                        return int(cell.get('value', 0))
+                    return int(cell) if cell is not None else None
+            return None
+        except Exception as e:
+            print(f"❌ Error en INSERT: {e}")
+            raise
     
     # ═══════════════════════════════════════════════════════════
     # OPERACIONES DE SEÑALES
@@ -380,32 +402,28 @@ class DatabaseManager:
     # HISTORIAL DE PRECIOS
     # ═══════════════════════════════════════════════════════════
     
-    def registrar_precio(self, senal_id: int, precio_actual: float):
+    def registrar_precio(self, senal_id: int, precio_actual: float, senal_data: dict = None):
         """
-        Registra un snapshot de precio para análisis histórico
-        
-        Args:
-            senal_id: ID de la señal
-            precio_actual: Precio actual del instrumento
+        Registra un snapshot de precio para análisis histórico.
+        Si se pasa senal_data (con tp1,tp2,tp3,sl,precio_entrada,direccion) se
+        evita la SELECT individual, reduciendo 1 query HTTP por llamada.
         """
-        # Obtener datos de la señal para calcular distancias
-        query = "SELECT tp1, tp2, tp3, sl, precio_entrada, direccion FROM senales WHERE id = ?"
-        result = self.ejecutar_query(query, (senal_id,))
-        
-        if not result.rows:
-            return
-        
-        senal = dict(result.rows[0])
+        if senal_data is None:
+            query = "SELECT tp1, tp2, tp3, sl, precio_entrada, direccion FROM senales WHERE id = ?"
+            result = self.ejecutar_query(query, (senal_id,))
+            if not result.rows:
+                return
+            senal_data = dict(result.rows[0])
         
         # Convertir valores numéricos a float (CRÍTICO: Turso retorna strings)
-        precio_entrada = float(senal['precio_entrada'])
-        tp1 = float(senal['tp1'])
-        tp2 = float(senal['tp2'])
-        tp3 = float(senal['tp3'])
-        sl = float(senal['sl'])
+        precio_entrada = float(senal_data['precio_entrada'])
+        tp1 = float(senal_data['tp1'])
+        tp2 = float(senal_data['tp2'])
+        tp3 = float(senal_data['tp3'])
+        sl = float(senal_data['sl'])
         
         # Calcular distancias relativas
-        if senal['direccion'] == 'COMPRA':
+        if senal_data['direccion'] == 'COMPRA':
             dist_tp1 = ((precio_actual - tp1) / precio_entrada) * 100
             dist_tp2 = ((precio_actual - tp2) / precio_entrada) * 100
             dist_tp3 = ((precio_actual - tp3) / precio_entrada) * 100

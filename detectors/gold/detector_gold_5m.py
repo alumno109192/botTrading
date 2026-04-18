@@ -21,6 +21,10 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno
 load_dotenv()
+from telegram_utils import enviar_telegram as _enviar_telegram_base
+
+def enviar_telegram(mensaje):
+    return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
 
 # Inicializar base de datos solo si las variables están configuradas
 db = None
@@ -84,84 +88,11 @@ ultimo_analisis = {}
 perdidas_consecutivas = 0
 ultima_senal_timestamp = None
 
-# ══════════════════════════════════════
-# TELEGRAM
-# ══════════════════════════════════════
-def enviar_telegram(mensaje):
-    """Envía mensaje a Telegram con 3 reintentos y backoff exponencial."""
-    url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
-    if TELEGRAM_THREAD_ID:
-        payload["message_thread_id"] = TELEGRAM_THREAD_ID
-    for intento in range(1, 4):
-        try:
-            r = requests.post(url, json=payload, timeout=10)
-            if r.status_code == 200:
-                print(f"✅ Telegram enviado (intento {intento})")
-                return True
-            else:
-                print(f"❌ Telegram intento {intento} → HTTP {r.status_code}: {r.text[:80]}")
-        except Exception as e:
-            print(f"❌ Telegram intento {intento} → excepción: {e}")
-        if intento < 3:
-            time.sleep(2 ** intento)
-    print("❌ Telegram: falló tras 3 intentos")
-    return False
 
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
 # ══════════════════════════════════════
-def calcular_rsi(series, length):
-    delta = series.diff()
-    gain  = delta.clip(lower=0)
-    loss  = -delta.clip(upper=0)
-    avg_g = gain.ewm(com=length - 1, min_periods=length).mean()
-    avg_l = loss.ewm(com=length - 1, min_periods=length).mean()
-    rs    = avg_g / avg_l
-    return 100 - (100 / (1 + rs))
-
-def calcular_atr(df, length):
-    h, l, c = df['High'], df['Low'], df['Close']
-    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
-    return tr.rolling(length).mean()
-
-def calcular_adx(df, length=14):
-    h, l, c = df['High'], df['Low'], df['Close']
-    # True Range
-    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
-    # Wilder smoothing (ATR)
-    atr = tr.ewm(alpha=1/length, min_periods=length, adjust=False).mean()
-    # Directional Movement
-    plus_dm  = h.diff().clip(lower=0)
-    minus_dm = (-l.diff()).clip(lower=0)
-    # Where both +DM and -DM are positive, keep only the larger
-    cond = plus_dm > minus_dm
-    plus_dm  = plus_dm.where(cond, 0)
-    minus_dm = minus_dm.where(~cond, 0)
-    # Smoothed DM
-    plus_di  = 100 * (plus_dm.ewm(alpha=1/length, min_periods=length, adjust=False).mean() / atr)
-    minus_di = 100 * (minus_dm.ewm(alpha=1/length, min_periods=length, adjust=False).mean() / atr)
-    dx  = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, float('nan')))
-    return dx.ewm(alpha=1/length, min_periods=length, adjust=False).mean()
-
-def patron_envolvente_alcista(df):
-    c1_bear = df['Close'].iloc[-2] < df['Open'].iloc[-2]
-    c2_bull = df['Close'].iloc[-1] > df['Open'].iloc[-1]
-    c2_envuelve = (df['Close'].iloc[-1] > df['Open'].iloc[-2] and
-                   df['Open'].iloc[-1] < df['Close'].iloc[-2])
-    return c1_bear and c2_bull and c2_envuelve
-
-def patron_envolvente_bajista(df):
-    c1_bull = df['Close'].iloc[-2] > df['Open'].iloc[-2]
-    c2_bear = df['Close'].iloc[-1] < df['Open'].iloc[-1]
-    c2_envuelve = (df['Close'].iloc[-1] < df['Open'].iloc[-2] and
-                   df['Open'].iloc[-1] > df['Close'].iloc[-2])
-    return c1_bull and c2_bear and c2_envuelve
-
-def patron_doji(df):
-    body = abs(df['Close'].iloc[-1] - df['Open'].iloc[-1])
-    rng  = df['High'].iloc[-1] - df['Low'].iloc[-1]
-    return body < (rng * 0.1) if rng > 0 else False
+from shared_indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji
 
 def calcular_zonas_sr(df, atr, lookback, zone_mult):
     """
@@ -251,7 +182,8 @@ def analizar_simbolo(simbolo, params):
 
         atr_len = params['atr_length']
         atr = calcular_atr(df, atr_len).iloc[-1]
-        adx = calcular_adx(df).iloc[-1]
+        adx, _, _ = calcular_adx(df)
+        adx = adx.iloc[-1]
 
         zrl, zrh, zsl, zsh = calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
         tol = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR

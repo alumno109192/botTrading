@@ -18,6 +18,10 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
+from telegram_utils import enviar_telegram as _enviar_telegram_base
+
+def enviar_telegram(mensaje):
+    return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
 
 db = None
 try:
@@ -75,58 +79,11 @@ alertas_enviadas = {}
 ultimo_analisis  = {}
 perdidas_consecutivas = 0
 
-# ══════════════════════════════════════
-# TELEGRAM
-# ══════════════════════════════════════
-def enviar_telegram(mensaje):
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
-        if TELEGRAM_THREAD_ID:
-            payload["message_thread_id"] = TELEGRAM_THREAD_ID
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code == 200:
-            print(f"✅ Telegram enviado → {r.status_code}")
-        else:
-            print(f"❌ Error Telegram → {r.status_code}")
-    except Exception as e:
-        print(f"❌ Error Telegram: {e}")
 
 # ══════════════════════════════════════
 # INDICADORES
 # ══════════════════════════════════════
-def calcular_rsi(series, length):
-    delta = series.diff()
-    gain  = delta.clip(lower=0)
-    loss  = -delta.clip(upper=0)
-    avg_g = gain.ewm(com=length - 1, min_periods=length).mean()
-    avg_l = loss.ewm(com=length - 1, min_periods=length).mean()
-    return 100 - (100 / (1 + avg_g / avg_l))
-
-def calcular_atr(df, length):
-    h = df['High']; l = df['Low']; c = df['Close']
-    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
-    return tr.rolling(length).mean()
-
-def calcular_adx(df, length=10):
-    h = df['High']; l = df['Low']
-    plus_dm  = h.diff().clip(lower=0)
-    minus_dm = (-l.diff()).clip(lower=0)
-    atr = calcular_atr(df, length)
-    plus_di  = 100 * (plus_dm.ewm(alpha=1/length, min_periods=length).mean() / atr.replace(0, np.nan))
-    minus_di = 100 * (minus_dm.ewm(alpha=1/length, min_periods=length).mean() / atr.replace(0, np.nan))
-    dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan))
-    return dx.ewm(alpha=1/length).mean()
-
-def patron_envolvente_bajista(df):
-    c1 = df.iloc[-2]; c2 = df.iloc[-1]
-    return (c1['Close'] > c1['Open'] and c2['Close'] < c2['Open'] and
-            c2['Close'] < c1['Open'] and c2['Open'] > c1['Close'])
-
-def patron_envolvente_alcista(df):
-    c1 = df.iloc[-2]; c2 = df.iloc[-1]
-    return (c1['Close'] < c1['Open'] and c2['Close'] > c2['Open'] and
-            c2['Close'] > c1['Open'] and c2['Open'] < c1['Close'])
+from shared_indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista
 
 # ══════════════════════════════════════
 # ANÁLISIS PRINCIPAL
@@ -146,7 +103,7 @@ def analizar(simbolo, params):
         ema_s = df['Close'].ewm(span=params['ema_slow_len'], adjust=False).mean()
         ema_t = df['Close'].ewm(span=params['ema_trend_len'], adjust=False).mean()
         atr   = calcular_atr(df, params['atr_length'])
-        adx   = calcular_adx(df, params['atr_length'])
+        adx, _, _   = calcular_adx(df, params['atr_length'])
 
         close   = float(df['Close'].iloc[-1])
         high    = float(df['High'].iloc[-1])

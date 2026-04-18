@@ -33,7 +33,7 @@ logger = logging.getLogger('bottrading')
 # yfinance comparte estado global interno; sin lock, close/high/low de un
 # símbolo puede aparecer en otro detector que corre simultáneamente.
 _yf_original_download = yf.download
-_yf_lock = threading.Lock()
+from yf_lock import _yf_lock  # lock compartido con signal_monitor
 
 def _safe_yf_download(*args, **kwargs):
     with _yf_lock:
@@ -421,7 +421,7 @@ def iniciar_detectores():
         try:
             hilo.start()
             print(f"  [{i}/{len(hilos)}] ✓ {hilo.name} iniciado")
-            time.sleep(1)  # Reducido a 1 segundo entre threads
+            time.sleep(2)  # Escalonar inicio para reducir contención en yfinance
         except Exception as e:
             print(f"  [{i}/{len(hilos)}] ✗ Error iniciando {hilo.name}: {e}")
     
@@ -454,17 +454,20 @@ def health():
 @app.route('/status')
 def status():
     """Estado detallado del sistema"""
+    token = request.headers.get('X-Cron-Token', '')
+    if not CRON_TOKEN or token != CRON_TOKEN:
+        return jsonify({'error': 'Unauthorized'}), 401
     return jsonify(estado_sistema)
 
 @app.route('/cron')
 def cron_ping():
     """Endpoint para CRON jobs - Mantiene el servicio activo y verifica threads"""
-    # Verificar token si está configurado
-    if CRON_TOKEN:
-        token = request.headers.get('X-Cron-Token', '')
-        if token != CRON_TOKEN:
-            return jsonify({'error': 'Unauthorized'}), 401
-            return jsonify({'error': 'Unauthorized'}), 401
+    # Verificar token (obligatorio — CRON_TOKEN debe estar configurado)
+    if not CRON_TOKEN:
+        return jsonify({'error': 'Unauthorized'}), 401
+    token = request.headers.get('X-Cron-Token', '')
+    if token != CRON_TOKEN:
+        return jsonify({'error': 'Unauthorized'}), 401
     ahora = datetime.now()
     estado_sistema['ultima_actividad_cron'] = ahora.isoformat()
     

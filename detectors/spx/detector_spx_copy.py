@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno
 load_dotenv()
+from telegram_utils import enviar_telegram
 
 # ══════════════════════════════════════
 # CONFIGURACIÓN
@@ -56,47 +57,11 @@ SIMBOLOS = {
 alertas_enviadas = {}
 ultimo_analisis = {}  # Guarda última fecha y scores analizados
 
-# ══════════════════════════════════════
-# TELEGRAM
-# ══════════════════════════════════════
-def enviar_telegram(mensaje):
-    try:
-        url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id":    TELEGRAM_CHAT_ID,
-            "text":       mensaje,
-            "parse_mode": "HTML"
-        }
-        r = requests.post(url, json=payload, timeout=10)
-        print(f"✅ Telegram enviado → {r.status_code}")
-    except Exception as e:
-        print(f"❌ Error Telegram: {e}")
 
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
 # ══════════════════════════════════════
-def calcular_rsi(series, length):
-    delta = series.diff()
-    gain  = delta.clip(lower=0)
-    loss  = -delta.clip(upper=0)
-    avg_g = gain.ewm(com=length - 1, min_periods=length).mean()
-    avg_l = loss.ewm(com=length - 1, min_periods=length).mean()
-    rs    = avg_g / avg_l
-    return 100 - (100 / (1 + rs))
-
-def calcular_ema(series, length):
-    return series.ewm(span=length, adjust=False).mean()
-
-def calcular_atr(df, length):
-    high       = df['High']
-    low        = df['Low']
-    close_prev = df['Close'].shift(1)
-    tr = pd.concat([
-        high - low,
-        (high - close_prev).abs(),
-        (low  - close_prev).abs()
-    ], axis=1).max(axis=1)
-    return tr.ewm(com=length - 1, min_periods=length).mean()
+from shared_indicators import calcular_rsi, calcular_ema, calcular_atr
 
 # ══════════════════════════════════════
 # ANÁLISIS DE SENTIMIENTO DEL MERCADO

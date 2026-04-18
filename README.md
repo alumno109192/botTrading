@@ -177,3 +177,59 @@ El servidor Flask escucha en `http://0.0.0.0:5000` con endpoint `/health` para k
 - `.env` en `.gitignore` — credenciales nunca se suben a GitHub
 - Tokens cargados exclusivamente desde variables de entorno
 - Queries a BD parametrizadas (sin concatenación de strings)
+
+
+
+🤖 Guía de Agentes IA (Python Architecture Team)
+Este repositorio utiliza agentes personalizados de GitHub Copilot para automatizar la auditoría, corrección y documentación del código.
+🛠️ Instrucciones de Instalación
+Para que los agentes funcionen, asegúrate de que los archivos .agent.md estén en la carpeta .github/agents/ de este repositorio.
+👥 El Equipo de Agentes
+1. 🏛️ @arquitecto (El Cerebro)
+Cuándo usarlo: Al inicio de una tarea o para revisar la salud global del proyecto.
+
+    Comando de una línea:
+
+        @arquitecto #codebase Realiza una auditoría técnica exhaustiva. Genera el REPORTE DENSO: errores críticos, deuda técnica y rendimiento. Formato ultra-esquemático.
+
+2. 🛡️ @seguridad (El Guardián)
+Cuándo usarlo: Antes de fusionar cualquier cambio (PR) o al tocar APIs y Base de Datos.
+
+    Comando de una línea:
+
+        @seguridad #codebase Escaneo de seguridad: busca inyecciones, secretos expuestos y dependencias vulnerables. Resumen crítico.
+
+3. 🛠️ @ejecutor (El Mecánico)
+Cuándo usarlo: Para aplicar las soluciones del arquitecto o la seguridad.
+
+    Comando de una línea:
+
+        @ejecutor #codebase Aplica estas correcciones del reporte: [Pega aquí el texto del reporte o selecciona el texto del chat]
+
+4. 🧪 @tester (El Verificador)
+Cuándo usarlo: Inmediatamente después de que el ejecutor termine su trabajo.
+
+    Comando de una línea:
+
+        @tester #codebase Genera tests con Pytest para los últimos cambios. Usa mocks para DB/APIs y cubre edge cases.
+
+5. 📝 @doc (El Escriba)
+Cuándo usarlo: Como paso final antes de hacer el commit.
+
+    Comando de una línea:
+
+        @doc Añade docstrings (Google Style) y Type Hints a las funciones modificadas. Actualiza el README si es necesario.
+
+⚡ Flujo de Trabajo Recomendado (Ahorro de Tokens)
+Para trabajar de la forma más barata y eficiente posible, sigue este orden en el chat de Copilot:
+
+    Auditar: @arquitecto #codebase auditoría rápida
+    Corregir: @ejecutor arregla el punto 1 y 2 del reporte anterior
+    Probar: @tester crea los tests para el fix anterior
+    Documentar: @doc añade docstrings al fix
+
+    [!IMPORTANT]
+    Usa Claude 3 Opus para el @arquitecto y el @seguridad si el problema es muy complejo. Para el resto de tareas de escritura de código, Claude 3.5 Sonnet es más eficiente.
+
+¿Cómo lo pongo en marcha?
+Simplemente abre el panel de chat de Copilot (Ctrl + Shift + i) y empieza escribiendo cualquiera de los comandos anteriores. No olvides incluir siempre #codebase cuando necesites que el agente vea archivos que no tienes abiertos.

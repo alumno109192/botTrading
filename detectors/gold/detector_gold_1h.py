@@ -16,6 +16,10 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
+from telegram_utils import enviar_telegram as _enviar_telegram_base
+
+def enviar_telegram(mensaje):
+    return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
 
 db = None
 try:
@@ -68,90 +72,12 @@ SIMBOLOS = {
 alertas_enviadas = {}
 ultimo_analisis  = {}
 
-def enviar_telegram(mensaje):
-    """Envía mensaje a Telegram con 3 reintentos y backoff exponencial."""
-    url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
-    if TELEGRAM_THREAD_ID:
-        payload["message_thread_id"] = TELEGRAM_THREAD_ID
-    for intento in range(1, 4):
-        try:
-            r = requests.post(url, json=payload, timeout=10)
-            if r.status_code == 200:
-                print(f"✅ Telegram enviado (intento {intento})")
-                return True
-            else:
-                print(f"❌ Telegram intento {intento} → HTTP {r.status_code}: {r.text[:80]}")
-        except Exception as e:
-            print(f"❌ Telegram intento {intento} → excepción: {e}")
-        if intento < 3:
-            time.sleep(2 ** intento)
-    print("❌ Telegram: falló tras 3 intentos")
-    return False
 
-def calcular_rsi(series, length):
-    delta = series.diff(); gain = delta.clip(lower=0); loss = -delta.clip(upper=0)
-    avg_g = gain.ewm(com=length - 1, min_periods=length).mean()
-    avg_l = loss.ewm(com=length - 1, min_periods=length).mean()
-    return 100 - (100 / (1 + avg_g / avg_l))
-
-def calcular_ema(series, length):
-    return series.ewm(span=length, adjust=False).mean()
-
-def calcular_atr(df, length):
-    high = df['High']; low = df['Low']; close_prev = df['Close'].shift(1)
-    tr = pd.concat([high - low, (high - close_prev).abs(), (low - close_prev).abs()], axis=1).max(axis=1)
-    return tr.ewm(com=length - 1, min_periods=length).mean()
-
-def calcular_bollinger_bands(series, length=20, std_dev=2):
-    bb_mid   = series.rolling(window=length).mean()
-    std      = series.rolling(window=length).std()
-    bb_upper = bb_mid + (std * std_dev)
-    bb_lower = bb_mid - (std * std_dev)
-    return bb_upper, bb_mid, bb_lower, (bb_upper - bb_lower) / bb_mid
-
-def calcular_macd(series, fast=12, slow=26, signal=9):
-    ema_fast    = series.ewm(span=fast,   adjust=False).mean()
-    ema_slow    = series.ewm(span=slow,   adjust=False).mean()
-    macd_line   = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    return macd_line, signal_line, macd_line - signal_line
-
-def calcular_obv(df):
-    """On-Balance Volume (vectorizado)."""
-    direction = np.sign(df['Close'].diff()).fillna(0)
-    return (direction * df['Volume']).cumsum()
-
-def calcular_adx(df, length=14):
-    high = df['High']; low = df['Low']; close = df['Close']
-    tr        = pd.concat([high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1).max(axis=1)
-    up_move   = high - high.shift(1)
-    down_move = low.shift(1) - low
-    plus_dm   = pd.Series(0.0, index=df.index)
-    minus_dm  = pd.Series(0.0, index=df.index)
-    plus_dm[(up_move > down_move) & (up_move > 0)]     = up_move
-    minus_dm[(down_move > up_move) & (down_move > 0)]  = down_move
-    atr      = tr.ewm(com=length - 1, min_periods=length).mean()
-    plus_di  = 100 * (plus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
-    minus_di = 100 * (minus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
-    dx       = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
-    return dx.ewm(com=length - 1, min_periods=length).mean(), plus_di, minus_di
-
-def detectar_evening_star(df, idx):
-    if idx < 2: return False
-    v1, v2, v3 = df.iloc[idx-2], df.iloc[idx-1], df.iloc[idx]
-    return (v1['Close'] > v1['Open'] and abs(v1['Close']-v1['Open']) > (v1['High']-v1['Low'])*0.6 and
-            abs(v2['Close']-v2['Open']) < (v2['High']-v2['Low'])*0.3 and v2['Open'] > v1['Close'] and
-            v3['Close'] < v3['Open'] and abs(v3['Close']-v3['Open']) > (v3['High']-v3['Low'])*0.6 and
-            v3['Close'] < (v1['Open']+v1['Close'])/2)
-
-def detectar_morning_star(df, idx):
-    if idx < 2: return False
-    v1, v2, v3 = df.iloc[idx-2], df.iloc[idx-1], df.iloc[idx]
-    return (v1['Close'] < v1['Open'] and abs(v1['Close']-v1['Open']) > (v1['High']-v1['Low'])*0.6 and
-            abs(v2['Close']-v2['Open']) < (v2['High']-v2['Low'])*0.3 and v2['Open'] < v1['Close'] and
-            v3['Close'] > v3['Open'] and abs(v3['Close']-v3['Open']) > (v3['High']-v3['Low'])*0.6 and
-            v3['Close'] > (v1['Open']+v1['Close'])/2)
+from shared_indicators import (
+    calcular_rsi, calcular_ema, calcular_atr,
+    calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
+    detectar_evening_star, detectar_morning_star,
+)
 
 def en_sesion_activa():
     """Solo operar en sesión London/NY: 07:00-17:00 UTC."""
@@ -412,8 +338,46 @@ def analizar(simbolo, params):
     def ya_enviada(tipo): return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800
     def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
 
+    # ── FILTRO R:R MÍNIMO 1.2 (evaluar ANTES de cualquier señal) ──
+    rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
+    rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
+    cancelar_sell_rr = rr_sell_tp1 < 1.2
+    cancelar_buy_rr  = rr_buy_tp1 < 1.2
+    if cancelar_sell_rr:
+        print(f"  ⛔ SELL bloqueada: R:R TP1 = {rr_sell_tp1}:1 < 1.2 mínimo")
+    if cancelar_buy_rr:
+        print(f"  ⛔ BUY bloqueada: R:R TP1 = {rr_buy_tp1}:1 < 1.2 mínimo")
+
+    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
+    if senal_sell_alerta and senal_buy_alerta:
+        if score_sell >= score_buy:
+            senal_buy_alerta = False
+            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+        else:
+            senal_sell_alerta = False
+            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+
+    # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 1H) ──
+    _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
+    tf_bias.publicar_sesgo(simbolo, '1H', _sesgo_dir, max(score_sell, score_buy))
+    _conf_sell = ""; _conf_buy = ""
+    if senal_sell_fuerte:
+        _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BEARISH)
+        if not _ok:
+            print(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
+            senal_sell_maxima = senal_sell_fuerte = False
+        else:
+            _conf_sell = _desc
+    if senal_buy_fuerte:
+        _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BULLISH)
+        if not _ok:
+            print(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
+            senal_buy_maxima = senal_buy_fuerte = False
+        else:
+            _conf_buy = _desc
+
     # ── ALERTAS DE APROXIMACIÓN → SEÑAL ACCIONABLE (pon la orden limit ahora) ──
-    if aproximando_resist and not en_zona_resist and not cancelar_sell and not ya_enviada('PREP_SELL'):
+    if aproximando_resist and not en_zona_resist and not cancelar_sell and not cancelar_sell_rr and senal_sell_alerta and not ya_enviada('PREP_SELL'):
         nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
               "🔴 SELL FUERTE" if senal_sell_fuerte else
               "⚡ SELL MEDIA"  if senal_sell_media  else
@@ -446,7 +410,7 @@ def analizar(simbolo, params):
                 print(f"  ⚠️ Error BD: {e}")
         enviar_telegram(msg); marcar_enviada('PREP_SELL')
 
-    if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not ya_enviada('PREP_BUY'):
+    if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not cancelar_buy_rr and senal_buy_alerta and not ya_enviada('PREP_BUY'):
         nv = ("🔥 BUY MÁXIMA" if senal_buy_maxima else
               "🟢 BUY FUERTE" if senal_buy_fuerte else
               "⚡ BUY MEDIA"  if senal_buy_media  else
@@ -479,40 +443,6 @@ def analizar(simbolo, params):
                 print(f"  ⚠️ Error BD: {e}")
         enviar_telegram(msg); marcar_enviada('PREP_BUY')
 
-    # ── FILTRO R:R MÍNIMO 1.2 ────────────────────────────────
-    rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
-    rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
-    if rr_sell_tp1 < 1.2:
-        print(f"  ⛔ SELL bloqueada: R:R TP1 = {rr_sell_tp1}:1 < 1.2 mínimo")
-    if rr_buy_tp1 < 1.2:
-        print(f"  ⛔ BUY bloqueada: R:R TP1 = {rr_buy_tp1}:1 < 1.2 mínimo")
-    # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
-    if senal_sell_alerta and senal_buy_alerta:
-        if score_sell >= score_buy:
-            senal_buy_alerta = False
-            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
-        else:
-            senal_sell_alerta = False
-            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
-
-    # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 1H) ──
-    _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
-    tf_bias.publicar_sesgo(simbolo, '1H', _sesgo_dir, max(score_sell, score_buy))
-    _conf_sell = ""; _conf_buy = ""
-    if senal_sell_fuerte:
-        _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BEARISH)
-        if not _ok:
-            print(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
-            senal_sell_maxima = senal_sell_fuerte = False
-        else:
-            _conf_sell = _desc
-    if senal_buy_fuerte:
-        _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BULLISH)
-        if not _ok:
-            print(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
-            senal_buy_maxima = senal_buy_fuerte = False
-        else:
-            _conf_buy = _desc
     # ── SEÑALES SELL (en zona) — confirmación si ya hubo señal accionable ──
     if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
         if ya_enviada('PREP_SELL') and not (senal_sell_fuerte or senal_sell_maxima):

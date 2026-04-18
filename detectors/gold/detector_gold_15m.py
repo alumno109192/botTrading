@@ -22,6 +22,10 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno
 load_dotenv()
+from telegram_utils import enviar_telegram as _enviar_telegram_base
+
+def enviar_telegram(mensaje):
+    return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
 
 # Inicializar base de datos solo si las variables están configuradas
 db = None
@@ -88,93 +92,11 @@ ultimo_analisis = {}
 perdidas_consecutivas = 0
 ultima_senal_timestamp = None
 
-# ══════════════════════════════════════
-# TELEGRAM
-# ══════════════════════════════════════
-def enviar_telegram(mensaje):
-    """Envía mensaje a Telegram con 3 reintentos y backoff exponencial."""
-    url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
-    if TELEGRAM_THREAD_ID:
-        payload["message_thread_id"] = TELEGRAM_THREAD_ID
-    for intento in range(1, 4):
-        try:
-            r = requests.post(url, json=payload, timeout=10)
-            if r.status_code == 200:
-                print(f"✅ Telegram enviado (intento {intento})")
-                return True
-            else:
-                print(f"❌ Telegram intento {intento} → HTTP {r.status_code}: {r.text[:80]}")
-        except Exception as e:
-            print(f"❌ Telegram intento {intento} → excepción: {e}")
-        if intento < 3:
-            time.sleep(2 ** intento)
-    print("❌ Telegram: falló tras 3 intentos")
-    return False
 
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
 # ══════════════════════════════════════
-def calcular_rsi(series, length):
-    delta = series.diff()
-    gain  = delta.clip(lower=0)
-    loss  = -delta.clip(upper=0)
-    avg_g = gain.ewm(com=length - 1, min_periods=length).mean()
-    avg_l = loss.ewm(com=length - 1, min_periods=length).mean()
-    rs    = avg_g / avg_l
-    rsi   = 100 - (100 / (1 + rs))
-    return rsi
-
-def calcular_atr(df, length):
-    h = df['High']
-    l = df['Low']
-    c = df['Close']
-    tr1 = h - l
-    tr2 = (h - c.shift()).abs()
-    tr3 = (l - c.shift()).abs()
-    tr  = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.rolling(length).mean()
-    return atr
-
-def calcular_adx(df, length=14):
-    h = df['High']
-    l = df['Low']
-    c = df['Close']
-    
-    plus_dm  = h.diff()
-    minus_dm = -l.diff()
-    plus_dm[plus_dm < 0]   = 0
-    minus_dm[minus_dm < 0] = 0
-    
-    tr = calcular_atr(df, 1) * length
-    plus_di  = 100 * (plus_dm.ewm(alpha=1/length).mean() / tr)
-    minus_di = 100 * (minus_dm.ewm(alpha=1/length).mean() / tr)
-    
-    dx  = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
-    adx = dx.ewm(alpha=1/length).mean()
-    return adx
-
-def patron_envolvente_alcista(df):
-    """Patrón envolvente alcista (bullish engulfing)"""
-    c1_bear = df['Close'].iloc[-2] < df['Open'].iloc[-2]
-    c2_bull = df['Close'].iloc[-1] > df['Open'].iloc[-1]
-    c2_envuelve = (df['Close'].iloc[-1] > df['Open'].iloc[-2] and 
-                   df['Open'].iloc[-1] < df['Close'].iloc[-2])
-    return c1_bear and c2_bull and c2_envuelve
-
-def patron_envolvente_bajista(df):
-    """Patrón envolvente bajista (bearish engulfing)"""
-    c1_bull = df['Close'].iloc[-2] > df['Open'].iloc[-2]
-    c2_bear = df['Close'].iloc[-1] < df['Open'].iloc[-1]
-    c2_envuelve = (df['Close'].iloc[-1] < df['Open'].iloc[-2] and 
-                   df['Open'].iloc[-1] > df['Close'].iloc[-2])
-    return c1_bull and c2_bear and c2_envuelve
-
-def patron_doji(df):
-    """Detectar vela Doji (indecisión)"""
-    body = abs(df['Close'].iloc[-1] - df['Open'].iloc[-1])
-    range_vela = df['High'].iloc[-1] - df['Low'].iloc[-1]
-    return body < (range_vela * 0.1) if range_vela > 0 else False
+from shared_indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji
 
 # ══════════════════════════════════════
 # ANÁLISIS PRICE ACTION SCALPING
@@ -293,7 +215,8 @@ def analizar_simbolo(simbolo, params):
         atr_len = params['atr_length']
         atr = calcular_atr(df, atr_len).iloc[-1]
         
-        adx = calcular_adx(df).iloc[-1]
+        adx, _, _ = calcular_adx(df)
+        adx = adx.iloc[-1]
         
         # Parámetros de zonas (calculados automáticamente)
         zrl, zrh, zsl, zsh = calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])

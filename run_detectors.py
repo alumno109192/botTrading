@@ -6,19 +6,17 @@ Incluye signal_monitor.py para tracking de señales
 
 import threading
 import time
-import os
 import sys
 from datetime import datetime
 
-# Importar los módulos de los detectores
-import detector_gold
-import detector_spx_copy
-import detector_bitcoin
+# Importar los módulos de los detectores (desde paquete detectors/)
+from detectors.gold import detector_gold_1d as detector_gold
+from detectors.spx import detector_spx_1d as detector_spx_copy
+from detectors.bitcoin import detector_bitcoin_1d as detector_bitcoin
 import signal_monitor
 
 # Importar detector de scalping 15m
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'detectors', 'gold'))
-import detector_gold_15m
+from detectors.gold import detector_gold_15m
 
 def ejecutar_detector(nombre, modulo):
     """Ejecuta un detector en un bucle de reintentos (sin recursión)."""
@@ -70,7 +68,7 @@ def main():
     # Hilo para detector de Oro
     hilo_gold = threading.Thread(
         target=ejecutar_detector,
-        args=("DETECTOR GOLD (XAUUSD)", detector_gold_copy),
+        args=("DETECTOR GOLD (XAUUSD)", detector_gold),
         name="DetectorGold",
         daemon=True
     )

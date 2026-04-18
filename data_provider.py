@@ -19,6 +19,7 @@ Obtener claves Twelve Data gratuitas (2 cuentas = 1600 req/día):
         TWELVE_DATA_API_KEY_2=clave_cuenta_2  ← opcional, backup automático
 """
 import os
+import threading
 import yfinance as yf
 import pandas as pd
 import requests
@@ -45,6 +46,11 @@ _TICKER_MAP_POLYGON = {
 
 # Intervalos soportados por fuentes externas (solo intraday merece el cambio)
 _INTRADAY_INTERVALS = {'1m', '5m', '15m', '30m', '1h'}
+
+# ── Cache para datos diarios (1d) — evita re-descargar 730 filas cada 10 min ──
+_daily_cache: dict = {}   # key = (ticker, period) → {'df': DataFrame, 'ts': datetime}
+_daily_cache_lock = threading.Lock()
+_DAILY_TTL = timedelta(hours=4)  # Re-descargar cada 4h (suficiente para velas diarias)
 
 
 def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
@@ -89,6 +95,15 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             print(f"  ⚠️ [data_provider] Polygon.io falló — usando yfinance (delay 15m)")
 
     # ── Fallback: yfinance ──
+    # Para datos diarios: usar cache con TTL para evitar descargas innecesarias
+    if interval == '1d':
+        cache_key = (ticker_yf, period)
+        with _daily_cache_lock:
+            cached = _daily_cache.get(cache_key)
+            if cached and (datetime.now(timezone.utc) - cached['ts']) < _DAILY_TTL:
+                print(f"  💾 [data_provider] Cache 1d hit — {ticker_yf} ({len(cached['df'])} velas)")
+                return cached['df'].copy(), True
+
     df = yf.download(ticker_yf, period=period, interval=interval, progress=False)
 
     if isinstance(df.columns, pd.MultiIndex):
@@ -101,6 +116,11 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
             elif len(df.columns) == 6:
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+
+        # Guardar en cache si es 1d
+        if interval == '1d':
+            with _daily_cache_lock:
+                _daily_cache[(ticker_yf, period)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc)}
 
     return df, True
 
@@ -159,6 +179,7 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str) -
         df = pd.DataFrame(values)
         df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
         df = df.set_index('datetime').sort_index()
+        df.columns = df.columns.str.lower()  # normalizar case antes de rename
         df = df.rename(columns={
             'open': 'Open', 'high': 'High', 'low': 'Low',
             'close': 'Close', 'volume': 'Volume'
@@ -166,9 +187,9 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str) -
         cols = [c for c in ['Open', 'High', 'Low', 'Close', 'Volume'] if c in df.columns]
         df = df[cols].astype(float)
 
-        # Twelve Data para XAU/USD puede no incluir Volume — añadir ceros
+        # Twelve Data para XAU/USD puede no incluir Volume — usar 1.0 como neutro
         if 'Volume' not in df.columns:
-            df['Volume'] = 0.0
+            df['Volume'] = 1.0
 
         return df, True
 

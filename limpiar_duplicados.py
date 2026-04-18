@@ -48,7 +48,7 @@ def limpiar_duplicados():
             dup_id = int(dup_row['id'])
             # Cancelar el duplicado
             db.ejecutar_query(
-                "UPDATE senales SET estado = 'CANCELADA', beneficio_pct = 0 WHERE id = ?",
+                "UPDATE senales SET estado = 'CANCELADA', beneficio_final_pct = 0 WHERE id = ?",
                 (dup_id,)
             )
             print(f"  🗑️  Cancelada señal duplicada ID {dup_id}")

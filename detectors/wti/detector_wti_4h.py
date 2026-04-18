@@ -12,6 +12,10 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
+from telegram_utils import enviar_telegram as _enviar_telegram_base
+
+def enviar_telegram(mensaje):
+    return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
 
 db = None
 try:
@@ -62,82 +66,10 @@ SIMBOLOS = {
 alertas_enviadas = {}
 ultimo_analisis  = {}
 
-def enviar_telegram(mensaje):
-    try:
-        url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
-        if TELEGRAM_THREAD_ID:
-            payload["message_thread_id"] = TELEGRAM_THREAD_ID
-        r = requests.post(url, json=payload, timeout=10)
-        if r.status_code == 200:
-            print(f"✅ Telegram enviado → {r.status_code}")
-        else:
-            print(f"❌ Error Telegram → Status {r.status_code}")
-    except Exception as e:
-        print(f"❌ Error Telegram (excepción): {e}")
 
-def calcular_rsi(series, length):
-    delta = series.diff(); gain = delta.clip(lower=0); loss = -delta.clip(upper=0)
-    avg_g = gain.ewm(com=length - 1, min_periods=length).mean()
-    avg_l = loss.ewm(com=length - 1, min_periods=length).mean()
-    return 100 - (100 / (1 + avg_g / avg_l))
-
-def calcular_ema(series, length):
-    return series.ewm(span=length, adjust=False).mean()
-
-def calcular_atr(df, length):
-    high = df['High']; low = df['Low']; close_prev = df['Close'].shift(1)
-    tr = pd.concat([high - low, (high - close_prev).abs(), (low - close_prev).abs()], axis=1).max(axis=1)
-    return tr.ewm(com=length - 1, min_periods=length).mean()
-
-def calcular_bollinger_bands(series, length=40, std_dev=2):
-    bb_mid = series.rolling(window=length).mean(); std = series.rolling(window=length).std()
-    bb_upper = bb_mid + (std * std_dev); bb_lower = bb_mid - (std * std_dev)
-    return bb_upper, bb_mid, bb_lower, (bb_upper - bb_lower) / bb_mid
-
-def calcular_macd(series, fast=24, slow=52, signal=18):
-    ema_fast = series.ewm(span=fast, adjust=False).mean()
-    ema_slow = series.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    return macd_line, signal_line, macd_line - signal_line
-
-def calcular_obv(df):
-    obv = pd.Series(index=df.index, dtype=float); obv.iloc[0] = df['Volume'].iloc[0]
-    for i in range(1, len(df)):
-        if df['Close'].iloc[i] > df['Close'].iloc[i-1]: obv.iloc[i] = obv.iloc[i-1] + df['Volume'].iloc[i]
-        elif df['Close'].iloc[i] < df['Close'].iloc[i-1]: obv.iloc[i] = obv.iloc[i-1] - df['Volume'].iloc[i]
-        else: obv.iloc[i] = obv.iloc[i-1]
-    return obv
-
-def calcular_adx(df, length=28):
-    high = df['High']; low = df['Low']; close = df['Close']
-    tr = pd.concat([high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()], axis=1).max(axis=1)
-    up_move = high - high.shift(1); down_move = low.shift(1) - low
-    plus_dm = pd.Series(0.0, index=df.index); minus_dm = pd.Series(0.0, index=df.index)
-    plus_dm[(up_move > down_move) & (up_move > 0)] = up_move
-    minus_dm[(down_move > up_move) & (down_move > 0)] = down_move
-    atr = tr.ewm(com=length - 1, min_periods=length).mean()
-    plus_di = 100 * (plus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
-    minus_di = 100 * (minus_dm.ewm(com=length - 1, min_periods=length).mean() / atr)
-    dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
-    return dx.ewm(com=length - 1, min_periods=length).mean(), plus_di, minus_di
-
-def detectar_evening_star(df, idx):
-    if idx < 2: return False
-    v1, v2, v3 = df.iloc[idx-2], df.iloc[idx-1], df.iloc[idx]
-    return (v1['Close'] > v1['Open'] and abs(v1['Close']-v1['Open']) > (v1['High']-v1['Low'])*0.6 and
-            abs(v2['Close']-v2['Open']) < (v2['High']-v2['Low'])*0.3 and v2['Open'] > v1['Close'] and
-            v3['Close'] < v3['Open'] and abs(v3['Close']-v3['Open']) > (v3['High']-v3['Low'])*0.6 and
-            v3['Close'] < (v1['Open']+v1['Close'])/2)
-
-def detectar_morning_star(df, idx):
-    if idx < 2: return False
-    v1, v2, v3 = df.iloc[idx-2], df.iloc[idx-1], df.iloc[idx]
-    return (v1['Close'] < v1['Open'] and abs(v1['Close']-v1['Open']) > (v1['High']-v1['Low'])*0.6 and
-            abs(v2['Close']-v2['Open']) < (v2['High']-v2['Low'])*0.3 and v2['Open'] < v1['Close'] and
-            v3['Close'] > v3['Open'] and abs(v3['Close']-v3['Open']) > (v3['High']-v3['Low'])*0.6 and
-            v3['Close'] > (v1['Open']+v1['Close'])/2)
+from shared_indicators import (calcular_rsi, calcular_ema, calcular_atr,
+    calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
+    detectar_evening_star, detectar_morning_star)
 
 def analizar(simbolo, params):
     simbolo_db = f"{simbolo}_4H"
