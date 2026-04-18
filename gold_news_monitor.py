@@ -25,7 +25,10 @@ import re
 import sys
 import time
 import requests
-import xml.etree.ElementTree as ET
+try:
+    import defusedxml.ElementTree as ET
+except ImportError:
+    import xml.etree.ElementTree as ET
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -36,7 +39,10 @@ load_dotenv()
 # ══════════════════════════════════════
 TELEGRAM_TOKEN     = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID')
-TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_SWING') or 0) or None
+try:
+    TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_SWING') or 0) or None
+except (ValueError, TypeError):
+    TELEGRAM_THREAD_ID = None
 
 CHECK_INTERVAL  = 4 * 60 * 60   # segundos entre envíos periódicos (4h)
 FETCH_INTERVAL  = 30 * 60       # segundos entre ciclos de fetch (30 min)

@@ -208,7 +208,7 @@ class StatsDashboard:
         """Analiza a qué horas del día salen mejores señales"""
         query = """
         SELECT 
-            strftime('%H', timestamp) as hora,
+            substr(timestamp, 12, 2) as hora,
             COUNT(*) as total_senales,
             SUM(CASE WHEN estado IN ('TP1','TP2','TP3') THEN 1 ELSE 0 END) as wins,
             AVG(CASE WHEN beneficio_final_pct IS NOT NULL 

@@ -256,8 +256,8 @@ def analizar(simbolo, params):
               f"RSI:{round(rsi_v, 1)} ATR:{pips(atr_v)}pip")
 
         clave_vela = f"{simbolo}_{fecha}"
-        def ya_enviada(tipo):    return alertas_enviadas.get(f"{clave_vela}_{tipo}", False)
-        def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = True
+        def ya_enviada(tipo):    return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800
+        def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
 
         # R:R mínimo 1.2
         if rr_sell_tp1 < 1.2: cancelar_sell = True

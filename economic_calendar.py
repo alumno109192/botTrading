@@ -91,6 +91,16 @@ def hay_evento_impacto(ventana_minutos: int = 60) -> tuple:
         except Exception:
             continue
 
+    # Advertir si el calendario ha caducado (ningún evento futuro)
+    ahora_check = datetime.now(timezone.utc)
+    ultimo_evento = max(
+        (datetime(a, m, d, h, mi, tzinfo=timezone.utc)
+         for (a, m, d, h, mi, _) in EVENTOS_ALTO_IMPACTO),
+        default=None
+    )
+    if ultimo_evento and ahora_check > ultimo_evento:
+        print("⚠️  [CALENDAR] Calendario de eventos EXPIRADO — actualizar EVENTOS_ALTO_IMPACTO en economic_calendar.py")
+
     return False, ""
 
 

@@ -461,8 +461,9 @@ def cron_ping():
     """Endpoint para CRON jobs - Mantiene el servicio activo y verifica threads"""
     # Verificar token si está configurado
     if CRON_TOKEN:
-        token = request.headers.get('X-Cron-Token') or request.args.get('token', '')
+        token = request.headers.get('X-Cron-Token', '')
         if token != CRON_TOKEN:
+            return jsonify({'error': 'Unauthorized'}), 401
             return jsonify({'error': 'Unauthorized'}), 401
     ahora = datetime.now()
     estado_sistema['ultima_actividad_cron'] = ahora.isoformat()

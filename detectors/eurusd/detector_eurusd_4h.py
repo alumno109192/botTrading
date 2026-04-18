@@ -395,8 +395,8 @@ def analizar(simbolo, params):
     print(f"  📅 {fecha} | Close: {close:.4f} | SELL: {score_sell}/21 | BUY: {score_buy}/21")
 
     clave_vela = f"{simbolo_db}_{fecha}"
-    def ya_enviada(tipo): return alertas_enviadas.get(f"{clave_vela}_{tipo}", False)
-    def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = True
+    def ya_enviada(tipo): return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800
+    def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
     def fmt(v): return f"{v:.4f}"
 
     # ── FILTRO PROXIMIDAD: solo operar cerca de zona ──

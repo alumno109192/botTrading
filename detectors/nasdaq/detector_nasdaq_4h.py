@@ -553,10 +553,14 @@ def analizar(simbolo, params):
     clave_vela = f"{simbolo_db}_{fecha}"
 
     def ya_enviada(tipo):
-        return alertas_enviadas.get(f"{clave_vela}_{tipo}", False)
+        return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800  # 48h TTL
 
     def marcar_enviada(tipo):
-        alertas_enviadas[f"{clave_vela}_{tipo}"] = True
+        alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
+        if len(alertas_enviadas) > 500:
+            _c = time.time() - 172800
+            for _k in [k for k in list(alertas_enviadas) if alertas_enviadas[k] < _c]:
+                del alertas_enviadas[_k]
 
     def fmt(v):
         return f"{round(v, 0):,.0f}"

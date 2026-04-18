@@ -5,6 +5,7 @@ Maneja todas las operaciones CRUD para señales, historial de precios y estadís
 
 import os
 import json
+import threading
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
@@ -42,6 +43,8 @@ class DatabaseManager:
         }
         
         print("✅ Conexión a Turso establecida correctamente")
+        # Lock para atomicidad INSERT + last_insert_rowid
+        self._insert_lock = threading.Lock()
     
     def _convert_param(self, param):
         """Convierte un parámetro al formato que espera Turso"""
@@ -52,7 +55,7 @@ class DatabaseManager:
         elif isinstance(param, int):
             return {"type": "integer", "value": str(param)}
         elif isinstance(param, float):
-            return {"type": "float", "value": param}
+            return {"type": "float", "value": str(param)}
         else:
             return {"type": "text", "value": str(param)}
     
@@ -135,21 +138,44 @@ class DatabaseManager:
             raise
     
     def ejecutar_insert(self, query: str, params: tuple = ()) -> int:
-        """Ejecuta un INSERT y retorna el ID insertado"""
-        try:
-            # Ejecutar el INSERT
-            self.ejecutar_query(query, params)
-            
-            # Obtener el último ID insertado
-            result = self.ejecutar_query("SELECT last_insert_rowid() as id")
-            
-            if result.rows and len(result.rows) > 0:
-                return result.rows[0]['id']
-            return None
-            
-        except Exception as e:
-            print(f"❌ Error en INSERT: {e}")
-            raise
+        """Ejecuta un INSERT y retorna el ID insertado (atómico via lock)"""
+        with self._insert_lock:
+            try:
+                # INSERT + last_insert_rowid() en el mismo pipeline para atomicidad
+                converted_params = [self._convert_param(p) for p in params] if params else []
+                payload = {
+                    'requests': [
+                        {
+                            'type': 'execute',
+                            'stmt': {'sql': query, 'args': converted_params}
+                        },
+                        {
+                            'type': 'execute',
+                            'stmt': {'sql': 'SELECT last_insert_rowid() as id', 'args': []}
+                        }
+                    ]
+                }
+                response = requests.post(
+                    f'{self.api_url}/v2/pipeline',
+                    headers=self.headers,
+                    json=payload,
+                    timeout=30
+                )
+                if response.status_code != 200:
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+                data = response.json()
+                if data and 'results' in data and len(data['results']) >= 2:
+                    result_data = data['results'][1].get('response', {}).get('result', {})
+                    rows = result_data.get('rows', [])
+                    if rows:
+                        cell = rows[0][0]
+                        if isinstance(cell, dict):
+                            return int(cell.get('value', 0))
+                        return int(cell) if cell is not None else None
+                return None
+            except Exception as e:
+                print(f"❌ Error en INSERT: {e}")
+                raise
     
     # ═══════════════════════════════════════════════════════════
     # OPERACIONES DE SEÑALES

@@ -127,13 +127,22 @@ def calcular_atr(df, length):
 
 def calcular_adx(df, length=14):
     h, l, c = df['High'], df['Low'], df['Close']
+    # True Range
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    # Wilder smoothing (ATR)
+    atr = tr.ewm(alpha=1/length, min_periods=length, adjust=False).mean()
+    # Directional Movement
     plus_dm  = h.diff().clip(lower=0)
     minus_dm = (-l.diff()).clip(lower=0)
-    tr = calcular_atr(df, 1) * length
-    plus_di  = 100 * (plus_dm.ewm(alpha=1/length).mean() / tr)
-    minus_di = 100 * (minus_dm.ewm(alpha=1/length).mean() / tr)
-    dx  = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di))
-    return dx.ewm(alpha=1/length).mean()
+    # Where both +DM and -DM are positive, keep only the larger
+    cond = plus_dm > minus_dm
+    plus_dm  = plus_dm.where(cond, 0)
+    minus_dm = minus_dm.where(~cond, 0)
+    # Smoothed DM
+    plus_di  = 100 * (plus_dm.ewm(alpha=1/length, min_periods=length, adjust=False).mean() / atr)
+    minus_di = 100 * (minus_dm.ewm(alpha=1/length, min_periods=length, adjust=False).mean() / atr)
+    dx  = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, float('nan')))
+    return dx.ewm(alpha=1/length, min_periods=length, adjust=False).mean()
 
 def patron_envolvente_alcista(df):
     c1_bear = df['Close'].iloc[-2] < df['Open'].iloc[-2]
@@ -370,10 +379,14 @@ def analizar_simbolo(simbolo, params):
         clave_vela = f"{simbolo}_{fecha}"
 
         def ya_enviada(tipo):
-            return alertas_enviadas.get(f"{clave_vela}_{tipo}", False)
+            return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800  # 48h TTL
 
         def marcar_enviada(tipo):
-            alertas_enviadas[f"{clave_vela}_{tipo}"] = True
+            alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
+            if len(alertas_enviadas) > 500:
+                _c = time.time() - 172800
+                for _k in [k for k in list(alertas_enviadas) if alertas_enviadas[k] < _c]:
+                    del alertas_enviadas[_k]
 
         # ── EXCLUSIÓN MUTUA ──
         if senal_sell_fuerte and senal_buy_fuerte:
@@ -497,6 +510,7 @@ def analizar_simbolo(simbolo, params):
 # ══════════════════════════════════════
 def main():
     """Función principal para ejecutar el detector"""
+    global perdidas_consecutivas
     enviar_telegram("🚀 <b>Detector GOLD 5M MICRO-SCALP iniciado</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "⏱️  Análisis cada 1 minuto\n"

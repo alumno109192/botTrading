@@ -15,10 +15,12 @@ Uso:
 """
 import yfinance as yf
 import pandas as pd
+import threading
 from datetime import datetime, timezone, timedelta
 
 # ── Cache en memoria (se reinicia al reiniciar el proceso) ──
 _cache: dict = {'bias': None, 'timestamp': None}
+_cache_lock = threading.Lock()
 _CACHE_TTL_MINUTES = 30
 
 
@@ -37,10 +39,11 @@ def get_dxy_bias() -> str | None:
     global _cache
 
     ahora = datetime.now(timezone.utc)
-    if (_cache['bias'] is not None
-            and _cache['timestamp'] is not None
-            and (ahora - _cache['timestamp']) < timedelta(minutes=_CACHE_TTL_MINUTES)):
-        return _cache['bias']
+    with _cache_lock:
+        if (_cache['bias'] is not None
+                and _cache['timestamp'] is not None
+                and (ahora - _cache['timestamp']) < timedelta(minutes=_CACHE_TTL_MINUTES)):
+            return _cache['bias']
 
     try:
         dxy = yf.download("DX-Y.NYB", period="10d", interval="1h", progress=False)
@@ -73,8 +76,9 @@ def get_dxy_bias() -> str | None:
         print(f"  💵 DXY: {emoji} {bias}  "
               f"(precio={precio_actual:.3f}, EMA9={ema9_actual:.3f}, EMA21={ema21_actual:.3f})")
 
-        _cache['bias']      = bias
-        _cache['timestamp'] = ahora
+        with _cache_lock:
+            _cache['bias']      = bias
+            _cache['timestamp'] = ahora
         return bias
 
     except Exception as e:

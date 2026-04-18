@@ -409,8 +409,8 @@ def analizar(simbolo, params):
 
     clave_vela = f"{simbolo}_1H_{fecha}"
 
-    def ya_enviada(tipo): return alertas_enviadas.get(f"{clave_vela}_{tipo}", False)
-    def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = True
+    def ya_enviada(tipo): return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800
+    def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
 
     # ── ALERTAS DE APROXIMACIÓN → SEÑAL ACCIONABLE (pon la orden limit ahora) ──
     if aproximando_resist and not en_zona_resist and not cancelar_sell and not ya_enviada('PREP_SELL'):

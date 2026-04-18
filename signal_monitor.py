@@ -21,9 +21,17 @@ load_dotenv()
 # Configuración de Telegram
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
-THREAD_ID_SWING     = os.environ.get('THREAD_ID_SWING')      # 1D / 4H
-THREAD_ID_INTRADAY  = os.environ.get('THREAD_ID_INTRADAY')   # 1H
-THREAD_ID_SCALPING  = os.environ.get('THREAD_ID_SCALPING')   # 15M / 5M
+
+def _parse_thread_id(val):
+    """Convierte variable de entorno a int requerido por la API de Telegram."""
+    try:
+        return int(val) if val else None
+    except (ValueError, TypeError):
+        return None
+
+THREAD_ID_SWING     = _parse_thread_id(os.environ.get('THREAD_ID_SWING'))      # 1D / 4H
+THREAD_ID_INTRADAY  = _parse_thread_id(os.environ.get('THREAD_ID_INTRADAY'))   # 1H
+THREAD_ID_SCALPING  = _parse_thread_id(os.environ.get('THREAD_ID_SCALPING'))   # 15M / 5M
 
 def obtener_thread_id(simbolo: str):
     """Devuelve el message_thread_id de Telegram según el timeframe del símbolo."""
@@ -405,16 +413,15 @@ def monitor_senales():
     print()
 
     # Inicializar conexión a base de datos
-    try:
-        db = DatabaseManager()
-        print("✅ Conexión a base de datos establecida")
-    except Exception as e:
-        print(f"⚠️  Base de datos no disponible: {e}")
-        print("📋 El monitor de señales requiere base de datos configurada")
-        print("💤 Monitor en espera indefinida (no afecta los detectores)...")
-        while True:
-            time.sleep(3600)
-        return
+    db = None
+    while db is None:
+        try:
+            db = DatabaseManager()
+            print("✅ Conexión a base de datos establecida")
+        except Exception as e:
+            print(f"⚠️  Base de datos no disponible: {e}")
+            print("🔁 Reintentando en 60 segundos...")
+            time.sleep(60)
 
     # Registro del último momento en que se revisó cada señal (id → datetime)
     ultimo_check: dict = {}
