@@ -4,17 +4,30 @@ Servidor Flask que mantiene vivo el servicio en Render
 Los detectores se ejecutan en threads separados
 """
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import threading
 import time
 from datetime import datetime
 import os
 import requests
 import sys
+import logging
+from logging.handlers import RotatingFileHandler
 import yfinance as yf
 
 # Forzar flush inmediato de logs (crítico para Render)
 sys.stdout.reconfigure(line_buffering=True)
+
+# ── LOGGING PERSISTENTE ────────────────────────────────────────────────────
+_log_handler = RotatingFileHandler(
+    'logfile.txt', maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8'
+)
+_log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[logging.StreamHandler(sys.stdout), _log_handler],
+)
+logger = logging.getLogger('bottrading')
 
 # ── PARCHE: serializar yf.download para evitar contaminación entre threads ──
 # yfinance comparte estado global interno; sin lock, close/high/low de un
@@ -53,6 +66,7 @@ from detectors.gold import detector_gold_5m
 # from detectors.eurusd import detector_eurusd_4h
 # from detectors.eurusd import detector_eurusd_15m
 import signal_monitor
+import gold_news_monitor
 
 app = Flask(__name__)
 
@@ -69,53 +83,88 @@ estado_sistema = {
         'eurusd_1d': 'iniciando',
         'eurusd_4h': 'iniciando',
         'eurusd_15m': 'iniciando',
-        'monitor': 'iniciando'
+        'monitor': 'iniciando',
+        'noticias': 'iniciando',
     }
 }
 
 # Referencias a los threads para monitoreo
 threads_detectores = {}
 
-def ejecutar_detector(nombre, modulo, clave_estado):
-    """Ejecuta un detector en un hilo separado"""
-    try:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔵 Iniciando {nombre}...")
-        estado_sistema['detectores'][clave_estado] = 'activo'
-        modulo.main()
-    except KeyboardInterrupt:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ {nombre} detenido por usuario")
-        estado_sistema['detectores'][clave_estado] = 'detenido'
-    except Exception as e:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en {nombre}: {e}")
-        estado_sistema['detectores'][clave_estado] = f'error: {str(e)}'
-        # Reintentar en 60 segundos
-        time.sleep(60)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 Reintentando {nombre}...")
-        ejecutar_detector(nombre, modulo, clave_estado)
+# Token para proteger el endpoint /cron (configura CRON_TOKEN en .env)
+CRON_TOKEN = os.environ.get('CRON_TOKEN', '')
 
-def keep_alive():
-    """Mantiene la instancia activa haciendo ping interno cada 5 minutos"""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive iniciado")
-    time.sleep(120)  # Esperar 2 minutos al inicio para que Flask esté listo
-    
+# Credenciales de Telegram (reutilizadas de los detectores)
+_TG_TOKEN  = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+_TG_CHAT   = os.environ.get('TELEGRAM_CHAT_ID', '')
+
+def _enviar_alerta_telegram(mensaje: str):
+    """Envía un mensaje de alerta al chat de Telegram (uso interno)."""
+    if not _TG_TOKEN or not _TG_CHAT:
+        return
+    try:
+        url = f'https://api.telegram.org/bot{_TG_TOKEN}/sendMessage'
+        requests.post(url, json={'chat_id': _TG_CHAT, 'text': mensaje, 'parse_mode': 'HTML'}, timeout=10)
+    except Exception:
+        pass  # no propagar errores de alerta
+
+def ejecutar_detector(nombre, modulo, clave_estado):
+    """Ejecuta un detector en un bucle de reintentos (sin recursión)."""
     while True:
         try:
-            # Hacer ping a nuestro propio endpoint /health
+            logger.info(f"🔵 Iniciando {nombre}...")
+            estado_sistema['detectores'][clave_estado] = 'activo'
+            modulo.main()
+        except KeyboardInterrupt:
+            logger.info(f"⚠️ {nombre} detenido por usuario")
+            estado_sistema['detectores'][clave_estado] = 'detenido'
+            break
+        except Exception as e:
+            logger.error(f"❌ Error en {nombre}: {e}")
+            estado_sistema['detectores'][clave_estado] = f'error: {str(e)}'
+            # Reintentar en 60 segundos
+            time.sleep(60)
+            logger.info(f"🔄 Reintentando {nombre}...")
+
+def keep_alive():
+    """Mantiene la instancia activa haciendo ping interno cada minuto.
+    Envía alerta a Telegram si el bot deja de responder 3 veces seguidas."""
+    logger.info("💚 Keep-alive iniciado")
+    time.sleep(120)  # Esperar 2 minutos al inicio para que Flask esté listo
+
+    fallos_consecutivos = 0
+    UMBRAL_ALERTA = 3
+
+    while True:
+        try:
             port = int(os.environ.get('PORT', 5000))
             url = f"http://localhost:{port}/health"
-            
             response = requests.get(url, timeout=10)
             if response.status_code == 200:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 💚 Keep-alive ping OK")
-                sys.stdout.flush()
+                if fallos_consecutivos >= UMBRAL_ALERTA:
+                    logger.info("💚 Keep-alive recuperado después de fallos")
+                    _enviar_alerta_telegram("✅ <b>Bot Trading recuperado</b>\nEl servidor vuelve a responder correctamente.")
+                fallos_consecutivos = 0
+                logger.info("💚 Keep-alive ping OK")
             else:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Keep-alive ping failed: {response.status_code}")
-                sys.stdout.flush()
+                fallos_consecutivos += 1
+                logger.warning(f"⚠️ Keep-alive ping failed: {response.status_code} (fallo {fallos_consecutivos})")
+                if fallos_consecutivos >= UMBRAL_ALERTA:
+                    _enviar_alerta_telegram(
+                        f"🚨 <b>Bot Trading no responde</b>\n"
+                        f"El endpoint /health devolvió {response.status_code} "
+                        f"{fallos_consecutivos} veces seguidas."
+                    )
         except Exception as e:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Keep-alive error: {e}")
-            sys.stdout.flush()
-        
-        time.sleep(60)  # 1 minuto = 60 segundos
+            fallos_consecutivos += 1
+            logger.warning(f"⚠️ Keep-alive error: {e} (fallo {fallos_consecutivos})")
+            if fallos_consecutivos >= UMBRAL_ALERTA:
+                _enviar_alerta_telegram(
+                    f"🚨 <b>Bot Trading no responde</b>\n"
+                    f"Error de conexión {fallos_consecutivos} veces seguidas: <code>{e}</code>"
+                )
+
+        time.sleep(60)
 
 def iniciar_detectores():
     """Inicia todos los detectores en background"""
@@ -339,7 +388,22 @@ def iniciar_detectores():
         print("    ✓ Thread MONITOR creado")
     except Exception as e:
         print(f"    ✗ Error creando thread MONITOR: {e}")
-    
+
+    try:
+        # Hilo para monitor de noticias gold (análisis fundamental RSS)
+        print("  📦 Creando thread: Noticias Gold...")
+        hilo_noticias = threading.Thread(
+            target=ejecutar_detector,
+            args=("NOTICIAS GOLD", gold_news_monitor, "noticias"),
+            name="GoldNewsMonitor",
+            daemon=True
+        )
+        hilos.append(hilo_noticias)
+        threads_detectores['noticias'] = hilo_noticias
+        print("    ✓ Thread NOTICIAS GOLD creado")
+    except Exception as e:
+        print(f"    ✗ Error creando thread NOTICIAS GOLD: {e}")
+
     try:
         # Hilo para keep-alive (evita que Render duerma la instancia)
         print("  📦 Creando thread: Keep-alive...")
@@ -397,6 +461,11 @@ def status():
 
 @app.route('/cron')
 def cron_ping():
+    # Verificar token si está configurado
+    if CRON_TOKEN:
+        token = request.headers.get('X-Cron-Token') or request.args.get('token', '')
+        if token != CRON_TOKEN:
+            return jsonify({'error': 'Unauthorized'}), 401
     """Endpoint para CRON jobs - Mantiene el servicio activo y verifica threads"""
     ahora = datetime.now()
     estado_sistema['ultima_actividad_cron'] = ahora.isoformat()

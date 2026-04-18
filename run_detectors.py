@@ -22,18 +22,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'detectors', 'gold'))
 import detector_gold_15m
 
 def ejecutar_detector(nombre, modulo):
-    """Ejecuta un detector en un hilo separado"""
-    try:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔵 Iniciando {nombre}...")
-        modulo.main()
-    except KeyboardInterrupt:
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ {nombre} detenido por usuario")
-    except Exception as e:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en {nombre}: {e}")
-        # Reintentar en 60 segundos
-        time.sleep(60)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 Reintentando {nombre}...")
-        ejecutar_detector(nombre, modulo)
+    """Ejecuta un detector en un bucle de reintentos (sin recursión)."""
+    while True:
+        try:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔵 Iniciando {nombre}...")
+            modulo.main()
+        except KeyboardInterrupt:
+            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ {nombre} detenido por usuario")
+            break
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en {nombre}: {e}")
+            # Reintentar en 60 segundos
+            time.sleep(60)
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 Reintentando {nombre}...")
 
 def main():
     print("="*60)

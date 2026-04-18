@@ -42,49 +42,45 @@ SIMBOLO_TO_TICKER = {
     'XAGUSD':  'SI=F',      # Silver Futures
 }
 
-def obtener_precio_actual(simbolo: str) -> tuple:
-    """
-    Obtiene el precio actual y extremos recientes de un símbolo usando yfinance.
+def _fetch_precios_ticker(ticker: str) -> tuple | None:
+    """Descarga velas de 1 minuto para un ticker de yfinance y devuelve
+    (precio_actual, precio_max_5m, precio_min_5m) o None si hay error.
 
-    Retorna una tupla (precio_actual, precio_max, precio_min) donde precio_max y
-    precio_min son el máximo y mínimo de las últimas 5 velas de 1 minuto.
-    Usar precio_max/precio_min en vez de precio_actual para detectar TPs/SLs que
-    se tocaron brevemente entre ciclos del monitor.
-
-    Args:
-        simbolo: BTCUSD, XAUUSD, SPX500 (puede incluir sufijos como _4H, _1D, _15M)
-
-    Returns:
-        (precio_actual, precio_max_5m, precio_min_5m) o None si hay error
+    Llamar UNA sola vez por ticker por ciclo y reutilizar el resultado
+    para todas las señales que compartan el mismo subyacente.
     """
     try:
-        # Extraer símbolo base (sin sufijos _4H, _1D, _15M, etc.)
-        simbolo_base = simbolo.split('_')[0]
-
-        ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
-        if not ticker:
-            print(f"⚠️ Símbolo desconocido: {simbolo} (base: {simbolo_base})")
-            return None
-
-        data = yf.Ticker(ticker)
-        hist = data.history(period='1d', interval='1m')
-
+        hist = yf.Ticker(ticker).history(period='1d', interval='1m')
         if hist.empty:
-            print(f"⚠️ No hay datos para {simbolo}")
             return None
-
         precio_actual = float(hist['Close'].iloc[-1])
-
-        # Extremos de los últimos 5 minutos para detectar picos/valles entre polls
-        ventana = hist.tail(5)
-        precio_max = float(ventana['High'].max())
-        precio_min = float(ventana['Low'].min())
-
+        ventana       = hist.tail(5)          # últimos 5 minutos
+        precio_max    = float(ventana['High'].max())
+        precio_min    = float(ventana['Low'].min())
         return (precio_actual, precio_max, precio_min)
-
     except Exception as e:
-        print(f"❌ Error obteniendo precio de {simbolo}: {e}")
+        print(f"❌ Error descargando {ticker}: {e}")
         return None
+
+
+def obtener_precio_actual(simbolo: str) -> tuple | None:
+    """Obtiene precio actual y extremos de los últimos 5m para un símbolo.
+
+    Wrapper de compatibilidad sobre _fetch_precios_ticker.
+    Para uso en el monitor usa el caché por ticker del ciclo principal.
+
+    Args:
+        simbolo: p.ej. XAUUSD, XAUUSD_15M, BTCUSD_4H
+
+    Returns:
+        (precio_actual, precio_max_5m, precio_min_5m) o None
+    """
+    simbolo_base = simbolo.split('_')[0]
+    ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
+    if not ticker:
+        print(f"⚠️ Símbolo desconocido: {simbolo} (base: {simbolo_base})")
+        return None
+    return _fetch_precios_ticker(ticker)
 
 
 def enviar_notificacion_telegram(mensaje: str, simbolo: str = None):
@@ -355,18 +351,54 @@ def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
             print(f"🗓️ Señal {senal['id']} cerrada por antigüedad (>{dias} días)")
 
 
+
+# ── Intervalos de revisión por timeframe ──────────────────────────────────────
+# La clave es el sufijo del campo 'simbolo' en la BD (ej: XAUUSD_15M → '15M')
+_INTERVALO_SCALPING  = 30    # segundos — 5M y 15M  (precio nuevo cada ~30s en yfinance 1m)
+_INTERVALO_INTRADAY  = 90    # segundos — 1H
+_INTERVALO_SWING     = 300   # segundos — 4H, 1D y sin sufijo
+
+# Tick del bucle principal: MCD de los intervalos anteriores
+_TICK               = 30    # segundos
+
+
+def _categoria_senal(simbolo: str) -> str:
+    """Devuelve la categoría de una señal según su sufijo de timeframe."""
+    sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
+    if sufijo in ('5M', '15M'):
+        return 'scalping'
+    if sufijo == '1H':
+        return 'intraday'
+    return 'swing'
+
+
+def _intervalo_para(categoria: str) -> int:
+    """Devuelve el intervalo de revisión en segundos para una categoría."""
+    return {
+        'scalping': _INTERVALO_SCALPING,
+        'intraday': _INTERVALO_INTRADAY,
+        'swing':    _INTERVALO_SWING,
+    }.get(categoria, _INTERVALO_SWING)
+
+
 def monitor_senales():
     """
-    Loop principal que monitorea señales activas cada 5 minutos
+    Loop principal con revisión diferenciada por timeframe:
+      • 5M / 15M  → cada 45 segundos
+      • 1H        → cada 2 minutos
+      • 4H / 1D   → cada 5 minutos
     """
     print("="*60)
     print("🔍 MONITOR DE SEÑALES INICIADO")
     print("="*60)
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("⏱️  Intervalo de revisión: 5 minutos")
+    print(f"⏱️  Scalping (5M/15M): cada {_INTERVALO_SCALPING}s  ← tick base")
+    print(f"⏱️  Intraday  (1H):    cada {_INTERVALO_INTRADAY}s")
+    print(f"⏱️  Swing  (4H/1D):   cada {_INTERVALO_SWING}s")
+    print(f"⚡ Fetch deduplicado: 1 llamada por ticker subyacente por ciclo")
     print("="*60)
     print()
-    
+
     # Inicializar conexión a base de datos
     try:
         db = DatabaseManager()
@@ -375,82 +407,115 @@ def monitor_senales():
         print(f"⚠️  Base de datos no disponible: {e}")
         print("📋 El monitor de señales requiere base de datos configurada")
         print("💤 Monitor en espera indefinida (no afecta los detectores)...")
-        # Dormir indefinidamente sin hacer nada (el thread sigue vivo pero inactivo)
         while True:
-            time.sleep(3600)  # Dormir 1 hora
+            time.sleep(3600)
         return
-    
+
+    # Registro del último momento en que se revisó cada señal (id → datetime)
+    ultimo_check: dict = {}
     ciclo = 0
-    
+
     while True:
         try:
             ciclo += 1
-            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔄 Ciclo #{ciclo} - Revisando señales...")
-            
-            # Obtener todas las señales activas
+            ahora = datetime.now()
+            print(f"\n[{ahora.strftime('%H:%M:%S')}] 🔄 Tick #{ciclo}")
+
             senales_activas = db.obtener_senales_activas()
-            
+
             if not senales_activas:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 📭 No hay señales activas")
+                print(f"[{ahora.strftime('%H:%M:%S')}] 📭 No hay señales activas")
             else:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 Señales activas: {len(senales_activas)}")
-                
-                # Revisar cada señal
+                print(f"[{ahora.strftime('%H:%M:%S')}] 📊 Señales activas: {len(senales_activas)}")
+
+                # ── Paso 1: decidir qué señales toca revisar este tick ──────
+                senales_a_revisar = []
                 for senal in senales_activas:
-                    simbolo = senal['simbolo']
-                    direccion = senal['direccion']
+                    senal_id  = senal['id']
+                    categoria = _categoria_senal(senal['simbolo'])
+                    intervalo = _intervalo_para(categoria)
+                    ultimo    = ultimo_check.get(senal_id)
+                    if ultimo is None or (ahora - ultimo).total_seconds() >= intervalo:
+                        senales_a_revisar.append(senal)
+                        ultimo_check[senal_id] = ahora
 
-                    # Obtener precio actual + extremos de los últimos 5m (OHLC)
-                    precios = obtener_precio_actual(simbolo)
+                if not senales_a_revisar:
+                    print(f"[{ahora.strftime('%H:%M:%S')}] ⏭️  Ninguna señal requiere revisión este tick")
+                else:
+                    # ── Paso 2: fetch deduplicado — 1 llamada por ticker ─────
+                    tickers_necesarios = {}
+                    for senal in senales_a_revisar:
+                        base   = senal['simbolo'].split('_')[0]
+                        ticker = SIMBOLO_TO_TICKER.get(base)
+                        if ticker and ticker not in tickers_necesarios:
+                            tickers_necesarios[ticker] = base
 
+                    cache_precios: dict = {}   # ticker → (actual, max, min)
+                    for ticker, base in tickers_necesarios.items():
+                        result = _fetch_precios_ticker(ticker)
+                        if result is not None:
+                            cache_precios[ticker] = result
+                            print(f"  📡 {base} ({ticker}): ${result[0]:.2f}  H:{result[1]:.2f}  L:{result[2]:.2f}")
+                        else:
+                            print(f"  ⚠️ Sin datos para {base} ({ticker})")
+
+                # ── Paso 3: verificar niveles usando precios cacheados ────────
+                for senal in senales_a_revisar:
+                    simbolo   = senal['simbolo']
+                    senal_id  = senal['id']
+                    categoria = _categoria_senal(simbolo)
+
+                    base   = simbolo.split('_')[0]
+                    ticker = SIMBOLO_TO_TICKER.get(base)
+                    precios = cache_precios.get(ticker) if ticker else None
                     if precios is None:
                         print(f"  ⚠️ No se pudo obtener precio de {simbolo}")
                         continue
 
                     precio_actual, precio_max, precio_min = precios
 
-                    # Registrar precio actual en historial
-                    db.registrar_precio(senal['id'], precio_actual)
+                    db.registrar_precio(senal_id, precio_actual)
 
-                    # Convertir precio_entrada a float (fix Turso strings)
                     precio_entrada = float(senal['precio_entrada'])
-
-                    # Mostrar estado actual
+                    direccion      = senal['direccion']
                     beneficio_actual = calcular_beneficio_pct(
-                        precio_entrada,
-                        precio_actual,
-                        direccion
+                        precio_entrada, precio_actual, direccion
                     )
 
                     tp1 = float(senal['tp1'])
                     tp2 = float(senal['tp2'])
                     tp3 = float(senal['tp3'])
                     sl  = float(senal['sl'])
-                    print(f"  📊 {simbolo} | {direccion} | "
+
+                    etiqueta_tf = f"[{categoria.upper():<8} {intervalo}s]"
+                    print(f"  📊 {etiqueta_tf} {simbolo} | {direccion} | "
                           f"Entrada: ${precio_entrada:.2f} | "
                           f"Actual: ${precio_actual:.2f} (H:{precio_max:.2f} L:{precio_min:.2f}) | "
-                          f"Beneficio: {beneficio_actual:+.2f}% | "
-                          f"TP1: ${tp1:.2f}  TP2: ${tp2:.2f}  TP3: ${tp3:.2f} | "
-                          f"SL: ${sl:.2f}")
+                          f"P&L: {beneficio_actual:+.2f}% | "
+                          f"TPs: {tp1:.2f}/{tp2:.2f}/{tp3:.2f} SL: {sl:.2f}")
 
-                    # Verificar niveles alcanzados usando extremos OHLC
                     if direccion == 'COMPRA':
                         verificar_niveles_compra(senal, precio_actual, precio_min, precio_max, db)
-                    else:  # VENTA
+                    else:
                         verificar_niveles_venta(senal, precio_actual, precio_min, precio_max, db)
-            
-            # Cerrar señales muy antiguas (más de 7 días)
-            if ciclo % 12 == 0:  # Cada hora (12 ciclos * 5 min = 60 min)
+
+            # Limpiar del diccionario señales que ya no están activas
+            ids_activos = {s['id'] for s in senales_activas} if senales_activas else set()
+            for sid in list(ultimo_check):
+                if sid not in ids_activos:
+                    del ultimo_check[sid]
+
+            # Cada ~hora (cada 120 ticks × 30s = 60 min) cerrar señales antiguas
+            if ciclo % 120 == 0:
                 cerrar_senales_antiguas(db, dias=7)
-            
-            # Esperar 3 minutos antes del próximo ciclo (balance óptimo)
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⏳ Esperando 3 minutos...")
-            time.sleep(180)  # 3 minutos = 180 segundos
-            
+
+            print(f"[{ahora.strftime('%H:%M:%S')}] ⏳ Próximo tick en {_TICK}s...")
+            time.sleep(_TICK)
+
         except KeyboardInterrupt:
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Monitor detenido por usuario")
             break
-            
+
         except Exception as e:
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en monitor: {e}")
             print("🔄 Reintentando en 60 segundos...")
