@@ -80,9 +80,6 @@ estado_sistema = {
         'gold_1h': 'iniciando',
         'gold_15m': 'iniciando',
         'gold_5m': 'iniciando',
-        'eurusd_1d': 'iniciando',
-        'eurusd_4h': 'iniciando',
-        'eurusd_15m': 'iniciando',
         'monitor': 'iniciando',
         'noticias': 'iniciando',
     }
@@ -95,7 +92,7 @@ threads_detectores = {}
 CRON_TOKEN = os.environ.get('CRON_TOKEN', '')
 
 # Credenciales de Telegram (reutilizadas de los detectores)
-_TG_TOKEN  = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+_TG_TOKEN  = os.environ.get('TELEGRAM_TOKEN', '')
 _TG_CHAT   = os.environ.get('TELEGRAM_CHAT_ID', '')
 
 def _enviar_alerta_telegram(mensaje: str):
@@ -461,12 +458,12 @@ def status():
 
 @app.route('/cron')
 def cron_ping():
+    """Endpoint para CRON jobs - Mantiene el servicio activo y verifica threads"""
     # Verificar token si está configurado
     if CRON_TOKEN:
         token = request.headers.get('X-Cron-Token') or request.args.get('token', '')
         if token != CRON_TOKEN:
             return jsonify({'error': 'Unauthorized'}), 401
-    """Endpoint para CRON jobs - Mantiene el servicio activo y verifica threads"""
     ahora = datetime.now()
     estado_sistema['ultima_actividad_cron'] = ahora.isoformat()
     
