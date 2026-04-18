@@ -4,6 +4,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 import tf_bias
 from dxy_bias import get_dxy_bias, ajustar_score_por_dxy
 from economic_calendar import hay_evento_impacto
+from data_provider import get_ohlcv
 
 import yfinance as yf
 import pandas as pd
@@ -193,7 +194,9 @@ def analizar(simbolo, params):
     print(f"\n🔍 Analizando {simbolo} [1H intradía]...")
 
     try:
-        df = yf.download(params['ticker_yf'], period='7d', interval='1h', progress=False)
+        df, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='1h')
+        if is_delayed:
+            print("  ⚠️  [1H] Datos con 15 min de delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
         if df.empty or len(df) < 80:
             print(f"⚠️ Datos insuficientes para {simbolo} 1H")
             return

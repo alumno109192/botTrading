@@ -246,10 +246,18 @@ def _score_articulo(texto: str) -> int:
 def analizar_noticias() -> dict:
     """Recoge noticias de todas las fuentes y devuelve análisis de sentimiento."""
     todos = []
+    titulos_vistos: set = set()   # deduplicar artículos repetidos entre feeds
     for fuente in FUENTES_RSS:
         arts = _fetch_rss(fuente)
-        todos.extend(arts)
-        print(f"   📰 {fuente['nombre']}: {len(arts)} artículos relevantes")
+        nuevos = []
+        for art in arts:
+            # Normalizar título para comparación (minúsculas, sin espacios extra)
+            titulo_norm = art['titulo'].lower().strip()
+            if titulo_norm not in titulos_vistos:
+                titulos_vistos.add(titulo_norm)
+                nuevos.append(art)
+        todos.extend(nuevos)
+        print(f"   📰 {fuente['nombre']}: {len(nuevos)} artículos únicos ({len(arts)} totales)")
 
     if not todos:
         return {'sesgo': 'NEUTRAL', 'score_medio': 0.0, 'total': 0,
