@@ -12,11 +12,12 @@ Uso:
     if is_delayed:
         print("⚠️ Datos con 15 min de delay (yfinance free)")
 
-Obtener claves Twelve Data gratuitas (2 cuentas = 1600 req/día):
+Obtener claves Twelve Data gratuitas (3 cuentas = 2400 req/día):
     https://twelvedata.com/apikey  →  Sign Up → Free plan (800 req/día c/u)
     Añadir al .env:
         TWELVE_DATA_API_KEY=clave_cuenta_1
         TWELVE_DATA_API_KEY_2=clave_cuenta_2  ← opcional, backup automático
+        TWELVE_DATA_API_KEY_3=clave_cuenta_3  ← opcional, backup automático
 """
 import os
 import threading
@@ -30,6 +31,7 @@ load_dotenv()
 
 TWELVE_DATA_API_KEY   = os.environ.get('TWELVE_DATA_API_KEY')
 TWELVE_DATA_API_KEY_2 = os.environ.get('TWELVE_DATA_API_KEY_2')
+TWELVE_DATA_API_KEY_3 = os.environ.get('TWELVE_DATA_API_KEY_3')
 POLYGON_API_KEY       = os.environ.get('POLYGON_API_KEY')
 
 # Mapa de tickers yfinance → símbolo Twelve Data
@@ -84,7 +86,15 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             if ok and not df.empty and len(df) >= 10:
                 print(f"  ✅ [data_provider] Twelve Data (key2) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
                 return df, False
-            print(f"  ⚠️ [data_provider] Twelve Data key2 falló — intentando siguiente fuente")
+            print(f"  ⚠️ [data_provider] Twelve Data key2 falló — intentando key3")
+
+        # ── Intentar Twelve Data clave 3 (backup) ──
+        if TWELVE_DATA_API_KEY_3 and ticker_yf in _TICKER_MAP_TWELVE:
+            df, ok = _get_twelve_data(ticker_yf, period, interval, TWELVE_DATA_API_KEY_3)
+            if ok and not df.empty and len(df) >= 10:
+                print(f"  ✅ [data_provider] Twelve Data (key3) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                return df, False
+            print(f"  ⚠️ [data_provider] Twelve Data key3 falló — intentando siguiente fuente")
 
         # ── Intentar Polygon.io (de pago) ──
         if POLYGON_API_KEY and ticker_yf in _TICKER_MAP_POLYGON:
