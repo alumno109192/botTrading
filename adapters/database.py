@@ -597,6 +597,71 @@ class DatabaseManager:
             self.cerrar_senal(senal_id, 'CANCELADA')
             print(f"⚠️ Señal {senal_id} cerrada automáticamente (límite alcanzado)")
 
+    # ═══════════════════════════════════════════════════════════
+    # USO DE API KEYS (Twelve Data quota tracking)
+    # ═══════════════════════════════════════════════════════════
+
+    def init_api_key_usage_table(self):
+        """Crea la tabla api_key_usage si no existe."""
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS api_key_usage (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha       TEXT    NOT NULL,          -- ISO date YYYY-MM-DD (UTC)
+            key_alias   TEXT    NOT NULL,          -- 'key1', 'key2', 'key3'
+            peticiones  INTEGER NOT NULL DEFAULT 0,
+            actualizado TEXT    NOT NULL,          -- ISO datetime última actualización
+            UNIQUE(fecha, key_alias)
+        )
+        """)
+
+    def incrementar_uso_key(self, key_alias: str) -> int:
+        """
+        Incrementa en 1 el contador de peticiones de la key para hoy.
+        Usa INSERT OR REPLACE para ser idempotente si no existe la fila.
+        Retorna el total acumulado del día para esa key.
+        """
+        hoy = datetime.now(timezone.utc).date().isoformat()
+        ahora = datetime.now(timezone.utc).isoformat()
+
+        # Upsert: si ya existe la fila, suma 1; si no, la crea con peticiones=1
+        self.ejecutar_query("""
+        INSERT INTO api_key_usage (fecha, key_alias, peticiones, actualizado)
+        VALUES (?, ?, 1, ?)
+        ON CONFLICT(fecha, key_alias)
+        DO UPDATE SET
+            peticiones  = peticiones + 1,
+            actualizado = excluded.actualizado
+        """, (hoy, key_alias, ahora))
+
+        result = self.ejecutar_query("""
+        SELECT peticiones FROM api_key_usage
+        WHERE fecha = ? AND key_alias = ?
+        """, (hoy, key_alias))
+
+        return int(result.rows[0]['peticiones']) if result.rows else 1
+
+    def obtener_uso_keys_hoy(self) -> Dict[str, int]:
+        """
+        Retorna el uso de todas las keys para hoy.
+        Ejemplo: {'key1': 312, 'key2': 298, 'key3': 305}
+        """
+        hoy = datetime.now(timezone.utc).date().isoformat()
+        result = self.ejecutar_query("""
+        SELECT key_alias, peticiones FROM api_key_usage
+        WHERE fecha = ?
+        """, (hoy,))
+        return {row['key_alias']: int(row['peticiones']) for row in result.rows}
+
+    def obtener_uso_keys_periodo(self, dias: int = 7) -> List[Dict]:
+        """Histórico de uso de keys de los últimos N días."""
+        result = self.ejecutar_query("""
+        SELECT fecha, key_alias, peticiones
+        FROM api_key_usage
+        WHERE fecha >= DATE('now', ?)
+        ORDER BY fecha DESC, key_alias ASC
+        """, (f'-{dias} days',))
+        return [dict(row) for row in result.rows]
+
 
 if __name__ == '__main__':
     # Test de conexión

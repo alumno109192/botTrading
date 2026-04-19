@@ -41,6 +41,7 @@ yf.download = _safe_yf_download
 
 from api.routes import create_app
 from services.orchestrator import iniciar_detectores
+from adapters.database import DatabaseManager
 
 # Estado del sistema (compartido entre orchestrator y routes)
 estado_sistema = {
@@ -48,6 +49,14 @@ estado_sistema = {
     'ultima_actividad_cron': None,
     'detectores': {}
 }
+threads_detectores = {}
+
+# Inicializar tabla de cuotas de API keys (best-effort, no bloquea arranque)
+try:
+    DatabaseManager().init_api_key_usage_table()
+    logger.info("✅ Tabla api_key_usage lista")
+except Exception as _e:
+    logger.warning(f"⚠️ No se pudo inicializar tabla api_key_usage: {_e}")
 threads_detectores = {}
 
 # Credenciales de Telegram (para keep-alive alerts)

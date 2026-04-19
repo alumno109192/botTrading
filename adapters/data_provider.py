@@ -20,6 +20,7 @@ Obtener claves Twelve Data gratuitas (3 cuentas = 2400 req/día):
         TWELVE_DATA_API_KEY_3=clave_cuenta_3  ← opcional, backup automático
 """
 import os
+import itertools
 import threading
 import yfinance as yf
 import pandas as pd
@@ -54,14 +55,52 @@ _daily_cache: dict = {}   # key = (ticker, period) → {'df': DataFrame, 'ts': d
 _daily_cache_lock = threading.Lock()
 _DAILY_TTL = timedelta(hours=4)  # Re-descargar cada 4h (suficiente para velas diarias)
 
+# ── Round-Robin de API Keys ──────────────────────────────────────────────────
+# Se construye la lista al arranque con las keys disponibles.
+# El ciclo se comparte entre todos los threads (protegido con lock).
+
+def _build_key_list():
+    """Construye lista de (alias, key) con las keys configuradas."""
+    keys = []
+    for alias, key in [
+        ('key1', TWELVE_DATA_API_KEY),
+        ('key2', TWELVE_DATA_API_KEY_2),
+        ('key3', TWELVE_DATA_API_KEY_3),
+    ]:
+        if key:
+            keys.append((alias, key))
+    return keys
+
+_td_keys = _build_key_list()
+_td_cycle = itertools.cycle(_td_keys) if _td_keys else iter([])
+_td_cycle_lock = threading.Lock()
+
+def _next_td_key():
+    """Devuelve (alias, key) siguiendo Round-Robin. None si no hay keys."""
+    if not _td_keys:
+        return None, None
+    with _td_cycle_lock:
+        return next(_td_cycle)
+
+def _registrar_uso_key(alias: str):
+    """Persiste el uso de la key en BD de forma no bloqueante (best-effort)."""
+    try:
+        from adapters.database import DatabaseManager
+        db = DatabaseManager()
+        total = db.incrementar_uso_key(alias)
+        if total % 100 == 0:  # Log cada 100 peticiones para no saturar stdout
+            print(f"  📊 [quota] {alias}: {total} peticiones hoy")
+    except Exception:
+        pass  # Nunca debe bloquear la petición de datos
+
 
 def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
     """
     Descarga datos OHLCV para el ticker y periodo indicados.
 
     Orden de prioridad:
-      1. Twelve Data (gratuito, tiempo real) si TWELVE_DATA_API_KEY configurada
-      2. Polygon.io  (de pago, tiempo real)  si POLYGON_API_KEY configurada
+      1. Twelve Data (Round-Robin entre key1/key2/key3, tiempo real)
+      2. Polygon.io  (de pago, tiempo real) si POLYGON_API_KEY configurada
       3. yfinance    (delay 15 min en intraday)
 
     Retorna:
@@ -71,33 +110,21 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 
     El DataFrame siempre tiene columnas: Open, High, Low, Close, Volume
     """
-    if interval in _INTRADAY_INTERVALS:
-        # ── Intentar Twelve Data clave 1 ──
-        if TWELVE_DATA_API_KEY and ticker_yf in _TICKER_MAP_TWELVE:
-            df, ok = _get_twelve_data(ticker_yf, period, interval, TWELVE_DATA_API_KEY)
+    if interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
+        # Intentar con Round-Robin: probar cada key una vez antes de rendirse
+        for _ in range(len(_td_keys)):
+            alias, key = _next_td_key()
+            if not key:
+                break
+            df, ok = _get_twelve_data(ticker_yf, period, interval, key)
             if ok and not df.empty and len(df) >= 10:
-                print(f"  ✅ [data_provider] Twelve Data (key1) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                _registrar_uso_key(alias)
+                print(f"  ✅ [data_provider] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
                 return df, False
-            print(f"  ⚠️ [data_provider] Twelve Data key1 falló — intentando key2")
+            print(f"  ⚠️ [data_provider] Twelve Data {alias} falló — rotando a siguiente key")
 
-        # ── Intentar Twelve Data clave 2 (backup) ──
-        if TWELVE_DATA_API_KEY_2 and ticker_yf in _TICKER_MAP_TWELVE:
-            df, ok = _get_twelve_data(ticker_yf, period, interval, TWELVE_DATA_API_KEY_2)
-            if ok and not df.empty and len(df) >= 10:
-                print(f"  ✅ [data_provider] Twelve Data (key2) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
-                return df, False
-            print(f"  ⚠️ [data_provider] Twelve Data key2 falló — intentando key3")
-
-        # ── Intentar Twelve Data clave 3 (backup) ──
-        if TWELVE_DATA_API_KEY_3 and ticker_yf in _TICKER_MAP_TWELVE:
-            df, ok = _get_twelve_data(ticker_yf, period, interval, TWELVE_DATA_API_KEY_3)
-            if ok and not df.empty and len(df) >= 10:
-                print(f"  ✅ [data_provider] Twelve Data (key3) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
-                return df, False
-            print(f"  ⚠️ [data_provider] Twelve Data key3 falló — intentando siguiente fuente")
-
-        # ── Intentar Polygon.io (de pago) ──
-        if POLYGON_API_KEY and ticker_yf in _TICKER_MAP_POLYGON:
+    # ── Intentar Polygon.io (de pago) ──
+    if interval in _INTRADAY_INTERVALS and POLYGON_API_KEY and ticker_yf in _TICKER_MAP_POLYGON:
             df, ok = _get_polygon(ticker_yf, period, interval)
             if ok and not df.empty and len(df) >= 10:
                 print(f"  ✅ [data_provider] Polygon.io — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
