@@ -3,8 +3,11 @@ Script para limpiar señales duplicadas en la BD.
 Mantiene solo la señal más antigua de cada grupo (simbolo + direccion)
 y cancela todas las demás que estén ACTIVAS.
 """
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from db_manager import DatabaseManager
+from adapters.database import DatabaseManager
 
 def limpiar_duplicados():
     db = DatabaseManager()

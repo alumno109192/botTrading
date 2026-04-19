@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno
 load_dotenv()
-from telegram_utils import enviar_telegram
+from adapters.telegram import enviar_telegram
 
 # ══════════════════════════════════════
 # CONFIGURACIÓN
@@ -61,7 +61,7 @@ ultimo_analisis = {}  # Guarda última fecha y scores analizados
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
 # ══════════════════════════════════════
-from shared_indicators import calcular_rsi, calcular_ema, calcular_atr
+from core.indicators import calcular_rsi, calcular_ema, calcular_atr
 
 # ══════════════════════════════════════
 # ANÁLISIS DE SENTIMIENTO DEL MERCADO

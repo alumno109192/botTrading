@@ -1,5 +1,3 @@
-# STUB — La implementación real está en adapters/database.py
-from adapters.database import *  # noqa: F401,F403
 """
 Database Manager - Gestión de señales de trading en Turso (SQLite en la nube)
 Maneja todas las operaciones CRUD para señales, historial de precios y estadísticas

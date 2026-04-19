@@ -4,10 +4,12 @@ Calcula métricas de performance, win rate, y genera reportes visuales
 """
 
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List
 from tabulate import tabulate
-from db_manager import DatabaseManager
+from adapters.database import DatabaseManager
 
 
 class StatsDashboard:

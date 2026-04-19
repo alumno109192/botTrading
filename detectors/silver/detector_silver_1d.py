@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
-from telegram_utils import enviar_telegram as _enviar_telegram_base
+from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
 def enviar_telegram(mensaje):
     return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
@@ -19,7 +19,7 @@ try:
     turso_url = os.environ.get('TURSO_DATABASE_URL')
     turso_token = os.environ.get('TURSO_AUTH_TOKEN')
     if turso_url and turso_token:
-        from db_manager import DatabaseManager
+        from adapters.database import DatabaseManager
         db = DatabaseManager()
         print("✅ Sistema de tracking de BD activado (Silver 1D)")
     else:
@@ -67,7 +67,7 @@ alertas_enviadas = {}
 ultimo_analisis = {}
 
 
-from shared_indicators import (calcular_rsi, calcular_ema, calcular_atr,
+from core.indicators import (calcular_rsi, calcular_ema, calcular_atr,
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
     detectar_evening_star, detectar_morning_star)
 

@@ -19,10 +19,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 try:
-    from db_manager import DatabaseManager
+    from adapters.database import DatabaseManager
 except ImportError as e:
     print(f"❌ No se pudo importar DatabaseManager: {e}")
     sys.exit(1)

@@ -1,7 +1,5 @@
-import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from data_provider import get_ohlcv
+from adapters.data_provider import get_ohlcv
 
 import yfinance as yf
 import pandas as pd
@@ -11,13 +9,13 @@ import time
 import json
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-import tf_bias
-from dxy_bias import get_dxy_bias, ajustar_score_por_dxy
-from economic_calendar import hay_evento_impacto
+from services import tf_bias
+from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
+from services.economic_calendar import hay_evento_impacto
 
 # Cargar variables de entorno
 load_dotenv()
-from telegram_utils import enviar_telegram as _enviar_telegram_base
+from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
 def enviar_telegram(mensaje):
     return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
@@ -28,7 +26,7 @@ try:
     turso_url = os.environ.get('TURSO_DATABASE_URL')
     turso_token = os.environ.get('TURSO_AUTH_TOKEN')
     if turso_url and turso_token:
-        from db_manager import DatabaseManager
+        from adapters.database import DatabaseManager
         db = DatabaseManager()
         print("✅ [1D] Sistema de tracking de BD activado")
     else:
@@ -83,7 +81,7 @@ ultimo_analisis = {}  # Guarda última fecha y scores analizados
 
 
 # ══════════════════════════════════════
-from shared_indicators import (
+from core.indicators import (
     calcular_rsi, calcular_ema, calcular_atr,
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
     detectar_evening_star, detectar_morning_star,

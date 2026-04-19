@@ -6,10 +6,10 @@ Script independiente para operaciones de alta frecuencia
 import sys
 import os
 
-# Añadir ruta del detector
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'detectors', 'gold'))
+# Añadir ruta del proyecto raíz
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-import detector_gold_15m
+from detectors.gold import detector_gold_15m
 
 if __name__ == '__main__':
     print("="*60)

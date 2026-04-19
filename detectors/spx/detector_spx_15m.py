@@ -3,10 +3,8 @@ DETECTOR SPX500 15M - SCALPING
 Análisis de S&P 500 en timeframe 15 minutos para operaciones intradiarias
 TPs dinámicos basados en ATR (×1.5 / ×2.5 / ×4.0)
 """
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-import tf_bias
+from services import tf_bias
 
 import yfinance as yf
 import pandas as pd
@@ -18,7 +16,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
-from telegram_utils import enviar_telegram as _enviar_telegram_base
+from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
 def enviar_telegram(mensaje):
     return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
@@ -28,7 +26,7 @@ try:
     turso_url = os.environ.get('TURSO_DATABASE_URL')
     turso_token = os.environ.get('TURSO_AUTH_TOKEN')
     if turso_url and turso_token:
-        from db_manager import DatabaseManager
+        from adapters.database import DatabaseManager
         db = DatabaseManager()
         print("✅ BD activada (SPX 15M)")
     else:
@@ -81,7 +79,7 @@ perdidas_consecutivas = 0
 # ══════════════════════════════════════
 # INDICADORES
 # ══════════════════════════════════════
-from shared_indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista
+from core.indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista
 
 # ══════════════════════════════════════
 # ANÁLISIS PRINCIPAL

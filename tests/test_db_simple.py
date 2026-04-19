@@ -1,10 +1,12 @@
 """Test simple de conexión a BD"""
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 print("1. Iniciando test...")
 
 try:
     print("2. Importando db_manager...")
-    from db_manager import DatabaseManager
+    from adapters.database import DatabaseManager
     
     print("3. Creando instancia...")
     db = DatabaseManager()

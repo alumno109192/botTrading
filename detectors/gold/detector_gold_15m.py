@@ -3,13 +3,11 @@ DETECTOR GOLD 15M - SCALPING
 Análisis de XAUUSD en timeframe 15 minutos para operaciones de corto plazo
 Optimizado para capturar movimientos rápidos con alta frecuencia
 """
-import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-import tf_bias
-from dxy_bias import get_dxy_bias, ajustar_score_por_dxy
-from economic_calendar import hay_evento_impacto
-from data_provider import get_ohlcv
+from services import tf_bias
+from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
+from services.economic_calendar import hay_evento_impacto
+from adapters.data_provider import get_ohlcv
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -22,7 +20,7 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno
 load_dotenv()
-from telegram_utils import enviar_telegram as _enviar_telegram_base
+from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
 def enviar_telegram(mensaje):
     return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
@@ -33,7 +31,7 @@ try:
     turso_url = os.environ.get('TURSO_DATABASE_URL')
     turso_token = os.environ.get('TURSO_AUTH_TOKEN')
     if turso_url and turso_token:
-        from db_manager import DatabaseManager
+        from adapters.database import DatabaseManager
         db = DatabaseManager()
         print("✅ Sistema de tracking de BD activado")
     else:
@@ -96,7 +94,7 @@ ultima_senal_timestamp = None
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
 # ══════════════════════════════════════
-from shared_indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji
+from core.indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji
 
 # ══════════════════════════════════════
 # ANÁLISIS PRICE ACTION SCALPING

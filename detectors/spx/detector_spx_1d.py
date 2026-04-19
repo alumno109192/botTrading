@@ -6,13 +6,11 @@ import os
 import time
 from datetime import datetime
 from dotenv import load_dotenv
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-import tf_bias
+from services import tf_bias
 
 # Cargar variables de entorno
 load_dotenv()
-from telegram_utils import enviar_telegram as _enviar_telegram_base
+from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
 def enviar_telegram(mensaje):
     return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
@@ -89,7 +87,7 @@ ultimo_analisis = {}  # Guarda última fecha y scores analizados
 # ═══════════════════════════════
 # INDICADORES TÉCNICOS
 # ═══════════════════════════════
-from shared_indicators import (calcular_rsi, calcular_ema, calcular_atr,
+from core.indicators import (calcular_rsi, calcular_ema, calcular_atr,
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
     detectar_evening_star, detectar_morning_star)
 

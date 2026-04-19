@@ -7,13 +7,15 @@ Incluye signal_monitor.py para tracking de señales
 import threading
 import time
 import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from datetime import datetime
 
 # Importar los módulos de los detectores (desde paquete detectors/)
 from detectors.gold import detector_gold_1d as detector_gold
 from detectors.spx import detector_spx_1d as detector_spx_copy
 from detectors.bitcoin import detector_bitcoin_1d as detector_bitcoin
-import signal_monitor
+import services.signal_monitor as signal_monitor
 
 # Importar detector de scalping 15m
 from detectors.gold import detector_gold_15m

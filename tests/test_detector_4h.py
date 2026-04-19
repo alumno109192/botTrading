@@ -6,7 +6,7 @@ import sys
 import os
 
 # Añadir ruta al path para importar detector
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Importar el detector
 from detectors.bitcoin import detector_bitcoin_4h
