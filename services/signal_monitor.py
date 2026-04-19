@@ -449,7 +449,27 @@ def monitor_senales():
     while True:
         try:
             ciclo += 1
-            ahora = datetime.now()
+            ahora_utc = datetime.now(timezone.utc)
+
+            # ── Fin de semana: pausa hasta el domingo 21:00 UTC ─────────────
+            # Sábado (5) todo el día o Domingo (6) antes de las 21:00 UTC
+            es_sabado  = ahora_utc.weekday() == 5
+            es_domingo_antes_apertura = (ahora_utc.weekday() == 6 and ahora_utc.hour < 21)
+            if es_sabado or es_domingo_antes_apertura:
+                # Calcular segundos hasta el próximo domingo 21:00 UTC
+                dias_hasta_domingo = (6 - ahora_utc.weekday()) % 7
+                if dias_hasta_domingo == 0 and ahora_utc.hour >= 21:
+                    dias_hasta_domingo = 7  # ya pasó la apertura de este domingo → siguiente semana
+                apertura = (ahora_utc + timedelta(days=dias_hasta_domingo)).replace(
+                    hour=21, minute=0, second=0, microsecond=0
+                )
+                segundos_espera = min((apertura - ahora_utc).total_seconds(), 3600)
+                print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Fin de semana — "
+                      f"monitor en pausa hasta Dom 21:00 UTC. Revisando en {int(segundos_espera//60)} min...")
+                time.sleep(segundos_espera)
+                continue
+
+            ahora = ahora_utc.astimezone()   # hora local para logs existentes
             print(f"\n[{ahora.strftime('%H:%M:%S')}] 🔄 Tick #{ciclo}")
 
             senales_activas = db.obtener_senales_activas()
