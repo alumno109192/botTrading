@@ -201,3 +201,66 @@ def patron_doji(df: pd.DataFrame) -> bool:
     body = abs(df['Close'].iloc[-1] - df['Open'].iloc[-1])
     range_vela = df['High'].iloc[-1] - df['Low'].iloc[-1]
     return body < (range_vela * 0.1) if range_vela > 0 else False
+
+
+# ── Stop Hunt / Falsa Ruptura + Recuperación ────────────────
+
+def detectar_stop_hunt_alcista(df: pd.DataFrame, lookback: int = 20) -> bool:
+    """
+    Stop Hunt alcista: el precio perfora el mínimo de las últimas N velas
+    (activa stops de compradores) pero cierra POR ENCIMA de ese nivel,
+    con una mecha inferior larga que evidencia el rechazo.
+
+    Condiciones:
+      1. Low actual < mínimo de las últimas `lookback` velas  (ruptura)
+      2. Close actual > ese mínimo                            (reclaim)
+      3. Mecha inferior > cuerpo  O  mecha inferior > 50% del rango total
+
+    Uso en 5M:  lookback=20 (~100 min de historia)
+    Uso en 15M: lookback=20 (~5 h de historia)
+    """
+    if len(df) < lookback + 2:
+        return False
+
+    vela       = df.iloc[-1]
+    swing_low  = float(df['Low'].iloc[-lookback - 1:-1].min())
+
+    ruptura    = float(vela['Low'])   < swing_low
+    reclaim    = float(vela['Close']) > swing_low
+
+    body        = abs(float(vela['Close']) - float(vela['Open']))
+    lower_wick  = min(float(vela['Close']), float(vela['Open'])) - float(vela['Low'])
+    total_range = float(vela['High']) - float(vela['Low'])
+
+    mecha_larga = (lower_wick > body) or (total_range > 0 and lower_wick / total_range > 0.5)
+
+    return ruptura and reclaim and mecha_larga
+
+
+def detectar_stop_hunt_bajista(df: pd.DataFrame, lookback: int = 20) -> bool:
+    """
+    Stop Hunt bajista: el precio perfora el máximo de las últimas N velas
+    (activa stops de vendedores) pero cierra POR DEBAJO de ese nivel,
+    con una mecha superior larga que evidencia el rechazo.
+
+    Condiciones:
+      1. High actual > máximo de las últimas `lookback` velas  (ruptura)
+      2. Close actual < ese máximo                             (reclaim)
+      3. Mecha superior > cuerpo  O  mecha superior > 50% del rango total
+    """
+    if len(df) < lookback + 2:
+        return False
+
+    vela       = df.iloc[-1]
+    swing_high = float(df['High'].iloc[-lookback - 1:-1].max())
+
+    ruptura    = float(vela['High'])  > swing_high
+    reclaim    = float(vela['Close']) < swing_high
+
+    body        = abs(float(vela['Close']) - float(vela['Open']))
+    upper_wick  = float(vela['High']) - max(float(vela['Close']), float(vela['Open']))
+    total_range = float(vela['High']) - float(vela['Low'])
+
+    mecha_larga = (upper_wick > body) or (total_range > 0 and upper_wick / total_range > 0.5)
+
+    return ruptura and reclaim and mecha_larga

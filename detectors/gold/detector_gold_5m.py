@@ -90,7 +90,7 @@ ultima_senal_timestamp = None
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
 # ══════════════════════════════════════
-from core.indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji
+from core.indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji, detectar_stop_hunt_alcista, detectar_stop_hunt_bajista
 
 def calcular_zonas_sr(df, atr, lookback, zone_mult):
     """
@@ -247,7 +247,15 @@ def analizar_simbolo(simbolo, params):
         if patron_envolvente_alcista(df):
             score_buy += 2
 
-        max_score = 15
+        # Stop Hunt / Falsa Ruptura (patrón de alta fiabilidad en Gold)
+        if detectar_stop_hunt_bajista(df):
+            score_sell += 3
+            print(f"  🎯 [5M] Stop Hunt BAJISTA detectado — +3 pts SELL")
+        if detectar_stop_hunt_alcista(df):
+            score_buy += 3
+            print(f"  🎯 [5M] Stop Hunt ALCISTA detectado — +3 pts BUY")
+
+        max_score = 18
 
         # Umbrales 5M — solo FUERTE llega a Telegram
         senal_sell_fuerte = score_sell >= 8
@@ -388,7 +396,7 @@ def analizar_simbolo(simbolo, params):
                             'score': score_sell,
                             'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
                                                        'atr': round(atr, 2)}),
-                            'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}",
+                            'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
                             'version_detector': '5M-MICRO-v2.0'
                         })
                     except Exception as e:
@@ -424,7 +432,7 @@ def analizar_simbolo(simbolo, params):
                             'score': score_buy,
                             'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
                                                        'atr': round(atr, 2)}),
-                            'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}",
+                            'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}",
                             'version_detector': '5M-MICRO-v2.0'
                         })
                     except Exception as e:
