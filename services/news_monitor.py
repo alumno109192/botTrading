@@ -40,7 +40,7 @@ load_dotenv()
 TELEGRAM_TOKEN     = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID')
 try:
-    TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_SWING') or 0) or None
+    TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_NEWS') or 0) or None
 except (ValueError, TypeError):
     TELEGRAM_THREAD_ID = None
 
