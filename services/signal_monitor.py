@@ -445,6 +445,9 @@ def monitor_senales():
     # Registro del último momento en que se revisó cada señal (id → datetime)
     ultimo_check: dict = {}
     ciclo = 0
+    # ISO week numbers de la última apertura/cierre notificados (evita mensajes duplicados)
+    _semana_apertura_enviada: int = -1
+    _semana_cierre_enviada: int = -1
 
     while True:
         try:
@@ -468,6 +471,30 @@ def monitor_senales():
                       f"monitor en pausa hasta Dom 21:00 UTC. Revisando en {int(segundos_espera//60)} min...")
                 time.sleep(segundos_espera)
                 continue
+
+            semana_actual = ahora_utc.isocalendar()[1]
+
+            # ── Notificación APERTURA DE MERCADOS (Dom ≥21:00 o Lunes) ──────
+            if semana_actual != _semana_apertura_enviada and ahora_utc.weekday() in (6, 0):
+                msg = (
+                    "🟢 <b>APERTURA DE MERCADOS</b>\n"
+                    f"📅 {ahora_utc.strftime('%A %d/%m/%Y %H:%M')} UTC\n"
+                    "⚡ Mercados de futuros activos — monitor iniciado"
+                )
+                enviar_notificacion_telegram(msg)
+                _semana_apertura_enviada = semana_actual
+                print(f"[{ahora_utc.strftime('%H:%M')} UTC] 🟢 Mensaje apertura enviado a Telegram")
+
+            # ── Notificación CIERRE DE MERCADOS (Viernes ≥21:00 UTC) ────────
+            if ahora_utc.weekday() == 4 and ahora_utc.hour >= 21 and semana_actual != _semana_cierre_enviada:
+                msg = (
+                    "🔴 <b>CIERRE DE MERCADOS</b>\n"
+                    f"📅 {ahora_utc.strftime('%A %d/%m/%Y %H:%M')} UTC\n"
+                    "🌙 Mercados cerrados hasta el Domingo 22:00 UTC"
+                )
+                enviar_notificacion_telegram(msg)
+                _semana_cierre_enviada = semana_actual
+                print(f"[{ahora_utc.strftime('%H:%M')} UTC] 🔴 Mensaje cierre enviado a Telegram")
 
             ahora = ahora_utc.astimezone()   # hora local para logs existentes
             print(f"\n[{ahora.strftime('%H:%M:%S')}] 🔄 Tick #{ciclo}")
