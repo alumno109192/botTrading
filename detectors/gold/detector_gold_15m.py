@@ -176,8 +176,9 @@ def analizar_simbolo(simbolo, params):
         return
 
     try:
-        # Descargar datos (15m requiere menos historial)
-        df, is_delayed = get_ohlcv(params['ticker_yf'], period='5d', interval='15m')
+        # Descargar datos 5M y resamplear a 15M (comparte caché con detectores 5M y 1H)
+        df_5m, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
+        df = df_5m.resample('15min').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
         if is_delayed:
             print("  ⚠️  [15M] Datos con 15 min de delay (yfinance free). Señales de entrada pueden estar desfasadas.")
         

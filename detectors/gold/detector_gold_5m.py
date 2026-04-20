@@ -148,7 +148,7 @@ def analizar_simbolo(simbolo, params):
         return
 
     try:
-        df, is_delayed = get_ohlcv(params['ticker_yf'], period='2d', interval='5m')
+        df, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
         if is_delayed:
             print("  ⚠️  [5M] Datos con 15 min de delay (yfinance free). Entradas de scalping pueden estar desfasadas.")
 

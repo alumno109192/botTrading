@@ -55,6 +55,12 @@ _daily_cache: dict = {}   # key = (ticker, period) → {'df': DataFrame, 'ts': d
 _daily_cache_lock = threading.Lock()
 _DAILY_TTL = timedelta(hours=4)  # Re-descargar cada 4h (suficiente para velas diarias)
 
+# ── Cache intraday (TTL 65s) — comparte datos entre detectores del mismo activo ──
+# Los detectores 5M, 15M y 1H usan el mismo (ticker, period, interval) → una sola llamada a la API
+_intraday_cache: dict = {}
+_intraday_cache_lock = threading.Lock()
+_INTRADAY_TTL = timedelta(seconds=65)
+
 # ── Round-Robin de API Keys ──────────────────────────────────────────────────
 # Se construye la lista al arranque con las keys disponibles.
 # El ciclo se comparte entre todos los threads (protegido con lock).
@@ -110,6 +116,15 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 
     El DataFrame siempre tiene columnas: Open, High, Low, Close, Volume
     """
+    # ── Cache intraday (evita doble llamada entre detectores con mismos parámetros) ──
+    if interval in _INTRADAY_INTERVALS:
+        _ck = (ticker_yf, period, interval)
+        with _intraday_cache_lock:
+            _e = _intraday_cache.get(_ck)
+            if _e and (datetime.now(timezone.utc) - _e['ts']) < _INTRADAY_TTL:
+                print(f"  💾 [data_provider] Cache intraday hit — {ticker_yf} {interval} ({len(_e['df'])} velas)")
+                return _e['df'].copy(), _e['delayed']
+
     if interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
         # Intentar con Round-Robin: probar cada key una vez antes de rendirse
         for _ in range(len(_td_keys)):
@@ -120,6 +135,8 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             if ok and not df.empty and len(df) >= 10:
                 _registrar_uso_key(alias)
                 print(f"  ✅ [data_provider] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                with _intraday_cache_lock:
+                    _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
                 return df, False
             print(f"  ⚠️ [data_provider] Twelve Data {alias} falló — rotando a siguiente key")
 
@@ -128,6 +145,8 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             df, ok = _get_polygon(ticker_yf, period, interval)
             if ok and not df.empty and len(df) >= 10:
                 print(f"  ✅ [data_provider] Polygon.io — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                with _intraday_cache_lock:
+                    _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
                 return df, False
             print(f"  ⚠️ [data_provider] Polygon.io falló — usando yfinance (delay 15m)")
 
@@ -158,6 +177,9 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
         if interval == '1d':
             with _daily_cache_lock:
                 _daily_cache[(ticker_yf, period)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc)}
+        elif interval in _INTRADAY_INTERVALS:
+            with _intraday_cache_lock:
+                _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': True}
 
     return df, True
 
