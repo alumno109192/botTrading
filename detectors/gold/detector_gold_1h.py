@@ -123,6 +123,109 @@ def calcular_zonas_sr(df, atr, lookback, zone_mult):
     return zrl, zrh, zsl, zsh
 
 
+def detectar_canal_roto(df, atr, lookback=40, wing=3):
+    """
+    Detecta si el precio acaba de romper un canal alcista o bajista.
+
+    Método: ajusta una línea de tendencia sobre los swing-lows (canal alcista)
+    y otra sobre los swing-highs (canal bajista) usando regresión lineal.
+    Considera roto si el cierre actual está por debajo/encima del valor
+    proyectado de la línea en más de 0.3×ATR.
+
+    Returns:
+        canal_alcista_roto (bool), canal_bajista_roto (bool),
+        valor_linea_soporte (float), valor_linea_resist (float)
+    """
+    sub   = df.iloc[-lookback:]
+    highs = sub['High'].values
+    lows  = sub['Close'].values   # usamos cierre para reducir ruido
+    n     = len(sub)
+    x     = np.arange(n)
+
+    # Índices de swing lows (soportes de la tendencia alcista)
+    idx_lows = []
+    for i in range(wing, n - wing):
+        if all(lows[i] <= lows[i-j] for j in range(1, wing+1)) and \
+           all(lows[i] <= lows[i+j] for j in range(1, wing+1)):
+            idx_lows.append(i)
+
+    # Índices de swing highs (resistencias de la tendencia bajista)
+    idx_highs = []
+    for i in range(wing, n - wing):
+        if all(highs[i] >= highs[i-j] for j in range(1, wing+1)) and \
+           all(highs[i] >= highs[i+j] for j in range(1, wing+1)):
+            idx_highs.append(i)
+
+    canal_alcista_roto  = False
+    canal_bajista_roto  = False
+    linea_soporte_val   = float(lows[-1])
+    linea_resist_val    = float(highs[-1])
+
+    # Canal alcista: línea sobre swing lows
+    if len(idx_lows) >= 2:
+        xs = np.array(idx_lows)
+        ys = lows[idx_lows]
+        m, b = np.polyfit(xs, ys, 1)
+        if m > 0:  # solo si la línea es ascendente (tendencia alcista)
+            linea_soporte_val = m * (n - 1) + b
+            close_actual = float(df['Close'].iloc[-1])
+            if close_actual < linea_soporte_val - 0.3 * atr:
+                canal_alcista_roto = True
+
+    # Canal bajista: línea sobre swing highs
+    if len(idx_highs) >= 2:
+        xs = np.array(idx_highs)
+        ys = highs[idx_highs]
+        m, b = np.polyfit(xs, ys, 1)
+        if m < 0:  # solo si la línea es descendente
+            linea_resist_val = m * (n - 1) + b
+            close_actual = float(df['Close'].iloc[-1])
+            if close_actual > linea_resist_val + 0.3 * atr:
+                canal_bajista_roto = True
+
+    return canal_alcista_roto, canal_bajista_roto, linea_soporte_val, linea_resist_val
+
+
+def calcular_sr_multiples(df, atr, lookback, zone_mult, n_niveles=5):
+    """
+    Devuelve hasta n_niveles de soporte y resistencia ordenados por proximidad
+    al precio actual. Usado para anclar los TPs a zonas reales del mercado.
+
+    Returns:
+        soportes (list[float]), resistencias (list[float])  — ordenados de más
+        cercano a más lejano respecto al precio actual.
+    """
+    close      = float(df['Close'].iloc[-1])
+    wing       = 3
+    highs      = df['High'].iloc[-lookback-1:-1]
+    lows       = df['Low'].iloc[-lookback-1:-1]
+    min_dist   = atr * 0.5   # filtrar niveles demasiado juntos
+
+    raw_highs, raw_lows = [], []
+    for i in range(wing, len(highs) - wing):
+        val = float(highs.iloc[i])
+        if all(val >= float(highs.iloc[i-j]) for j in range(1, wing+1)) and \
+           all(val >= float(highs.iloc[i+j]) for j in range(1, wing+1)):
+            raw_highs.append(val)
+    for i in range(wing, len(lows) - wing):
+        val = float(lows.iloc[i])
+        if all(val <= float(lows.iloc[i-j]) for j in range(1, wing+1)) and \
+           all(val <= float(lows.iloc[i+j]) for j in range(1, wing+1)):
+            raw_lows.append(val)
+
+    todos = sorted(set(raw_highs + raw_lows))
+
+    # Filtrar niveles muy juntos (clustering)
+    filtrados = []
+    for v in todos:
+        if not filtrados or abs(v - filtrados[-1]) > min_dist:
+            filtrados.append(v)
+
+    soportes     = sorted([v for v in filtrados if v < close - atr * 0.2], reverse=True)[:n_niveles]
+    resistencias = sorted([v for v in filtrados if v > close + atr * 0.2])[:n_niveles]
+    return soportes, resistencias
+
+
 def analizar(simbolo, params):
     simbolo_db = f"{simbolo}_1H"
 
@@ -182,6 +285,20 @@ def analizar(simbolo, params):
     total_range = row['total_range']; is_bearish = row['is_bearish']; is_bullish = row['is_bullish']
 
     zrl, zrh, zsl, zsh = calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
+
+    # ── Niveles S/R múltiples para TPs estructurales ──────────────────────────
+    soportes_sr, resistencias_sr = calcular_sr_multiples(
+        df, atr, params['sr_lookback'], params['sr_zone_mult'], n_niveles=5
+    )
+
+    # ── Detección de canal roto ────────────────────────────────────────────────
+    canal_alcista_roto, canal_bajista_roto, linea_soporte_canal, linea_resist_canal = \
+        detectar_canal_roto(df, atr, lookback=40)
+    if canal_alcista_roto:
+        print(f"  🔻 Canal alcista ROTO — sesgo bajista reforzado (soporte canal ${linea_soporte_canal:.2f})")
+    if canal_bajista_roto:
+        print(f"  🔺 Canal bajista ROTO — sesgo alcista reforzado (resist canal ${linea_resist_canal:.2f})")
+
     tol  = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
     lop = params['limit_offset_pct']; cd = params['cancelar_dist']
     av   = params['anticipar_velas']; vm = params['vol_mult']
@@ -191,17 +308,53 @@ def analizar(simbolo, params):
     sell_limit = zrl + (zrh - zrl) * (lop / 100 * 10)
     buy_limit  = zsh - (zsh - zsl) * (lop / 100 * 10)
 
-    # TPs dinámicos basados en ATR (intradía alcanzables en el mismo día)
-    tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
-    tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
-    tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
-    tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
-    tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
-    tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
+    # ── SL anclado a estructura swing (último swing high/low + buffer ATR) ────
+    swing_wing  = 3
+    sub_sl      = df.iloc[-30:]
+    swing_h_vals = []
+    swing_l_vals = []
+    for i in range(swing_wing, len(sub_sl) - swing_wing):
+        h = float(sub_sl['High'].iloc[i])
+        l = float(sub_sl['Low'].iloc[i])
+        if all(h >= float(sub_sl['High'].iloc[i-j]) for j in range(1, swing_wing+1)) and \
+           all(h >= float(sub_sl['High'].iloc[i+j]) for j in range(1, swing_wing+1)):
+            swing_h_vals.append(h)
+        if all(l <= float(sub_sl['Low'].iloc[i-j]) for j in range(1, swing_wing+1)) and \
+           all(l <= float(sub_sl['Low'].iloc[i+j]) for j in range(1, swing_wing+1)):
+            swing_l_vals.append(l)
 
-    # SL estrictamente ATR-based desde precio de entrada (intradía, no zona)
-    sl_venta  = round(sell_limit + atr * asm, 2)
-    sl_compra = round(buy_limit  - atr * asm, 2)
+    # Para SELL: SL en último swing HIGH por encima de la entrada + 0.3×ATR buffer
+    sl_swing_sell_candidates = [v for v in swing_h_vals if v > sell_limit]
+    if sl_swing_sell_candidates:
+        sl_venta = round(min(sl_swing_sell_candidates) + atr * 0.3, 2)
+    else:
+        sl_venta = round(sell_limit + atr * asm, 2)  # fallback ATR
+
+    # Para BUY: SL en último swing LOW por debajo de la entrada - 0.3×ATR buffer
+    sl_swing_buy_candidates = [v for v in swing_l_vals if v < buy_limit]
+    if sl_swing_buy_candidates:
+        sl_compra = round(max(sl_swing_buy_candidates) - atr * 0.3, 2)
+    else:
+        sl_compra = round(buy_limit - atr * asm, 2)   # fallback ATR
+
+    # ── TPs en zonas S/R reales (con fallback a ATR si no hay suficientes niveles) ──
+    def _tp_desde_sr(niveles, n, fallback):
+        return round(niveles[n-1], 2) if len(niveles) >= n else round(fallback, 2)
+
+    tp1_v = _tp_desde_sr(soportes_sr, 1, sell_limit - atr * params['atr_tp1_mult'])
+    tp2_v = _tp_desde_sr(soportes_sr, 2, sell_limit - atr * params['atr_tp2_mult'])
+    tp3_v = _tp_desde_sr(soportes_sr, 3, sell_limit - atr * params['atr_tp3_mult'])
+    tp1_c = _tp_desde_sr(resistencias_sr[::-1], 1, buy_limit + atr * params['atr_tp1_mult']) \
+            if False else _tp_desde_sr(
+                sorted(resistencias_sr, key=lambda v: v - buy_limit),
+                1, buy_limit + atr * params['atr_tp1_mult'])
+    # Re-ordenar correctamente
+    tp1_c = _tp_desde_sr(sorted([v for v in resistencias_sr if v > buy_limit]), 1,
+                         buy_limit + atr * params['atr_tp1_mult'])
+    tp2_c = _tp_desde_sr(sorted([v for v in resistencias_sr if v > buy_limit]), 2,
+                         buy_limit + atr * params['atr_tp2_mult'])
+    tp3_c = _tp_desde_sr(sorted([v for v in resistencias_sr if v > buy_limit]), 3,
+                         buy_limit + atr * params['atr_tp3_mult'])
 
     avg_candle_range    = df['total_range'].iloc[-6:-1].mean()
     aproximando_resist  = (zrl - close > 0 and zrl - close < avg_candle_range * av and close > float(df['Close'].iloc[-5]))
@@ -262,7 +415,8 @@ def analizar(simbolo, params):
         (1 if macd_divergencia_bajista else 0) +
         (1 if obv_divergencia_bajista  else 0) +
         (1 if obv_decreciente          else 0) +
-        (1 if macd_negativo            else 0)
+        (1 if macd_negativo            else 0) +
+        (2 if canal_alcista_roto       else 0)   # canal alcista roto → sesgo bajista fuerte
     )
     if adx_lateral: score_sell = max(0, score_sell - 3)
 
@@ -314,7 +468,8 @@ def analizar(simbolo, params):
         (1 if macd_divergencia_alcista   else 0) +
         (1 if obv_divergencia_alcista    else 0) +
         (1 if obv_creciente              else 0) +
-        (1 if macd_positivo              else 0)
+        (1 if macd_positivo              else 0) +
+        (2 if canal_bajista_roto         else 0)   # canal bajista roto → sesgo alcista fuerte
     )
     if adx_lateral: score_buy = max(0, score_buy - 3)
 
@@ -403,13 +558,14 @@ def analizar(simbolo, params):
                f"📊 <b>Nivel:</b> {nv}\n"
                f"💰 <b>Precio actual:</b> ${close:.2f}\n"
                f"📌 <b>SELL LIMIT previsto:</b> ${sell_limit:.2f}\n"
-               f"🛑 <b>Stop Loss:</b> ${sl_venta:.2f}  (-${round(sl_venta - sell_limit, 2)})\n"
+               f"🛑 <b>Stop Loss:</b> ${sl_venta:.2f}  ← swing high estructural\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1  (+${round(sell_limit - tp1_v, 2)})\n"
-               f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1  (+${round(sell_limit - tp2_v, 2)})\n"
-               f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1  (+${round(sell_limit - tp3_v, 2)})\n"
+               f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1  (zona S/R)\n"
+               f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1  (zona S/R)\n"
+               f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1  (zona S/R)\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+               + (f"🔻 <b>Canal alcista ROTO</b> — nivel canal ${linea_soporte_canal:.2f}\n" if canal_alcista_roto else "")
+               + f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
         if db and not db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
             try:
@@ -437,13 +593,14 @@ def analizar(simbolo, params):
                f"📊 <b>Nivel:</b> {nv}\n"
                f"💰 <b>Precio actual:</b> ${close:.2f}\n"
                f"📌 <b>BUY LIMIT previsto:</b> ${buy_limit:.2f}\n"
-               f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(buy_limit - sl_compra, 2)})\n"
+               f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  ← swing low estructural\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1  (+${round(tp1_c - buy_limit, 2)})\n"
-               f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1  (+${round(tp2_c - buy_limit, 2)})\n"
-               f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_limit, 2)})\n"
+               f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1  (zona S/R)\n"
+               f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1  (zona S/R)\n"
+               f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1  (zona S/R)\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
-               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+               + (f"🔺 <b>Canal bajista ROTO</b> — nivel canal ${linea_resist_canal:.2f}\n" if canal_bajista_roto else "")
+               + f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
         if db and not db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
             try:
