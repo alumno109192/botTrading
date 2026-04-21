@@ -77,12 +77,6 @@ from core.indicators import (
     detectar_evening_star, detectar_morning_star,
 )
 
-def en_sesion_activa():
-    """Solo operar en sesión London/NY: 07:00-17:00 UTC."""
-    hora_utc = datetime.now(timezone.utc).hour
-    return 7 <= hora_utc < 17
-
-
 def calcular_zonas_sr(df, atr, lookback, zone_mult):
     """
     Detecta zonas S/R usando swing highs/lows locales (no solo máx/mín absoluto).
@@ -131,10 +125,6 @@ def calcular_zonas_sr(df, atr, lookback, zone_mult):
 
 def analizar(simbolo, params):
     simbolo_db = f"{simbolo}_1H"
-
-    if not en_sesion_activa():
-        print(f"  ⏸️  [1H] Fuera de sesión (07-17 UTC) — análisis saltado")
-        return
 
     # ── Filtro calendario económico ──
     bloqueado, descripcion = hay_evento_impacto(ventana_minutos=60)
