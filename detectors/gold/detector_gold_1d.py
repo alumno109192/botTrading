@@ -220,20 +220,44 @@ def calcular_sentimiento_alcista(row, prev, p2, df, params):
 # ══════════════════════════════════════
 def calcular_zonas_sr(df, atr, lookback, zone_mult):
     """
-    Detecta automáticamente zonas S/R desde swing highs/lows históricos.
-    No requiere mantenimiento manual — se adapta al precio actual y la volatilidad.
-    
+    Detecta zonas S/R usando swing highs/lows locales (no solo máx/mín absoluto).
+    Principio: soporte roto = nueva resistencia; resistencia rota = nuevo soporte.
+    Selecciona el pivote más cercano al precio en cada dirección.
+
     Returns: (zrl, zrh, zsl, zsh)
         zrl/zrh = límites bajo/alto de la zona de resistencia
         zsl/zsh = límites bajo/alto de la zona de soporte
     """
+    close      = float(df['Close'].iloc[-1])
+    zone_width = atr * zone_mult
+    wing       = 3
     highs = df['High'].iloc[-lookback-1:-1]
     lows  = df['Low'].iloc[-lookback-1:-1]
-    
-    resist_pivot  = float(highs.max())
-    support_pivot = float(lows.min())
-    zone_width = atr * zone_mult
-    
+
+    swing_highs = []
+    for i in range(wing, len(highs) - wing):
+        val = float(highs.iloc[i])
+        if all(val >= float(highs.iloc[i-j]) for j in range(1, wing+1)) and \
+           all(val >= float(highs.iloc[i+j]) for j in range(1, wing+1)):
+            swing_highs.append(val)
+
+    swing_lows = []
+    for i in range(wing, len(lows) - wing):
+        val = float(lows.iloc[i])
+        if all(val <= float(lows.iloc[i-j]) for j in range(1, wing+1)) and \
+           all(val <= float(lows.iloc[i+j]) for j in range(1, wing+1)):
+            swing_lows.append(val)
+
+    if not swing_highs: swing_highs = [float(highs.max())]
+    if not swing_lows:  swing_lows  = [float(lows.min())]
+
+    min_dist = atr * 0.3
+    candidatos_resist = [v for v in set(swing_highs + swing_lows) if v > close + min_dist]
+    candidatos_sop    = [v for v in set(swing_lows + swing_highs) if v < close - min_dist]
+
+    resist_pivot  = min(candidatos_resist) if candidatos_resist else float(highs.max())
+    support_pivot = max(candidatos_sop)    if candidatos_sop    else float(lows.min())
+
     # Resistencia: zona centrada en el swing high (más banda bajo el pivot, donde venden)
     zrh = round(resist_pivot + zone_width * 0.25, 2)
     zrl = round(resist_pivot - zone_width * 0.75, 2)
