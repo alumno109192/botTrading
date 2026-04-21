@@ -408,19 +408,19 @@ def analizar(simbolo, params):
               "🔴 SELL FUERTE" if senal_sell_fuerte else
               "⚡ SELL MEDIA"  if senal_sell_media  else
               "👀 SELL ALERTA")
-        msg = (f"⚡ <b>SEÑAL SELL — ORO (XAUUSD) 1H</b> | PON ORDEN LIMIT AHORA\n"
+        msg = (f"⏳ <b>SETUP SELL 1H — ORO (XAUUSD)</b> | ESPERANDO CONFIRMACIÓN 15M/5M\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"📊 <b>Nivel:</b> {nv}\n"
                f"💰 <b>Precio actual:</b> ${close:.2f}\n"
-               f"📌 <b>SELL LIMIT:</b>   ${sell_limit:.2f}  ← pon la orden aquí\n"
-               f"🛑 <b>Stop Loss:</b>   ${sl_venta:.2f}  (-${round(sl_venta - sell_limit, 2)})\n"
+               f"📌 <b>SELL LIMIT previsto:</b> ${sell_limit:.2f}\n"
+               f"🛑 <b>Stop Loss:</b> ${sl_venta:.2f}  (-${round(sl_venta - sell_limit, 2)})\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1  (+${round(sell_limit - tp1_v, 2)})\n"
                f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1  (+${round(sell_limit - tp2_v, 2)})\n"
                f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1  (+${round(sell_limit - tp3_v, 2)})\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
-               f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 INTRADÍA")
+               f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
         if db and not db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
             try:
                 db.guardar_senal({
@@ -430,7 +430,8 @@ def analizar(simbolo, params):
                     'score': score_sell,
                     'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
                     'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
-                    'version_detector': 'GOLD 1H-v2.0'
+                    'version_detector': 'GOLD 1H-v2.0',
+                    'estado': 'PENDIENTE_CONFIRM'
                 })
             except Exception as e:
                 print(f"  ⚠️ Error BD: {e}")
@@ -441,19 +442,19 @@ def analizar(simbolo, params):
               "🟢 BUY FUERTE" if senal_buy_fuerte else
               "⚡ BUY MEDIA"  if senal_buy_media  else
               "👀 BUY ALERTA")
-        msg = (f"⚡ <b>SEÑAL BUY — ORO (XAUUSD) 1H</b> | PON ORDEN LIMIT AHORA\n"
+        msg = (f"⏳ <b>SETUP BUY 1H — ORO (XAUUSD)</b> | ESPERANDO CONFIRMACIÓN 15M/5M\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"📊 <b>Nivel:</b> {nv}\n"
                f"💰 <b>Precio actual:</b> ${close:.2f}\n"
-               f"📌 <b>BUY LIMIT:</b>    ${buy_limit:.2f}  ← pon la orden aquí\n"
-               f"🛑 <b>Stop Loss:</b>   ${sl_compra:.2f}  (-${round(buy_limit - sl_compra, 2)})\n"
+               f"📌 <b>BUY LIMIT previsto:</b> ${buy_limit:.2f}\n"
+               f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(buy_limit - sl_compra, 2)})\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1  (+${round(tp1_c - buy_limit, 2)})\n"
                f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1  (+${round(tp2_c - buy_limit, 2)})\n"
                f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_limit, 2)})\n"
                f"━━━━━━━━━━━━━━━━━━━━\n"
                f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
-               f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 INTRADÍA")
+               f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
         if db and not db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
             try:
                 db.guardar_senal({
@@ -463,7 +464,8 @@ def analizar(simbolo, params):
                     'score': score_buy,
                     'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
                     'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
-                    'version_detector': 'GOLD 1H-v2.0'
+                    'version_detector': 'GOLD 1H-v2.0',
+                    'estado': 'PENDIENTE_CONFIRM'
                 })
             except Exception as e:
                 print(f"  ⚠️ Error BD: {e}")

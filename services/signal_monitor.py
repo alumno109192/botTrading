@@ -11,6 +11,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from adapters.database import DatabaseManager
+from services import tf_bias
 
 # Lock compartido con app.py para serializar TODAS las llamadas a yfinance
 # (tanto yf.download() como yf.Ticker().history())
@@ -357,6 +358,107 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         return
 
 
+_TIMEOUT_PENDIENTE_CONFIRM_HORAS = 2  # señal 1H caduca si no hay confirmación en 2h
+
+
+def _verificar_pendientes_confirm(db: DatabaseManager):
+    """
+    Revisa señales 1H en estado PENDIENTE_CONFIRM y las activa si tf_bias
+    muestra que 15M o 5M ya están alineados con la misma dirección.
+    Caduca las que llevan más de _TIMEOUT_PENDIENTE_CONFIRM_HORAS sin confirmar.
+    """
+    pendientes = db.obtener_senales_pendientes_confirm()
+    if not pendientes:
+        return
+
+    ahora = datetime.now(timezone.utc)
+    print(f"  ⏳ Pendientes de confirmación 1H: {len(pendientes)}")
+
+    for senal in pendientes:
+        senal_id  = senal['id']
+        simbolo   = senal['simbolo']          # ej. XAUUSD_1H
+        direccion = senal['direccion']        # COMPRA | VENTA
+        ts_raw    = senal['timestamp']
+
+        # Calcular antigüedad
+        try:
+            if isinstance(ts_raw, str):
+                ts = datetime.fromisoformat(ts_raw.replace('Z', '+00:00'))
+            else:
+                ts = ts_raw
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            antiguedad_h = (ahora - ts).total_seconds() / 3600
+        except Exception:
+            antiguedad_h = 0
+
+        if antiguedad_h > _TIMEOUT_PENDIENTE_CONFIRM_HORAS:
+            db.caducar_senal_pendiente(senal_id)
+            msg_caduca = (
+                f"⏰ <b>Setup 1H caducado</b> — sin confirmación 15M/5M\n"
+                f"📊 {simbolo} | {direccion}\n"
+                f"⌛ Esperó {int(antiguedad_h*60)} min sin alineación inferior"
+            )
+            enviar_notificacion_telegram(msg_caduca, simbolo)
+            print(f"  ⏰ Señal {senal_id} ({simbolo} {direccion}) caducada por timeout")
+            continue
+
+        # Obtener símbolo base (XAUUSD) para consultar tf_bias
+        simbolo_base = simbolo.split('_')[0]
+        bias_dir = tf_bias.BIAS_BULLISH if direccion == 'COMPRA' else tf_bias.BIAS_BEARISH
+
+        sesgo_15m = tf_bias.obtener_sesgo(simbolo_base, '15M')
+        sesgo_5m  = tf_bias.obtener_sesgo(simbolo_base, '5M')
+
+        tf_confirmador = None
+        for tf_label, sesgo in [('15M', sesgo_15m), ('5M', sesgo_5m)]:
+            if sesgo and sesgo.get('bias') == bias_dir:
+                # Verificar que el sesgo no ha caducado (TTL = 2h)
+                edad_sesgo = (datetime.now() - sesgo['ts']).total_seconds() / 3600
+                if edad_sesgo <= tf_bias.TTL_SESGO_HORAS:
+                    tf_confirmador = tf_label
+                    break
+
+        if tf_confirmador is None:
+            print(f"  ⏳ {simbolo} {direccion} — sin confirmación {int(antiguedad_h*60)}min "
+                  f"(15M:{sesgo_15m and sesgo_15m.get('bias')} "
+                  f"5M:{sesgo_5m and sesgo_5m.get('bias')})")
+            continue
+
+        # ✅ Confirmación recibida — activar señal y notificar
+        db.confirmar_senal_pendiente(senal_id)
+
+        try:
+            precio_entrada = float(senal['precio_entrada'])
+            tp1 = float(senal['tp1'])
+            tp2 = float(senal['tp2'])
+            tp3 = float(senal['tp3'])
+            sl  = float(senal['sl'])
+            score = senal.get('score', '?')
+        except (TypeError, ValueError):
+            precio_entrada = tp1 = tp2 = tp3 = sl = 0.0
+            score = '?'
+
+        flecha = '📌 BUY LIMIT' if direccion == 'COMPRA' else '📌 SELL LIMIT'
+        icono  = '🟢' if direccion == 'COMPRA' else '🔴'
+        msg_confirm = (
+            f"✅ <b>ENTRADA CONFIRMADA — ORO (XAUUSD) 1H</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{icono} <b>Dirección:</b> {direccion}\n"
+            f"🕐 <b>Confirmado por:</b> {tf_confirmador}\n"
+            f"{flecha}: <b>${precio_entrada:.2f}</b>  ← PON LA ORDEN AHORA\n"
+            f"🛑 <b>Stop Loss:</b> ${sl:.2f}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 <b>TP1:</b> ${tp1:.2f}\n"
+            f"🎯 <b>TP2:</b> ${tp2:.2f}\n"
+            f"🎯 <b>TP3:</b> ${tp3:.2f}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>Score 1H:</b> {score}/21  ⏱️ <b>TF:</b> 1H+{tf_confirmador}"
+        )
+        enviar_notificacion_telegram(msg_confirm, simbolo)
+        print(f"  ✅ Señal {senal_id} ({simbolo} {direccion}) confirmada por {tf_confirmador}")
+
+
 def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
     """
     Cierra automáticamente señales que llevan más de X días activas
@@ -583,6 +685,10 @@ def monitor_senales():
             for sid in list(ultimo_check):
                 if sid not in ids_activos:
                     del ultimo_check[sid]
+
+            # Cada 2 ticks (60s) verificar confirmaciones pendientes de señales 1H
+            if ciclo % 2 == 0:
+                _verificar_pendientes_confirm(db)
 
             # Cada ~hora (cada 120 ticks × 30s = 60 min) cerrar señales antiguas
             if ciclo % 120 == 0:

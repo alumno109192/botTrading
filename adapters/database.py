@@ -213,13 +213,14 @@ class DatabaseManager:
         Returns:
             ID de la señal insertada
         """
-        query = """
+        estado = senal_data.get('estado', 'ACTIVA')
+        query = f"""
         INSERT INTO senales (
             timestamp, simbolo, direccion, precio_entrada,
             tp1, tp2, tp3, sl, score,
             indicadores, patron_velas, version_detector,
             estado
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVA')
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}')
         """
         
         params = (
@@ -260,13 +261,13 @@ class DatabaseManager:
         FROM senales
         WHERE simbolo = ?
         AND direccion = ?
-        AND estado = 'ACTIVA'
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
         """
         
         result = self.ejecutar_query(query, (simbolo, direccion))
         
         if result.rows and int(result.rows[0]['count']) > 0:
-            print(f"⚠️ Ya existe señal ACTIVA: {simbolo} {direccion} — no se duplica")
+            print(f"⚠️ Ya existe señal ACTIVA/PENDIENTE: {simbolo} {direccion} — no se duplica")
             return True
         return False
     
@@ -280,11 +281,11 @@ class DatabaseManager:
         SELECT COUNT(*) as count
         FROM senales
         WHERE simbolo = ?
-        AND estado = 'ACTIVA'
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
         """
         result = self.ejecutar_query(query, (simbolo,))
         if result.rows and int(result.rows[0]['count']) > 0:
-            print(f"⚠️ Ya existe señal ACTIVA en {simbolo} (cualquier dirección) — bloqueado")
+            print(f"⚠️ Ya existe señal ACTIVA/PENDIENTE en {simbolo} (cualquier dirección) — bloqueado")
             return True
         return False
 
@@ -330,6 +331,30 @@ class DatabaseManager:
         
         result = self.ejecutar_query(query)
         return [dict(row) for row in result.rows] if result.rows else []
+
+    def obtener_senales_pendientes_confirm(self) -> List[Dict]:
+        """Obtiene señales 1H en espera de confirmación por 5M/15M."""
+        query = """
+        SELECT *
+        FROM senales
+        WHERE estado = 'PENDIENTE_CONFIRM'
+        ORDER BY timestamp ASC
+        """
+        result = self.ejecutar_query(query)
+        return [dict(row) for row in result.rows] if result.rows else []
+
+    def confirmar_senal_pendiente(self, senal_id: int) -> None:
+        """Activa una señal que estaba esperando confirmación de TF inferior."""
+        query = "UPDATE senales SET estado = 'ACTIVA' WHERE id = ?"
+        self.ejecutar_query(query, (senal_id,))
+        print(f"✅ Señal {senal_id} confirmada — estado → ACTIVA")
+
+    def caducar_senal_pendiente(self, senal_id: int) -> None:
+        """Caduca una señal PENDIENTE_CONFIRM que no recibió confirmación a tiempo."""
+        now = datetime.now(timezone.utc).isoformat()
+        query = "UPDATE senales SET estado = 'CADUCADA', fecha_cierre = ? WHERE id = ?"
+        self.ejecutar_query(query, (now, senal_id))
+        print(f"⏰ Señal {senal_id} caducada — sin confirmación 5M/15M en tiempo")
     
     def actualizar_precio_actual(self, senal_id: int, precio: float):
         """Actualiza el precio actual de una señal"""
