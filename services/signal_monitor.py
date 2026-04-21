@@ -11,7 +11,6 @@ import os
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from adapters.database import DatabaseManager
-from services import tf_bias
 
 # Lock compartido con app.py para serializar TODAS las llamadas a yfinance
 # (tanto yf.download() como yf.Ticker().history())
@@ -361,10 +360,78 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 _TIMEOUT_PENDIENTE_CONFIRM_HORAS = 2  # señal 1H caduca si no hay confirmación en 2h
 
 
+def _confirmar_con_velas_1m(ticker: str, direccion: str, precio_entrada: float) -> tuple:
+    """
+    Analiza las últimas velas de 1M para verificar que el momentum actual
+    confirma la dirección de la señal 1H.
+
+    Criterios:
+      - EMA9 y EMA21 alineadas con la dirección
+      - RSI14 en zona consistente (>48 para COMPRA, <52 para VENTA)
+      - Precio actual dentro de 2×ATR(1M) del precio de entrada (no se escapó)
+
+    Returns:
+        (confirmado: bool, descripcion: str)
+    """
+    try:
+        with _yf_lock:
+            hist = yf.Ticker(ticker).history(period='1d', interval='1m')
+        if hist.empty or len(hist) < 22:
+            return False, "Sin datos 1M suficientes"
+
+        close = hist['Close']
+        precio_actual = float(close.iloc[-1])
+
+        # EMA 9 y EMA 21
+        ema9  = float(close.ewm(span=9,  adjust=False).mean().iloc[-1])
+        ema21 = float(close.ewm(span=21, adjust=False).mean().iloc[-1])
+
+        # RSI 14
+        delta = close.diff()
+        gain  = delta.clip(lower=0).rolling(14).mean()
+        loss  = (-delta.clip(upper=0)).rolling(14).mean()
+        rs    = gain / loss.replace(0, float('inf'))
+        rsi   = float(100 - (100 / (1 + rs.iloc[-1])))
+
+        # ATR 14 sobre velas 1M — para medir si el precio se alejó de la entrada
+        tr_1m  = (hist['High'] - hist['Low']).rolling(14).mean()
+        atr_1m = float(tr_1m.iloc[-1])
+
+        # Precio demasiado lejos del nivel de entrada (más de 2 ATR)
+        distancia = abs(precio_actual - precio_entrada)
+        if atr_1m > 0 and distancia > 2 * atr_1m:
+            return False, (
+                f"Precio escapó de entrada "
+                f"(actual ${precio_actual:.2f} vs limit ${precio_entrada:.2f}, "
+                f"dist={distancia:.2f} > 2×ATR={2*atr_1m:.2f})"
+            )
+
+        # Criterios de momentum por dirección
+        if direccion == 'COMPRA':
+            ema_ok  = ema9 > ema21
+            rsi_ok  = rsi > 48
+            confirmado = ema_ok and rsi_ok
+            ema_sym = '>' if ema9 > ema21 else '<'
+        else:  # VENTA
+            ema_ok  = ema9 < ema21
+            rsi_ok  = rsi < 52
+            confirmado = ema_ok and rsi_ok
+            ema_sym = '<' if ema9 < ema21 else '>'
+
+        desc = (
+            f"1M: EMA9={ema9:.2f} {ema_sym} EMA21={ema21:.2f} | "
+            f"RSI={rsi:.1f} | Precio=${precio_actual:.2f} | ATR={atr_1m:.2f}"
+        )
+        return confirmado, desc
+
+    except Exception as e:
+        return False, f"Error analizando velas 1M: {e}"
+
+
 def _verificar_pendientes_confirm(db: DatabaseManager):
     """
-    Revisa señales 1H en estado PENDIENTE_CONFIRM y las activa si tf_bias
-    muestra que 15M o 5M ya están alineados con la misma dirección.
+    Revisa señales 1H en estado PENDIENTE_CONFIRM y las activa si las velas
+    de 1M confirman momentum alineado con la dirección.
     Caduca las que llevan más de _TIMEOUT_PENDIENTE_CONFIRM_HORAS sin confirmar.
     """
     pendientes = db.obtener_senales_pendientes_confirm()
@@ -403,30 +470,12 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
             print(f"  ⏰ Señal {senal_id} ({simbolo} {direccion}) caducada por timeout")
             continue
 
-        # Obtener símbolo base (XAUUSD) para consultar tf_bias
+# Obtener ticker para este símbolo
         simbolo_base = simbolo.split('_')[0]
-        bias_dir = tf_bias.BIAS_BULLISH if direccion == 'COMPRA' else tf_bias.BIAS_BEARISH
-
-        sesgo_15m = tf_bias.obtener_sesgo(simbolo_base, '15M')
-        sesgo_5m  = tf_bias.obtener_sesgo(simbolo_base, '5M')
-
-        tf_confirmador = None
-        for tf_label, sesgo in [('15M', sesgo_15m), ('5M', sesgo_5m)]:
-            if sesgo and sesgo.get('bias') == bias_dir:
-                # Verificar que el sesgo no ha caducado (TTL = 2h)
-                edad_sesgo = (datetime.now() - sesgo['ts']).total_seconds() / 3600
-                if edad_sesgo <= tf_bias.TTL_SESGO_HORAS:
-                    tf_confirmador = tf_label
-                    break
-
-        if tf_confirmador is None:
-            print(f"  ⏳ {simbolo} {direccion} — sin confirmación {int(antiguedad_h*60)}min "
-                  f"(15M:{sesgo_15m and sesgo_15m.get('bias')} "
-                  f"5M:{sesgo_5m and sesgo_5m.get('bias')})")
+        ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
+        if not ticker:
+            print(f"  ⚠️ Ticker desconocido para {simbolo} — saltando")
             continue
-
-        # ✅ Confirmación recibida — activar señal y notificar
-        db.confirmar_senal_pendiente(senal_id)
 
         try:
             precio_entrada = float(senal['precio_entrada'])
@@ -439,13 +488,23 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
             precio_entrada = tp1 = tp2 = tp3 = sl = 0.0
             score = '?'
 
+        # Analizar velas 1M en tiempo real
+        confirmado, desc_1m = _confirmar_con_velas_1m(ticker, direccion, precio_entrada)
+
+        if not confirmado:
+            print(f"  ⏳ {simbolo} {direccion} ({int(antiguedad_h*60)}min) — 1M no confirma: {desc_1m}")
+            continue
+
+        # ✅ Confirmación recibida — activar señal y notificar
+        db.confirmar_senal_pendiente(senal_id)
+
         flecha = '📌 BUY LIMIT' if direccion == 'COMPRA' else '📌 SELL LIMIT'
         icono  = '🟢' if direccion == 'COMPRA' else '🔴'
         msg_confirm = (
             f"✅ <b>ENTRADA CONFIRMADA — ORO (XAUUSD) 1H</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{icono} <b>Dirección:</b> {direccion}\n"
-            f"🕐 <b>Confirmado por:</b> {tf_confirmador}\n"
+            f"🕐 <b>Confirmado por:</b> análisis velas 1M\n"
             f"{flecha}: <b>${precio_entrada:.2f}</b>  ← PON LA ORDEN AHORA\n"
             f"🛑 <b>Stop Loss:</b> ${sl:.2f}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -453,10 +512,11 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
             f"🎯 <b>TP2:</b> ${tp2:.2f}\n"
             f"🎯 <b>TP3:</b> ${tp3:.2f}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 <b>Score 1H:</b> {score}/21  ⏱️ <b>TF:</b> 1H+{tf_confirmador}"
+            f"📊 <b>Score 1H:</b> {score}/21  ⏱️ <b>TF:</b> 1H+1M\n"
+            f"<code>{desc_1m}</code>"
         )
         enviar_notificacion_telegram(msg_confirm, simbolo)
-        print(f"  ✅ Señal {senal_id} ({simbolo} {direccion}) confirmada por {tf_confirmador}")
+        print(f"  ✅ Señal {senal_id} ({simbolo} {direccion}) confirmada: {desc_1m}")
 
 
 def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
