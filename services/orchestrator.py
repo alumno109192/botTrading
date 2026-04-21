@@ -48,8 +48,9 @@ DETECTOR_REGISTRY = {
 
 # Servicios auxiliares (siempre activos)
 SERVICE_REGISTRY = {
-    'monitor':  {'module': 'services.signal_monitor',  'label': 'MONITOR SEÑALES'},
-    'noticias': {'module': 'services.news_monitor',     'label': 'NOTICIAS GOLD'},
+    'ohlcv_poller': {'module': 'services.ohlcv_poller',  'label': 'OHLCV POLLER'},
+    'monitor':      {'module': 'services.signal_monitor', 'label': 'MONITOR SEÑALES'},
+    'noticias':     {'module': 'services.news_monitor',   'label': 'NOTICIAS GOLD'},
 }
 
 

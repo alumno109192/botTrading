@@ -78,7 +78,7 @@ class DatabaseManager:
         elif isinstance(param, int):
             return {"type": "integer", "value": str(param)}
         elif isinstance(param, float):
-            return {"type": "float", "value": str(param)}
+            return {"type": "float", "value": float(param)}
         else:
             return {"type": "text", "value": str(param)}
     
@@ -661,6 +661,114 @@ class DatabaseManager:
         ORDER BY fecha DESC, key_alias ASC
         """, (f'-{dias} days',))
         return [dict(row) for row in result.rows]
+
+    # ═══════════════════════════════════════════════════════════
+    # OHLCV — Cache persistente de velas (tabla ohlcv)
+    # ═══════════════════════════════════════════════════════════
+
+    def _ejecutar_pipeline(self, stmts: list):
+        """Ejecuta múltiples statements SQL en un único HTTP call (sin retorno de filas).
+        stmts: lista de dicts {'sql': str, 'args': tuple | list}
+        """
+        payload = {
+            'requests': [
+                {
+                    'type': 'execute',
+                    'stmt': {
+                        'sql': s['sql'],
+                        'args': [self._convert_param(v) for v in s.get('args', ())]
+                    }
+                }
+                for s in stmts
+            ]
+        }
+        response = requests.post(
+            f'{self.api_url}/v2/pipeline',
+            headers=self.headers,
+            json=payload,
+            timeout=60
+        )
+        if response.status_code != 200:
+            raise Exception(f"Pipeline HTTP {response.status_code}: {response.text[:300]}")
+
+    def init_ohlcv_table(self):
+        """Crea la tabla ohlcv y su índice si no existen."""
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS ohlcv (
+            symbol   TEXT NOT NULL,
+            interval TEXT NOT NULL,
+            ts       TEXT NOT NULL,
+            open     REAL NOT NULL,
+            high     REAL NOT NULL,
+            low      REAL NOT NULL,
+            close    REAL NOT NULL,
+            volume   REAL NOT NULL DEFAULT 0,
+            PRIMARY KEY (symbol, interval, ts)
+        )
+        """)
+        self.ejecutar_query(
+            "CREATE INDEX IF NOT EXISTS idx_ohlcv_lookup ON ohlcv(symbol, interval, ts)"
+        )
+
+    def guardar_velas(self, symbol: str, interval: str, rows: list):
+        """
+        Inserta o reemplaza velas OHLCV en la BD.
+        rows: lista de (ts_str, open, high, low, close, volume)
+        Usa lotes de 80 statements por HTTP call para no superar límites de payload.
+        """
+        if not rows:
+            return
+        sql = (
+            "INSERT OR REPLACE INTO ohlcv "
+            "(symbol, interval, ts, open, high, low, close, volume) "
+            "VALUES (?,?,?,?,?,?,?,?)"
+        )
+        CHUNK = 80
+        for i in range(0, len(rows), CHUNK):
+            chunk = rows[i:i + CHUNK]
+            stmts = [
+                {'sql': sql, 'args': (symbol, interval, r[0], r[1], r[2], r[3], r[4], r[5])}
+                for r in chunk
+            ]
+            self._ejecutar_pipeline(stmts)
+
+    def obtener_velas(self, symbol: str, interval: str, period: str) -> list:
+        """
+        Lee velas de la BD para el símbolo e intervalo indicados.
+        Retorna lista de dicts: {ts, open, high, low, close, volume}.
+        """
+        dias_map = {
+            '1d': 1, '2d': 2, '5d': 5, '7d': 7, '14d': 14,
+            '1mo': 30, '2mo': 60, '3mo': 90, '6mo': 180,
+            '1y': 365, '2y': 730, '60d': 60,
+        }
+        dias = dias_map.get(period, 7)
+        desde = (datetime.now(timezone.utc) - timedelta(days=dias + 1)).isoformat()
+
+        result = self.ejecutar_query("""
+        SELECT ts, open, high, low, close, volume
+        FROM ohlcv
+        WHERE symbol = ? AND interval = ? AND ts >= ?
+        ORDER BY ts ASC
+        """, (symbol, interval, desde))
+
+        return result.rows  # lista de dicts
+
+    def obtener_ultima_ts_vela(self, symbol: str, interval: str):
+        """Retorna el ts (str ISO8601) de la vela más reciente en BD, o None."""
+        result = self.ejecutar_query("""
+        SELECT ts FROM ohlcv
+        WHERE symbol = ? AND interval = ?
+        ORDER BY ts DESC LIMIT 1
+        """, (symbol, interval))
+        return result.rows[0]['ts'] if result.rows else None
+
+    def purgar_velas_antiguas(self, symbol: str, interval: str, dias_max: int):
+        """Elimina velas más antiguas que dias_max para controlar el tamaño de la tabla."""
+        desde = (datetime.now(timezone.utc) - timedelta(days=dias_max)).isoformat()
+        self.ejecutar_query("""
+        DELETE FROM ohlcv WHERE symbol = ? AND interval = ? AND ts < ?
+        """, (symbol, interval, desde))
 
 
 if __name__ == '__main__':

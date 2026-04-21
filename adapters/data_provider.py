@@ -47,8 +47,8 @@ _TICKER_MAP_POLYGON = {
     'SI=F':  'C:XAGUSD',   # Silver Spot
 }
 
-# Intervalos soportados por fuentes externas (solo intraday merece el cambio)
-_INTRADAY_INTERVALS = {'1m', '5m', '15m', '30m', '1h'}
+# Intervalos soportados por fuentes externas (incluye 4h para Twelve Data)
+_INTRADAY_INTERVALS = {'1m', '5m', '15m', '30m', '1h', '4h'}
 
 # ── Cache para datos diarios (1d) — evita re-descargar 730 filas cada 10 min ──
 _daily_cache: dict = {}   # key = (ticker, period) → {'df': DataFrame, 'ts': datetime}
@@ -60,6 +60,15 @@ _DAILY_TTL = timedelta(hours=4)  # Re-descargar cada 4h (suficiente para velas d
 _intraday_cache: dict = {}
 _intraday_cache_lock = threading.Lock()
 _INTRADAY_TTL = timedelta(seconds=65)
+
+# ── Tiempo máximo desde la última vela en BD para considerar datos “frescos” ──
+_DB_STALE = {
+    '5m':  timedelta(minutes=10),
+    '15m': timedelta(minutes=30),
+    '1h':  timedelta(hours=2),
+    '4h':  timedelta(hours=8),
+    '1d':  timedelta(hours=48),
+}
 
 # ── Round-Robin de API Keys ──────────────────────────────────────────────────
 # Se construye la lista al arranque con las keys disponibles.
@@ -100,6 +109,122 @@ def _registrar_uso_key(alias: str):
         pass  # Nunca debe bloquear la petición de datos
 
 
+def _guardar_en_db(ticker_yf: str, interval: str, df: pd.DataFrame):
+    """Persiste DataFrame OHLCV en la tabla ohlcv de la BD (best-effort, no bloquea)."""
+    try:
+        from adapters.database import DatabaseManager
+        db = DatabaseManager()
+        rows = []
+        for ts, row in df.iterrows():
+            ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+            rows.append((
+                ts_str,
+                float(row['Open']), float(row['High']),
+                float(row['Low']),  float(row['Close']),
+                float(row.get('Volume', 0))
+            ))
+        db.guardar_velas(ticker_yf, interval, rows)
+    except Exception as e:
+        print(f"  ⚠️ [data_provider] Error guardando en BD: {e}")
+
+
+def _get_from_db(ticker_yf: str, period: str, interval: str):
+    """
+    Intenta servir datos OHLCV desde la BD local.
+    - Para 5m, 15m, 1h: lee velas 5m almacenadas y resamplea si es necesario.
+    - Para 4h, 1d: lee directamente el intervalo almacenado.
+    Retorna (DataFrame, is_delayed) o (None, None) si los datos no existen o están obsoletos.
+    """
+    try:
+        from adapters.database import DatabaseManager
+        db = DatabaseManager()
+    except Exception:
+        return None, None
+
+    # 5m/15m/1h se almacenan como 5m en BD y se resamplean en memoria
+    db_interval = '5m' if interval in ('5m', '15m', '1h') else interval
+    rows = db.obtener_velas(ticker_yf, db_interval, period)
+
+    if not rows or len(rows) < 10:
+        return None, None
+
+    # Comprobar frescura: última vela dentro del umbral permitido
+    ultima_ts = pd.to_datetime(rows[-1]['ts'], utc=True)
+    umbral = _DB_STALE.get(db_interval, timedelta(minutes=10))
+    if (datetime.now(timezone.utc) - ultima_ts) > umbral:
+        return None, None
+
+    # Construir DataFrame
+    df = pd.DataFrame(rows)
+    df['ts'] = pd.to_datetime(df['ts'], utc=True)
+    df = df.set_index('ts')
+    df = df.rename(columns={
+        'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'
+    })
+    df = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+
+    # Resamplear si el intervalo pedido es mayor que el almacenado
+    _agg = {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
+    if interval == '15m':
+        df = df.resample('15min').agg(_agg).dropna()
+    elif interval == '1h':
+        df = df.resample('1h').agg(_agg).dropna()
+
+    if df.empty or len(df) < 10:
+        return None, None
+
+    print(f"  🗄️ [data_provider] BD hit — {ticker_yf} {interval} ({len(df)} velas)")
+    return df, False  # Datos de BD se originaron en Twelve Data → no delayed
+
+
+def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
+    """
+    Descarga velas de Twelve Data y las persiste en BD, saltando el cache en memoria.
+    Llamado por ohlcv_poller cada 60 segundos.
+    Retorna True si la operación fue exitosa.
+    """
+    if not _td_keys or ticker_yf not in _TICKER_MAP_TWELVE:
+        return False
+    try:
+        from adapters.database import DatabaseManager
+        db = DatabaseManager()
+    except Exception:
+        return False
+
+    # Decidir periodo: fill inicial 7d o incremental 1d
+    ultima_ts_str = db.obtener_ultima_ts_vela(ticker_yf, interval)
+    if ultima_ts_str:
+        ultima_ts = pd.to_datetime(ultima_ts_str, utc=True)
+        dias_sin_datos = (datetime.now(timezone.utc) - ultima_ts).total_seconds() / 86400
+        period = '7d' if dias_sin_datos > 6 else '1d'
+    else:
+        period = '7d'  # Primera vez: fill completo
+
+    for _ in range(len(_td_keys)):
+        alias, key = _next_td_key()
+        if not key:
+            break
+        df, ok = _get_twelve_data(ticker_yf, period, interval, key)
+        if ok and not df.empty:
+            _registrar_uso_key(alias)
+            rows = []
+            for ts, row in df.iterrows():
+                ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+                rows.append((
+                    ts_str,
+                    float(row['Open']), float(row['High']),
+                    float(row['Low']),  float(row['Close']),
+                    float(row.get('Volume', 0))
+                ))
+            db.guardar_velas(ticker_yf, interval, rows)
+            db.purgar_velas_antiguas(ticker_yf, interval, dias_max=8)
+            print(f"  💾 [poller] {ticker_yf} {interval} ({alias}) — {len(df)} velas → BD")
+            return True
+        print(f"  ⚠️ [poller] {alias} falló para {ticker_yf} {interval}")
+
+    return False
+
+
 def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
     """
     Descarga datos OHLCV para el ticker y periodo indicados.
@@ -116,17 +241,27 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 
     El DataFrame siempre tiene columnas: Open, High, Low, Close, Volume
     """
-    # ── Cache intraday (evita doble llamada entre detectores con mismos parámetros) ──
+    # 1️⃣ Cache en memoria (65s TTL) — la más rápida
     if interval in _INTRADAY_INTERVALS:
         _ck = (ticker_yf, period, interval)
         with _intraday_cache_lock:
             _e = _intraday_cache.get(_ck)
             if _e and (datetime.now(timezone.utc) - _e['ts']) < _INTRADAY_TTL:
-                print(f"  💾 [data_provider] Cache intraday hit — {ticker_yf} {interval} ({len(_e['df'])} velas)")
+                print(f"  💾 [data_provider] Cache mem hit — {ticker_yf} {interval} ({len(_e['df'])} velas)")
                 return _e['df'].copy(), _e['delayed']
 
+    # 2️⃣ Base de datos local (persistente, TTL por intervalo)
+    df_db, delayed_db = _get_from_db(ticker_yf, period, interval)
+    if df_db is not None and not df_db.empty:
+        if interval in _INTRADAY_INTERVALS:
+            with _intraday_cache_lock:
+                _intraday_cache[(ticker_yf, period, interval)] = {
+                    'df': df_db.copy(), 'ts': datetime.now(timezone.utc), 'delayed': delayed_db
+                }
+        return df_db, delayed_db
+
+    # 3️⃣ Twelve Data (tiempo real)
     if interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
-        # Intentar con Round-Robin: probar cada key una vez antes de rendirse
         for _ in range(len(_td_keys)):
             alias, key = _next_td_key()
             if not key:
@@ -135,23 +270,24 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             if ok and not df.empty and len(df) >= 10:
                 _registrar_uso_key(alias)
                 print(f"  ✅ [data_provider] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                _guardar_en_db(ticker_yf, interval, df)
                 with _intraday_cache_lock:
                     _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
                 return df, False
             print(f"  ⚠️ [data_provider] Twelve Data {alias} falló — rotando a siguiente key")
 
-    # ── Intentar Polygon.io (de pago) ──
+    # 4️⃣ Polygon.io (de pago)
     if interval in _INTRADAY_INTERVALS and POLYGON_API_KEY and ticker_yf in _TICKER_MAP_POLYGON:
-            df, ok = _get_polygon(ticker_yf, period, interval)
-            if ok and not df.empty and len(df) >= 10:
-                print(f"  ✅ [data_provider] Polygon.io — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
-                with _intraday_cache_lock:
-                    _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
-                return df, False
-            print(f"  ⚠️ [data_provider] Polygon.io falló — usando yfinance (delay 15m)")
+        df, ok = _get_polygon(ticker_yf, period, interval)
+        if ok and not df.empty and len(df) >= 10:
+            print(f"  ✅ [data_provider] Polygon.io — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+            _guardar_en_db(ticker_yf, interval, df)
+            with _intraday_cache_lock:
+                _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
+            return df, False
+        print(f"  ⚠️ [data_provider] Polygon.io falló — usando yfinance (delay 15m)")
 
-    # ── Fallback: yfinance ──
-    # Para datos diarios: usar cache con TTL para evitar descargas innecesarias
+    # 5️⃣ Fallback: yfinance
     if interval == '1d':
         cache_key = (ticker_yf, period)
         with _daily_cache_lock:
@@ -173,7 +309,7 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             elif len(df.columns) == 6:
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
 
-        # Guardar en cache si es 1d
+        _guardar_en_db(ticker_yf, interval, df)
         if interval == '1d':
             with _daily_cache_lock:
                 _daily_cache[(ticker_yf, period)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc)}
@@ -195,17 +331,17 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str) -
         ticker_td = _TICKER_MAP_TWELVE[ticker_yf]
 
         # Twelve Data usa outputsize (número de velas), no period
-        dias_map     = {'1d': 1, '2d': 2, '5d': 5, '7d': 7, '1mo': 30}
+        dias_map     = {'1d': 1, '2d': 2, '5d': 5, '7d': 7, '1mo': 30, '60d': 60, '3mo': 90}
         velas_por_dia = {
-            '1m': 960, '5m': 192, '15m': 64, '30m': 32, '1h': 16,
+            '1m': 960, '5m': 192, '15m': 64, '30m': 32, '1h': 16, '4h': 6,
         }
         dias      = dias_map.get(period, 5)
         por_dia   = velas_por_dia.get(interval, 64)
         outputsize = min(dias * por_dia, 5000)
 
-        # Twelve Data usa "1min", "5min", "15min", "1h"
+        # Twelve Data usa "1min", "5min", "15min", "1h", "4h"
         interval_td_map = {
-            '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '1h',
+            '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '1h', '4h': '4h',
         }
         interval_td = interval_td_map.get(interval, '15min')
 

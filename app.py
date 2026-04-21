@@ -54,9 +54,10 @@ threads_detectores = {}
 # Inicializar tabla de cuotas de API keys (best-effort, no bloquea arranque)
 try:
     DatabaseManager().init_api_key_usage_table()
-    logger.info("✅ Tabla api_key_usage lista")
+    DatabaseManager().init_ohlcv_table()
+    logger.info("✅ Tablas api_key_usage y ohlcv listas")
 except Exception as _e:
-    logger.warning(f"⚠️ No se pudo inicializar tabla api_key_usage: {_e}")
+    logger.warning(f"⚠️ No se pudo inicializar tablas BD: {_e}")
 threads_detectores = {}
 
 # Credenciales de Telegram (para keep-alive alerts)
