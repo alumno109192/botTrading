@@ -291,6 +291,21 @@ def analizar(simbolo, params):
     
     evening_star = detectar_evening_star(df, len(df) - 2)
 
+    # ── PATRÓN: FALLO DE CONTINUACIÓN BAJISTA ──
+    # Precio formó ATH reciente pero no pudo sostenerlo → breakout fracasado
+    _lkb_fallo = 20
+    _ath_reciente = float(df['High'].iloc[-_lkb_fallo-1:-1].max())
+    _en_ath = high >= _ath_reciente * 0.995          # vela tocó el ATH (margen 0.5%)
+    fallo_continuacion_bajista = (
+        _en_ath and                                  # estuvo en ATH
+        is_bearish and                               # vela bajista
+        close < ema_fast and                         # cerró bajo EMA rápida
+        body > atr * 0.4 and                         # cuerpo significativo
+        vol > vol_avg * 1.3                          # volumen institucional
+    )
+    if fallo_continuacion_bajista:
+        print(f"  ⚠️ [4H] FALLO DE CONTINUACIÓN BAJISTA detectado (ATH={_ath_reciente:.1f})")
+
     score_sell = 0
     score_sell += 2 if en_zona_resist          else 0
     score_sell += 2 if vela_rechazo            else 0
@@ -313,6 +328,7 @@ def analizar(simbolo, params):
     score_sell += 1 if obv_divergencia_bajista else 0
     score_sell += 1 if obv_decreciente         else 0
     score_sell += 1 if macd_negativo           else 0
+    score_sell += 3 if fallo_continuacion_bajista else 0
     
     if adx_lateral:
         score_sell = max(0, score_sell - 3)
@@ -354,6 +370,19 @@ def analizar(simbolo, params):
     
     morning_star = detectar_morning_star(df, len(df) - 2)
 
+    # ── PATRÓN: FALLO DE CONTINUACIÓN ALCISTA ──
+    _atl_reciente = float(df['Low'].iloc[-_lkb_fallo-1:-1].min())
+    _en_atl = low <= _atl_reciente * 1.005
+    fallo_continuacion_alcista = (
+        _en_atl and
+        is_bullish and
+        close > ema_fast and
+        body > atr * 0.4 and
+        vol > vol_avg * 1.3
+    )
+    if fallo_continuacion_alcista:
+        print(f"  ⚠️ [4H] FALLO DE CONTINUACIÓN ALCISTA detectado (ATL={_atl_reciente:.1f})")
+
     score_buy = 0
     score_buy += 2 if en_zona_soporte          else 0
     score_buy += 2 if vela_rebote              else 0
@@ -376,6 +405,7 @@ def analizar(simbolo, params):
     score_buy += 1 if obv_divergencia_alcista else 0
     score_buy += 1 if obv_creciente           else 0
     score_buy += 1 if macd_positivo           else 0
+    score_buy  += 3 if fallo_continuacion_alcista else 0
     
     if adx_lateral:
         score_buy = max(0, score_buy - 3)
@@ -456,9 +486,9 @@ def analizar(simbolo, params):
             for _k in [k for k in list(alertas_enviadas) if alertas_enviadas[k] < _c]:
                 del alertas_enviadas[_k]
 
-    # ── FILTRO PROXIMIDAD: solo operar cerca de zona ──
-    cerca_resistencia = en_zona_resist or aproximando_resistencia
-    cerca_soporte     = en_zona_soporte or aproximando_soporte
+    # ── FILTRO PROXIMIDAD: solo operar cerca de zona O fallo de continuación ──
+    cerca_resistencia = en_zona_resist or aproximando_resistencia or fallo_continuacion_bajista
+    cerca_soporte     = en_zona_soporte or aproximando_soporte     or fallo_continuacion_alcista
     if not cerca_resistencia:
         if senal_sell_alerta: print(f"  ⏳ SELL ignorada: precio lejos de resistencia")
         senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
@@ -695,13 +725,12 @@ def main():
         ciclo += 1
         ahora_utc = datetime.now(timezone.utc)
 
-        # ── Fin de semana: los mercados de futuros cierran → no analizar ──
-        if ahora_utc.weekday() >= 5:  # 5=Sábado, 6=Domingo
+        # ── Sábado: futuros Gold cerrados. Domingo 18:00 UTC abre Globex ──
+        if ahora_utc.weekday() == 5:  # 5=Sábado únicamente
             from datetime import timedelta
-            dias_hasta_lunes = 7 - ahora_utc.weekday()
-            proximo_lunes = (ahora_utc + timedelta(days=dias_hasta_lunes)).replace(hour=0, minute=0, second=0, microsecond=0)
-            segundos_espera = min((proximo_lunes - ahora_utc).total_seconds(), 3600)
-            print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Fin de semana — mercado cerrado. Revisando en {int(segundos_espera//60)} min...")
+            proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
+            segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
+            print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
             time.sleep(segundos_espera)
             continue
 

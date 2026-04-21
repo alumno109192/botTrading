@@ -593,13 +593,12 @@ def main():
         ciclo += 1
         ahora_utc = datetime.now(timezone.utc)
 
-        # ── Fin de semana: los mercados de futuros cierran → no analizar ──
-        if ahora_utc.weekday() >= 5:  # 5=Sábado, 6=Domingo
+        # ── Sábado: futuros Gold cerrados. Domingo 18:00 UTC abre Globex ──
+        if ahora_utc.weekday() == 5:  # 5=Sábado únicamente
             from datetime import timedelta
-            dias_hasta_lunes = 7 - ahora_utc.weekday()
-            proximo_lunes = (ahora_utc + timedelta(days=dias_hasta_lunes)).replace(hour=0, minute=0, second=0, microsecond=0)
-            segundos_espera = min((proximo_lunes - ahora_utc).total_seconds(), 3600)
-            print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Fin de semana — mercado cerrado. Revisando en {int(segundos_espera//60)} min...")
+            proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
+            segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
+            print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
             time.sleep(segundos_espera)
             continue
 
