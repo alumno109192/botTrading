@@ -85,6 +85,8 @@ from core.indicators import (
     calcular_rsi, calcular_ema, calcular_atr,
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
     detectar_evening_star, detectar_morning_star,
+    detectar_rotura_alcista, detectar_rotura_bajista,
+    detectar_doble_techo, detectar_doble_suelo,
 )
 
 # ══════════════════════════════════════
@@ -451,6 +453,25 @@ def analizar(simbolo, params):
     # Evening Star
     evening_star = detectar_evening_star(df, len(df) - 2)
 
+    # ── ROTURA DE NIVEL Y DOBLES TECHOS/SUELOS ──────────────────────────
+    rotura_alcista = detectar_rotura_alcista(df, zrh, atr, params['vol_mult'])
+    rotura_bajista = detectar_rotura_bajista(df, zsl, atr, params['vol_mult'])
+
+    _dt_lookback = min(params['sr_lookback'], 40)
+    dt_detectado, dt_nivel_techo, dt_neckline = detectar_doble_techo(
+        df, atr, lookback=_dt_lookback, tol_mult=0.8)
+    ds_detectado, ds_nivel_suelo, ds_neckline = detectar_doble_suelo(
+        df, atr, lookback=_dt_lookback, tol_mult=0.8)
+
+    if rotura_alcista:
+        print(f"  🚀 [1D] ROTURA ALCISTA detectada — cerró sobre resistencia ${zrh:.1f}")
+    if rotura_bajista:
+        print(f"  📉 [1D] ROTURA BAJISTA detectada — cerró bajo soporte ${zsl:.1f}")
+    if dt_detectado:
+        print(f"  🔻 [1D] DOBLE TECHO detectado — techo=${dt_nivel_techo:.1f} cuello=${dt_neckline:.1f}")
+    if ds_detectado:
+        print(f"  🔺 [1D] DOBLE SUELO detectado — suelo=${ds_nivel_suelo:.1f} cuello=${ds_neckline:.1f}")
+
     score_sell = 0
     score_sell += 2 if en_zona_resist          else 0
     score_sell += 2 if vela_rechazo            else 0
@@ -475,6 +496,8 @@ def analizar(simbolo, params):
     score_sell += 1 if obv_divergencia_bajista else 0  # OBV divergencia
     score_sell += 1 if obv_decreciente         else 0  # OBV cayendo
     score_sell += 1 if macd_negativo           else 0  # MACD bajo cero
+    score_sell += 4 if rotura_bajista          else 0  # rotura con impulso+volumen
+    score_sell += 3 if dt_detectado            else 0  # doble techo confirmado
     
     # Penalización si mercado lateral (ADX bajo)
     if adx_lateral:
@@ -549,6 +572,8 @@ def analizar(simbolo, params):
     score_buy += 1 if obv_divergencia_alcista else 0  # OBV divergencia
     score_buy += 1 if obv_creciente           else 0  # OBV subiendo
     score_buy += 1 if macd_positivo           else 0  # MACD sobre cero
+    score_buy += 4 if rotura_alcista          else 0  # rotura con impulso+volumen
+    score_buy += 3 if ds_detectado            else 0  # doble suelo confirmado
     
     # Penalización si mercado lateral (ADX bajo)
     if adx_lateral:
@@ -967,6 +992,178 @@ def analizar(simbolo, params):
                f"📅 {fecha}")
         enviar_telegram(msg)
         marcar_enviada('CANCEL_BUY')
+
+    # ══════════════════════════════════════════════════════════
+    # SEÑALES DE ROTURA DE NIVEL (BREAKOUT) — entrada a mercado
+    # ══════════════════════════════════════════════════════════
+
+    # ── Rotura alcista ──
+    if rotura_alcista and not ya_enviada('BREAK_BUY'):
+        sl_break_buy  = round(zrh - atr * 0.5, 2)
+        tp1_break_buy = round(close + atr * params['atr_tp1_mult'], 2)
+        tp2_break_buy = round(close + atr * params['atr_tp2_mult'], 2)
+        tp3_break_buy = round(close + atr * params['atr_tp3_mult'], 2)
+        rr_b1 = rr(close, sl_break_buy, tp1_break_buy)
+        if rr_b1 >= 1.2:
+            nivel_break = ("🔥 ROTURA MÁXIMA" if score_buy >= 10 else
+                           "🟢 ROTURA FUERTE" if score_buy >= 7  else
+                           "⚡ ROTURA MEDIA")
+            msg = (f"🚀 <b>ROTURA ALCISTA — ORO (XAUUSD) 1D</b>\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 <b>Nivel:</b> {nivel_break}\n"
+                   f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
+                   f"📌 <b>COMPRA a MERCADO</b>  ← entrada inmediata\n"
+                   f"🔓 <b>Resistencia rota:</b> ${round(zrh, 2)} (ahora soporte)\n"
+                   f"🛑 <b>Stop Loss:</b>        ${sl_break_buy}  (-${round(close - sl_break_buy, 2)})\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"🎯 <b>TP1:</b> ${tp1_break_buy}  R:R {rr_b1}:1\n"
+                   f"🎯 <b>TP2:</b> ${tp2_break_buy}  R:R {rr(close, sl_break_buy, tp2_break_buy)}:1\n"
+                   f"🎯 <b>TP3:</b> ${tp3_break_buy}  R:R {rr(close, sl_break_buy, tp3_break_buy)}:1\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                   f"⏱️ <b>TF:</b> 1D  📅 {fecha}  🔒 SWING")
+            if db and not db.existe_senal_reciente(f"{simbolo}_1D", "COMPRA", horas=4):
+                try:
+                    db.guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': f"{simbolo}_1D",
+                        'direccion': 'COMPRA', 'precio_entrada': close,
+                        'tp1': tp1_break_buy, 'tp2': tp2_break_buy, 'tp3': tp3_break_buy,
+                        'sl': sl_break_buy, 'score': score_buy,
+                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
+                                                   'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                        'patron_velas': f"Rotura Alcista: resistencia_rota={round(zrh, 2)}",
+                        'version_detector': 'GOLD 1D-v2.0'
+                    })
+                except Exception as e:
+                    print(f"  ⚠️ Error BD: {e}")
+            enviar_telegram(msg); marcar_enviada('BREAK_BUY')
+
+    # ── Rotura bajista ──
+    if rotura_bajista and not ya_enviada('BREAK_SELL'):
+        sl_break_sell  = round(zsl + atr * 0.5, 2)
+        tp1_break_sell = round(close - atr * params['atr_tp1_mult'], 2)
+        tp2_break_sell = round(close - atr * params['atr_tp2_mult'], 2)
+        tp3_break_sell = round(close - atr * params['atr_tp3_mult'], 2)
+        rr_bs1 = rr(close, sl_break_sell, tp1_break_sell)
+        if rr_bs1 >= 1.2:
+            nivel_break = ("🔥 ROTURA MÁXIMA" if score_sell >= 10 else
+                           "🔴 ROTURA FUERTE" if score_sell >= 7  else
+                           "⚡ ROTURA MEDIA")
+            msg = (f"📉 <b>ROTURA BAJISTA — ORO (XAUUSD) 1D</b>\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 <b>Nivel:</b> {nivel_break}\n"
+                   f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
+                   f"📌 <b>VENTA a MERCADO</b>  ← entrada inmediata\n"
+                   f"🔓 <b>Soporte roto:</b>    ${round(zsl, 2)} (ahora resistencia)\n"
+                   f"🛑 <b>Stop Loss:</b>       ${sl_break_sell}  (+${round(sl_break_sell - close, 2)})\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"🎯 <b>TP1:</b> ${tp1_break_sell}  R:R {rr_bs1}:1\n"
+                   f"🎯 <b>TP2:</b> ${tp2_break_sell}  R:R {rr(close, sl_break_sell, tp2_break_sell)}:1\n"
+                   f"🎯 <b>TP3:</b> ${tp3_break_sell}  R:R {rr(close, sl_break_sell, tp3_break_sell)}:1\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                   f"⏱️ <b>TF:</b> 1D  📅 {fecha}  🔒 SWING")
+            if db and not db.existe_senal_reciente(f"{simbolo}_1D", "VENTA", horas=4):
+                try:
+                    db.guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': f"{simbolo}_1D",
+                        'direccion': 'VENTA', 'precio_entrada': close,
+                        'tp1': tp1_break_sell, 'tp2': tp2_break_sell, 'tp3': tp3_break_sell,
+                        'sl': sl_break_sell, 'score': score_sell,
+                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
+                                                   'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                        'patron_velas': f"Rotura Bajista: soporte_roto={round(zsl, 2)}",
+                        'version_detector': 'GOLD 1D-v2.0'
+                    })
+                except Exception as e:
+                    print(f"  ⚠️ Error BD: {e}")
+            enviar_telegram(msg); marcar_enviada('BREAK_SELL')
+
+    # ══════════════════════════════════════════════════════════
+    # SEÑALES DE DOBLE TECHO / DOBLE SUELO
+    # ══════════════════════════════════════════════════════════
+
+    # ── Doble Techo ──
+    if dt_detectado and not ya_enviada('DTECHO'):
+        altura_dt  = dt_nivel_techo - dt_neckline
+        entrada_dt = close
+        sl_dt      = round(dt_nivel_techo + atr * 0.5, 2)
+        tp1_dt     = round(dt_neckline - altura_dt * 0.5, 2)
+        tp2_dt     = round(dt_neckline - altura_dt * 1.0, 2)
+        tp3_dt     = round(dt_neckline - altura_dt * 1.5, 2)
+        rr_dt1     = rr(entrada_dt, sl_dt, tp1_dt)
+        if rr_dt1 >= 1.2:
+            msg = (f"🔻 <b>DOBLE TECHO (M) — ORO (XAUUSD) 1D</b>\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📐 <b>Patrón:</b> Doble Techo confirmado\n"
+                   f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
+                   f"📌 <b>VENTA a MERCADO</b>  ← neckline rota\n"
+                   f"📏 <b>Doble techo en:</b>  ${dt_nivel_techo}\n"
+                   f"📏 <b>Cuello (neckline):</b> ${dt_neckline}\n"
+                   f"🛑 <b>Stop Loss:</b>       ${sl_dt}  (sobre el techo)\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"🎯 <b>TP1:</b> ${tp1_dt}  R:R {rr_dt1}:1  (50% medida)\n"
+                   f"🎯 <b>TP2:</b> ${tp2_dt}  R:R {rr(entrada_dt, sl_dt, tp2_dt)}:1  (100% medida)\n"
+                   f"🎯 <b>TP3:</b> ${tp3_dt}  R:R {rr(entrada_dt, sl_dt, tp3_dt)}:1  (150% ext)\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                   f"⏱️ <b>TF:</b> 1D  📅 {fecha}  🔒 SWING")
+            if db and not db.existe_senal_reciente(f"{simbolo}_1D", "VENTA", horas=4):
+                try:
+                    db.guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': f"{simbolo}_1D",
+                        'direccion': 'VENTA', 'precio_entrada': entrada_dt,
+                        'tp1': tp1_dt, 'tp2': tp2_dt, 'tp3': tp3_dt, 'sl': sl_dt,
+                        'score': score_sell,
+                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
+                                                   'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                        'patron_velas': f"Doble Techo: techo={dt_nivel_techo} neckline={dt_neckline}",
+                        'version_detector': 'GOLD 1D-v2.0'
+                    })
+                except Exception as e:
+                    print(f"  ⚠️ Error BD: {e}")
+            enviar_telegram(msg); marcar_enviada('DTECHO')
+
+    # ── Doble Suelo ──
+    if ds_detectado and not ya_enviada('DSUELO'):
+        altura_ds  = ds_neckline - ds_nivel_suelo
+        entrada_ds = close
+        sl_ds      = round(ds_nivel_suelo - atr * 0.5, 2)
+        tp1_ds     = round(ds_neckline + altura_ds * 0.5, 2)
+        tp2_ds     = round(ds_neckline + altura_ds * 1.0, 2)
+        tp3_ds     = round(ds_neckline + altura_ds * 1.5, 2)
+        rr_ds1     = rr(entrada_ds, sl_ds, tp1_ds)
+        if rr_ds1 >= 1.2:
+            msg = (f"🔺 <b>DOBLE SUELO (W) — ORO (XAUUSD) 1D</b>\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📐 <b>Patrón:</b> Doble Suelo confirmado\n"
+                   f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
+                   f"📌 <b>COMPRA a MERCADO</b>  ← neckline superada\n"
+                   f"📏 <b>Doble suelo en:</b>  ${ds_nivel_suelo}\n"
+                   f"📏 <b>Cuello (neckline):</b> ${ds_neckline}\n"
+                   f"🛑 <b>Stop Loss:</b>       ${sl_ds}  (bajo el suelo)\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"🎯 <b>TP1:</b> ${tp1_ds}  R:R {rr_ds1}:1  (50% medida)\n"
+                   f"🎯 <b>TP2:</b> ${tp2_ds}  R:R {rr(entrada_ds, sl_ds, tp2_ds)}:1  (100% medida)\n"
+                   f"🎯 <b>TP3:</b> ${tp3_ds}  R:R {rr(entrada_ds, sl_ds, tp3_ds)}:1  (150% ext)\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                   f"⏱️ <b>TF:</b> 1D  📅 {fecha}  🔒 SWING")
+            if db and not db.existe_senal_reciente(f"{simbolo}_1D", "COMPRA", horas=4):
+                try:
+                    db.guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': f"{simbolo}_1D",
+                        'direccion': 'COMPRA', 'precio_entrada': entrada_ds,
+                        'tp1': tp1_ds, 'tp2': tp2_ds, 'tp3': tp3_ds, 'sl': sl_ds,
+                        'score': score_buy,
+                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
+                                                   'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                        'patron_velas': f"Doble Suelo: suelo={ds_nivel_suelo} neckline={ds_neckline}",
+                        'version_detector': 'GOLD 1D-v2.0'
+                    })
+                except Exception as e:
+                    print(f"  ⚠️ Error BD: {e}")
+            enviar_telegram(msg); marcar_enviada('DSUELO')
 
 # ══════════════════════════════════════
 # BUCLE PRINCIPAL

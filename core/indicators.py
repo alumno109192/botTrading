@@ -264,3 +264,179 @@ def detectar_stop_hunt_bajista(df: pd.DataFrame, lookback: int = 20) -> bool:
     mecha_larga = (upper_wick > body) or (total_range > 0 and upper_wick / total_range > 0.5)
 
     return ruptura and reclaim and mecha_larga
+
+
+# ── Roturas de Nivel (Breakouts) ─────────────────────────────
+
+def detectar_rotura_alcista(df: pd.DataFrame, zrh: float, atr: float,
+                             vol_mult: float = 1.2) -> bool:
+    """
+    Rotura alcista: la última vela cerrada supera la resistencia (zrh)
+    con cuerpo de impulso y volumen elevado.
+
+    Condiciones:
+      1. close > zrh  (cerró por encima de la resistencia)
+      2. is_bullish   (vela alcista — no solo una mecha)
+      3. body > atr * 0.3  (impulso real, no ruido)
+      4. volumen > media × vol_mult  (participación institucional)
+
+    Nota: usa df.iloc[-2] como vela cerrada (convención de los detectores).
+    """
+    if len(df) < 25:
+        return False
+
+    vela     = df.iloc[-2]
+    close    = float(vela['Close'])
+    open_    = float(vela['Open'])
+    body     = abs(close - open_)
+    is_bull  = close > open_
+
+    vol      = float(vela['Volume'])
+    vol_avg  = float(df['Volume'].iloc[-22:-2].mean())
+
+    return (close > zrh and is_bull and body > atr * 0.3
+            and vol > vol_avg * vol_mult)
+
+
+def detectar_rotura_bajista(df: pd.DataFrame, zsl: float, atr: float,
+                             vol_mult: float = 1.2) -> bool:
+    """
+    Rotura bajista: la última vela cerrada rompe el soporte (zsl)
+    con cuerpo de impulso y volumen elevado.
+
+    Condiciones:
+      1. close < zsl  (cerró por debajo del soporte)
+      2. is_bearish   (vela bajista)
+      3. body > atr * 0.3
+      4. volumen > media × vol_mult
+
+    Nota: usa df.iloc[-2] como vela cerrada.
+    """
+    if len(df) < 25:
+        return False
+
+    vela     = df.iloc[-2]
+    close    = float(vela['Close'])
+    open_    = float(vela['Open'])
+    body     = abs(close - open_)
+    is_bear  = close < open_
+
+    vol      = float(vela['Volume'])
+    vol_avg  = float(df['Volume'].iloc[-22:-2].mean())
+
+    return (close < zsl and is_bear and body > atr * 0.3
+            and vol > vol_avg * vol_mult)
+
+
+# ── Dobles Techos y Suelos ────────────────────────────────────
+
+def detectar_doble_techo(df: pd.DataFrame, atr: float,
+                          lookback: int = 40,
+                          tol_mult: float = 0.6) -> tuple:
+    """
+    Doble Techo (patrón M): dos swing highs consecutivos a nivel similar
+    separados por un valle. Confirmado cuando el precio rompe por debajo
+    del cuello (neckline = mínimo entre ambos techos).
+
+    Retorna: (detectado: bool, nivel_techo: float, neckline: float)
+
+    Condiciones:
+      1. Exactamente dos swing highs recientes a nivel similar (±tol_mult×ATR)
+      2. Valle entre ellos (neckline)
+      3. La última vela cerrada (df.iloc[-2]) cierra bajo la neckline
+    """
+    if len(df) < lookback + 5:
+        return False, 0.0, 0.0
+
+    tolerancia = atr * tol_mult
+    wing       = 2
+
+    highs = df['High'].iloc[-lookback - 2: -2]
+    lows  = df['Low'].iloc[-lookback - 2: -2]
+
+    swing_highs = []
+    for i in range(wing, len(highs) - wing):
+        val = float(highs.iloc[i])
+        if (all(val >= float(highs.iloc[i - j]) for j in range(1, wing + 1)) and
+                all(val >= float(highs.iloc[i + j]) for j in range(1, wing + 1))):
+            swing_highs.append((i, val))
+
+    if len(swing_highs) < 2:
+        return False, 0.0, 0.0
+
+    # Dos techos más recientes
+    h1_idx, h1_val = swing_highs[-2]
+    h2_idx, h2_val = swing_highs[-1]
+
+    if h1_idx >= h2_idx or abs(h1_val - h2_val) > tolerancia:
+        return False, 0.0, 0.0
+
+    # Neckline = mínimo del Low entre los dos techos
+    valley = lows.iloc[h1_idx: h2_idx + 1]
+    if valley.empty:
+        return False, 0.0, 0.0
+    neckline = float(valley.min())
+
+    # Confirmación: última vela cerrada bajo la neckline
+    close = float(df['Close'].iloc[-2])
+    if close >= neckline:
+        return False, 0.0, 0.0
+
+    nivel_techo = round(max(h1_val, h2_val), 2)
+    return True, nivel_techo, round(neckline, 2)
+
+
+def detectar_doble_suelo(df: pd.DataFrame, atr: float,
+                          lookback: int = 40,
+                          tol_mult: float = 0.6) -> tuple:
+    """
+    Doble Suelo (patrón W): dos swing lows consecutivos a nivel similar
+    separados por un pico. Confirmado cuando el precio supera la neckline
+    (= máximo entre los dos suelos).
+
+    Retorna: (detectado: bool, nivel_suelo: float, neckline: float)
+
+    Condiciones:
+      1. Dos swing lows recientes a nivel similar (±tol_mult×ATR)
+      2. Pico entre ellos (neckline)
+      3. La última vela cerrada (df.iloc[-2]) cierra sobre la neckline
+    """
+    if len(df) < lookback + 5:
+        return False, 0.0, 0.0
+
+    tolerancia = atr * tol_mult
+    wing       = 2
+
+    lows  = df['Low'].iloc[-lookback - 2: -2]
+    highs = df['High'].iloc[-lookback - 2: -2]
+
+    swing_lows = []
+    for i in range(wing, len(lows) - wing):
+        val = float(lows.iloc[i])
+        if (all(val <= float(lows.iloc[i - j]) for j in range(1, wing + 1)) and
+                all(val <= float(lows.iloc[i + j]) for j in range(1, wing + 1))):
+            swing_lows.append((i, val))
+
+    if len(swing_lows) < 2:
+        return False, 0.0, 0.0
+
+    # Dos suelos más recientes
+    l1_idx, l1_val = swing_lows[-2]
+    l2_idx, l2_val = swing_lows[-1]
+
+    if l1_idx >= l2_idx or abs(l1_val - l2_val) > tolerancia:
+        return False, 0.0, 0.0
+
+    # Neckline = máximo del High entre los dos suelos
+    peak = highs.iloc[l1_idx: l2_idx + 1]
+    if peak.empty:
+        return False, 0.0, 0.0
+    neckline = float(peak.max())
+
+    # Confirmación: última vela cerrada sobre la neckline
+    close = float(df['Close'].iloc[-2])
+    if close <= neckline:
+        return False, 0.0, 0.0
+
+    nivel_suelo = round(min(l1_val, l2_val), 2)
+    return True, nivel_suelo, round(neckline, 2)
