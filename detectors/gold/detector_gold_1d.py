@@ -87,6 +87,7 @@ from core.indicators import (
     detectar_evening_star, detectar_morning_star,
     detectar_rotura_alcista, detectar_rotura_bajista,
     detectar_doble_techo, detectar_doble_suelo,
+    detectar_canal_roto,
 )
 
 # ══════════════════════════════════════
@@ -753,6 +754,33 @@ def analizar(simbolo, params):
     _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
     tf_bias.publicar_sesgo(simbolo, '1D', _sesgo_dir, max(score_sell, score_buy))
     print(f"  📡 Sesgo GOLD 1D publicado: {_sesgo_dir} (sell={score_sell} buy={score_buy})")
+
+    # ── CANAL ROTO 1D — publicar para uso en detectores inferiores ───────────
+    _cr_1d_alc, _cr_1d_baj, _ls_1d, _lr_1d = detectar_canal_roto(df, atr, lookback=60)
+    tf_bias.publicar_canal_1d(simbolo, _cr_1d_alc, _cr_1d_baj, _ls_1d, _lr_1d)
+    if _cr_1d_alc:
+        print(f"  🔻 [1D] Canal alcista ROTO — soporte ${_ls_1d:.2f}")
+    if _cr_1d_baj:
+        print(f"  🔺 [1D] Canal bajista ROTO — resist ${_lr_1d:.2f}")
+
+    # ── CANAL ROTO 1W — descargar datos semanales y publicar ─────────────────
+    try:
+        df_1w, _ = get_ohlcv(params['ticker_yf'], period='5y', interval='1wk')
+        if not df_1w.empty and len(df_1w) >= 20:
+            if isinstance(df_1w.columns, __import__('pandas').MultiIndex):
+                df_1w.columns = df_1w.columns.get_level_values(0)
+            df_1w = df_1w.copy()
+            from core.indicators import calcular_atr as _catr
+            _atr_1w = float(_catr(df_1w, 14).iloc[-2])
+            _cr_1w_alc, _cr_1w_baj, _ls_1w, _lr_1w = detectar_canal_roto(
+                df_1w, _atr_1w, lookback=52)  # ~1 año de velas semanales
+            tf_bias.publicar_canal_1w(simbolo, _cr_1w_alc, _cr_1w_baj, _ls_1w, _lr_1w)
+            if _cr_1w_alc:
+                print(f"  🔻 [1W] Canal alcista ROTO — soporte ${_ls_1w:.2f}")
+            if _cr_1w_baj:
+                print(f"  🔺 [1W] Canal bajista ROTO — resist ${_lr_1w:.2f}")
+    except Exception as _e:
+        print(f"  ⚠️ [1D] No se pudo detectar canal 1W: {_e}")
 
     # ── APROXIMACIÓN RESISTENCIA — SEÑAL ACCIONABLE (pon la orden limit ahora) ──
     if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta:

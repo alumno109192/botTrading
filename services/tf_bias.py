@@ -27,12 +27,17 @@ def _get_db():
         return None
 
 # ─────────────────────────────────────
-TTL_SESGO_HORAS    = 2   # sesgos más viejos que esto se tratan como sin_datos
-TTL_CANAL_1H_HORAS = 4   # canal 1H persiste 4h para detectar el retest posterior
+TTL_SESGO_HORAS    = 2    # sesgos más viejos que esto se tratan como sin_datos
+TTL_CANAL_1H_HORAS = 4    # canal 1H persiste 4h para detectar el retest posterior
+TTL_CANAL_4H_HORAS = 8    # canal 4H: retest puede tardar varias velas 4H
+TTL_CANAL_1D_HORAS = 72   # canal 1D: el retest puede tardar días
+TTL_CANAL_1W_HORAS = 336  # canal 1W: 2 semanas (14 días)
 _lock           = threading.Lock()
 _bias_store     = {}   # {simbolo: {tf: {bias, score, ts}}}
-_canal_store    = {}   # {simbolo: {alcista_roto, bajista_roto, linea_soporte, linea_resist, ts}}  (4H)
-_canal_1h_store = {}   # igual pero para 1H con TTL más largo
+_canal_store    = {}   # canal 4H en memoria
+_canal_1h_store = {}   # canal 1H en memoria
+_canal_1d_store = {}   # canal 1D en memoria
+_canal_1w_store = {}   # canal 1W en memoria
 # ─────────────────────────────────────
 
 BIAS_BULLISH = 'BULLISH'
@@ -153,46 +158,31 @@ def estado_completo() -> dict:
 def publicar_canal_4h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
                       linea_soporte: float, linea_resist: float) -> None:
     """Publica el estado del canal 4H en memoria y en BD (sobrevive restarts)."""
-    with _lock:
-        _canal_store[simbolo] = {
-            'alcista_roto':  alcista_roto,
-            'bajista_roto':  bajista_roto,
-            'linea_soporte': linea_soporte,
-            'linea_resist':  linea_resist,
-            'ts':            datetime.now(),
-        }
-    db = _get_db()
-    if db:
-        try:
-            db.guardar_canal_roto(simbolo, '4H', alcista_roto, bajista_roto,
-                                   linea_soporte, linea_resist)
-        except Exception as e:
-            print(f"  ⚠️ tf_bias: no se pudo guardar canal 4H en BD: {e}")
+    _publicar_canal_gen(_canal_store, simbolo, '4H', TTL_CANAL_4H_HORAS,
+                        alcista_roto, bajista_roto, linea_soporte, linea_resist)
 
 
 def obtener_canal_4h(simbolo: str) -> dict:
     """Retorna el estado de canal 4H: memoria primero, BD como fallback ante restart."""
-    with _lock:
-        datos = _canal_store.get(simbolo)
-        if datos is not None:
-            edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
-            if edad_h <= TTL_SESGO_HORAS:
-                return dict(datos)
-    # Fallback: leer de BD (cubre el caso de restart del servidor)
-    db = _get_db()
-    if db:
-        try:
-            return db.obtener_canal_roto(simbolo, '4H', ttl_horas=TTL_SESGO_HORAS)
-        except Exception:
-            pass
-    return None
+    return _obtener_canal_gen(_canal_store, simbolo, '4H', TTL_CANAL_4H_HORAS)
 
 
 def publicar_canal_1h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
                       linea_soporte: float, linea_resist: float) -> None:
     """Persiste el canal 1H en memoria y en BD. TTL 4h para cubrir la ventana de retest."""
+    _publicar_canal_gen(_canal_1h_store, simbolo, '1H', TTL_CANAL_1H_HORAS,
+                        alcista_roto, bajista_roto, linea_soporte, linea_resist)
+def obtener_canal_1h(simbolo: str) -> dict:
+    """Retorna el canal 1H: memoria primero, BD como fallback ante restart."""
+    return _obtener_canal_gen(_canal_1h_store, simbolo, '1H', TTL_CANAL_1H_HORAS)
+
+
+def _publicar_canal_gen(store: dict, simbolo: str, tf: str, ttl_horas: float,
+                        alcista_roto: bool, bajista_roto: bool,
+                        linea_soporte: float, linea_resist: float) -> None:
+    """Helper interno: guarda en el store en memoria y persiste en BD."""
     with _lock:
-        _canal_1h_store[simbolo] = {
+        store[simbolo] = {
             'alcista_roto':  alcista_roto,
             'bajista_roto':  bajista_roto,
             'linea_soporte': linea_soporte,
@@ -202,25 +192,48 @@ def publicar_canal_1h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
     db = _get_db()
     if db:
         try:
-            db.guardar_canal_roto(simbolo, '1H', alcista_roto, bajista_roto,
+            db.guardar_canal_roto(simbolo, tf, alcista_roto, bajista_roto,
                                    linea_soporte, linea_resist)
         except Exception as e:
-            print(f"  ⚠️ tf_bias: no se pudo guardar canal 1H en BD: {e}")
+            print(f"  ⚠️ tf_bias: no se pudo guardar canal {tf} en BD: {e}")
 
 
-def obtener_canal_1h(simbolo: str) -> dict:
-    """Retorna el canal 1H: memoria primero, BD como fallback ante restart."""
+def _obtener_canal_gen(store: dict, simbolo: str, tf: str, ttl_horas: float) -> dict:
+    """Helper interno: lee memoria, BD como fallback ante restart."""
     with _lock:
-        datos = _canal_1h_store.get(simbolo)
+        datos = store.get(simbolo)
         if datos is not None:
             edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
-            if edad_h <= TTL_CANAL_1H_HORAS:
+            if edad_h <= ttl_horas:
                 return dict(datos)
-    # Fallback: leer de BD (cubre el caso de restart del servidor)
     db = _get_db()
     if db:
         try:
-            return db.obtener_canal_roto(simbolo, '1H', ttl_horas=TTL_CANAL_1H_HORAS)
+            return db.obtener_canal_roto(simbolo, tf, ttl_horas=ttl_horas)
         except Exception:
             pass
     return None
+
+
+def publicar_canal_1d(simbolo: str, alcista_roto: bool, bajista_roto: bool,
+                      linea_soporte: float, linea_resist: float) -> None:
+    """Persiste canal 1D. TTL 72h — el retest puede tardar días."""
+    _publicar_canal_gen(_canal_1d_store, simbolo, '1D', TTL_CANAL_1D_HORAS,
+                        alcista_roto, bajista_roto, linea_soporte, linea_resist)
+
+
+def obtener_canal_1d(simbolo: str) -> dict:
+    """Canal 1D: memoria primero, BD como fallback."""
+    return _obtener_canal_gen(_canal_1d_store, simbolo, '1D', TTL_CANAL_1D_HORAS)
+
+
+def publicar_canal_1w(simbolo: str, alcista_roto: bool, bajista_roto: bool,
+                      linea_soporte: float, linea_resist: float) -> None:
+    """Persiste canal 1W. TTL 336h (2 semanas) — retests semanales son lentos."""
+    _publicar_canal_gen(_canal_1w_store, simbolo, '1W', TTL_CANAL_1W_HORAS,
+                        alcista_roto, bajista_roto, linea_soporte, linea_resist)
+
+
+def obtener_canal_1w(simbolo: str) -> dict:
+    """Canal 1W: memoria primero, BD como fallback."""
+    return _obtener_canal_gen(_canal_1w_store, simbolo, '1W', TTL_CANAL_1W_HORAS)

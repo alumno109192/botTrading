@@ -433,24 +433,33 @@ def analizar(simbolo, params):
         score_buy  = max(score_buy  - 1, 0)
 
     # ── Contexto multi-TF: ¿es el canal roto un PULLBACK dentro de tendencia? ──
-    # Si 1D/1W o el propio 4H es ALCISTA y el 1H rompe un canal a la baja
-    # → no es reversión, es corrección. Suprimimos SELL y alertamos zona BUY.
-    # Simétricamente para canal bajista roto cuando TFs superiores son BEARISH.
     _bias_1d   = tf_bias.obtener_sesgo(simbolo, '1D')
     _bias_1w   = tf_bias.obtener_sesgo(simbolo, '1W')
     _bias_4h   = tf_bias.obtener_sesgo(simbolo, '4H')
-    _canal_4h  = tf_bias.obtener_canal_4h(simbolo)   # canal roto en 4H publicado por detector_gold_4h
+    _canal_4h  = tf_bias.obtener_canal_4h(simbolo)
+    _canal_1d  = tf_bias.obtener_canal_1d(simbolo)
+    _canal_1w  = tf_bias.obtener_canal_1w(simbolo)
     _dir_1d    = _bias_1d['bias']  if _bias_1d  else tf_bias.BIAS_NEUTRAL
     _dir_1w    = _bias_1w['bias']  if _bias_1w  else tf_bias.BIAS_NEUTRAL
     _dir_4h    = _bias_4h['bias']  if _bias_4h  else tf_bias.BIAS_NEUTRAL
 
-    # Canal roto en 4H alineado con dirección principal → confirmación adicional
+    # Estado de canal por TF superior
     _canal_4h_alcista_roto = _canal_4h['alcista_roto']  if _canal_4h else False
     _canal_4h_bajista_roto = _canal_4h['bajista_roto']  if _canal_4h else False
     _linea_canal_4h_sop    = _canal_4h['linea_soporte'] if _canal_4h else 0.0
     _linea_canal_4h_res    = _canal_4h['linea_resist']  if _canal_4h else 0.0
 
-    # HTF alcista si 1D, 1W O 4H es BULLISH
+    _canal_1d_alcista_roto = _canal_1d['alcista_roto']  if _canal_1d else False
+    _canal_1d_bajista_roto = _canal_1d['bajista_roto']  if _canal_1d else False
+    _linea_canal_1d_sop    = _canal_1d['linea_soporte'] if _canal_1d else 0.0
+    _linea_canal_1d_res    = _canal_1d['linea_resist']  if _canal_1d else 0.0
+
+    _canal_1w_alcista_roto = _canal_1w['alcista_roto']  if _canal_1w else False
+    _canal_1w_bajista_roto = _canal_1w['bajista_roto']  if _canal_1w else False
+    _linea_canal_1w_sop    = _canal_1w['linea_soporte'] if _canal_1w else 0.0
+    _linea_canal_1w_res    = _canal_1w['linea_resist']  if _canal_1w else 0.0
+
+    # HTF alcista/bajista por sesgo de precio
     _htf_alcista = (_dir_1d == tf_bias.BIAS_BULLISH or
                     _dir_1w == tf_bias.BIAS_BULLISH or
                     _dir_4h == tf_bias.BIAS_BULLISH)
@@ -458,23 +467,49 @@ def analizar(simbolo, params):
                     _dir_1w == tf_bias.BIAS_BEARISH or
                     _dir_4h == tf_bias.BIAS_BEARISH)
 
-    # Canal 4H también roto en la misma dirección → setup confirmado por 4H
+    # Confirmación multi-TF: el mismo canal se ve roto en TFs superiores
+    # Cuantos más TFs confirman, más fuerte es la señal (no es un pullback)
+    _n_confirm_sell = sum([_canal_4h_alcista_roto, _canal_1d_alcista_roto, _canal_1w_alcista_roto])
+    _n_confirm_buy  = sum([_canal_4h_bajista_roto, _canal_1d_bajista_roto, _canal_1w_bajista_roto])
+
     canal_sell_confirmado_4h = canal_alcista_roto and _canal_4h_alcista_roto
     canal_buy_confirmado_4h  = canal_bajista_roto and _canal_4h_bajista_roto
+    canal_sell_confirmado_1d = canal_alcista_roto and _canal_1d_alcista_roto
+    canal_buy_confirmado_1d  = canal_bajista_roto and _canal_1d_bajista_roto
+    canal_sell_confirmado_1w = canal_alcista_roto and _canal_1w_alcista_roto
+    canal_buy_confirmado_1w  = canal_bajista_roto and _canal_1w_bajista_roto
 
-    pullback_alcista = canal_alcista_roto and _htf_alcista and not canal_sell_confirmado_4h
-    pullback_bajista = canal_bajista_roto and _htf_bajista and not canal_buy_confirmado_4h
-    # Cuando hay pullback, suprimir la señal en contra de la tendencia superior
+    # Si algún TF superior confirma el canal roto → señal real, no pullback
+    _sell_confirmado_htf = canal_sell_confirmado_4h or canal_sell_confirmado_1d or canal_sell_confirmado_1w
+    _buy_confirmado_htf  = canal_buy_confirmado_4h  or canal_buy_confirmado_1d  or canal_buy_confirmado_1w
+
+    # Bonus de score por cada TF superior que confirma (+1 por cada uno, máx +3)
+    score_sell = min(score_sell + _n_confirm_sell, 23)
+    score_buy  = min(score_buy  + _n_confirm_buy,  23)
+
+    pullback_alcista = canal_alcista_roto and _htf_alcista and not _sell_confirmado_htf
+    pullback_bajista = canal_bajista_roto and _htf_bajista and not _buy_confirmado_htf
+
     if pullback_alcista:
         score_sell = max(0, score_sell - 4)
         print(f"  ⚠️ PULLBACK alcista — canal roto bajista pero HTF (1D/1W/4H) es BULLISH → penalizar SELL")
     if pullback_bajista:
         score_buy  = max(0, score_buy  - 4)
         print(f"  ⚠️ PULLBACK bajista — canal roto alcista pero HTF (1D/1W/4H) es BEARISH → penalizar BUY")
-    if canal_sell_confirmado_4h:
-        print(f"  ✅ Canal SELL confirmado también en 4H (${_linea_canal_4h_sop:.2f})")
-    if canal_buy_confirmado_4h:
-        print(f"  ✅ Canal BUY confirmado también en 4H (${_linea_canal_4h_res:.2f})")
+    if _sell_confirmado_htf:
+        _htf_labels = " | ".join(filter(None, [
+            f"4H(${_linea_canal_4h_sop:.0f})" if canal_sell_confirmado_4h else "",
+            f"1D(${_linea_canal_1d_sop:.0f})" if canal_sell_confirmado_1d else "",
+            f"1W(${_linea_canal_1w_sop:.0f})" if canal_sell_confirmado_1w else "",
+        ]))
+        print(f"  ✅ Canal SELL confirmado en TFs superiores: {_htf_labels}")
+    if _buy_confirmado_htf:
+        _htf_labels = " | ".join(filter(None, [
+            f"4H(${_linea_canal_4h_res:.0f})" if canal_buy_confirmado_4h else "",
+            f"1D(${_linea_canal_1d_res:.0f})" if canal_buy_confirmado_1d else "",
+            f"1W(${_linea_canal_1w_res:.0f})" if canal_buy_confirmado_1w else "",
+        ]))
+        print(f"  ✅ Canal BUY confirmado en TFs superiores: {_htf_labels}")
 
     # Umbrales 1H (estrictos para filtrar ruido intradía)
     senal_sell_maxima = score_sell >= 12
@@ -779,12 +814,17 @@ def analizar(simbolo, params):
             rr2 = rr(entry_rt, sl_rt_sell, tp2_rt_sell)
             rr3 = rr(entry_rt, sl_rt_sell, tp3_rt_sell)
             if rr1 >= 1.5:   # R:R mínimo más estricto para este setup
-                _conf_4h_sell = (f"\n📈 <b>Canal 4H también roto</b> — línea ${_linea_canal_4h_sop:.2f}  ← doble confirmación"
-                                 if canal_sell_confirmado_4h else "")
+                _htf_conf_sell_lines = "\n".join(filter(None, [
+                    f"📈 <b>4H también roto</b> — soporte ${_linea_canal_4h_sop:.0f}" if canal_sell_confirmado_4h else "",
+                    f"📈 <b>1D también roto</b> — soporte ${_linea_canal_1d_sop:.0f}" if canal_sell_confirmado_1d else "",
+                    f"📈 <b>1W también roto</b> — soporte ${_linea_canal_1w_sop:.0f}" if canal_sell_confirmado_1w else "",
+                ]))
+                _conf_htf_sell = (f"\n{_htf_conf_sell_lines}  ← multi-TF confirmado"
+                                  if _htf_conf_sell_lines else "")
                 msg = (
                     f"🎯 <b>RETEST CANAL SELL — ORO (XAUUSD) 1H</b>\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🔻 Canal alcista ROTO — precio retestea línea{_conf_4h_sell}\n"
+                    f"🔻 Canal alcista ROTO — precio retestea línea{_conf_htf_sell}\n"
                     f"📌 <b>SELL MARKET:</b> ${entry_rt:.2f}  ← ENTRA AHORA\n"
                     f"🛑 <b>Stop Loss:</b> ${sl_rt_sell:.2f}  (sobre línea canal)\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -850,12 +890,17 @@ def analizar(simbolo, params):
             rr2 = rr(entry_rt, sl_rt_buy, tp2_rt_buy)
             rr3 = rr(entry_rt, sl_rt_buy, tp3_rt_buy)
             if rr1 >= 1.5:
-                _conf_4h_buy = (f"\n📈 <b>Canal 4H también roto</b> — línea ${_linea_canal_4h_res:.2f}  ← doble confirmación"
-                                if canal_buy_confirmado_4h else "")
+                _htf_conf_buy_lines = "\n".join(filter(None, [
+                    f"📈 <b>4H también roto</b> — resist ${_linea_canal_4h_res:.0f}" if canal_buy_confirmado_4h else "",
+                    f"📈 <b>1D también roto</b> — resist ${_linea_canal_1d_res:.0f}" if canal_buy_confirmado_1d else "",
+                    f"📈 <b>1W también roto</b> — resist ${_linea_canal_1w_res:.0f}" if canal_buy_confirmado_1w else "",
+                ]))
+                _conf_htf_buy = (f"\n{_htf_conf_buy_lines}  ← multi-TF confirmado"
+                                 if _htf_conf_buy_lines else "")
                 msg = (
                     f"🎯 <b>RETEST CANAL BUY — ORO (XAUUSD) 1H</b>\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🔺 Canal bajista ROTO — precio retestea línea{_conf_4h_buy}\n"
+                    f"🔺 Canal bajista ROTO — precio retestea línea{_conf_htf_buy}\n"
                     f"📌 <b>BUY MARKET:</b> ${entry_rt:.2f}  ← ENTRA AHORA\n"
                     f"🛑 <b>Stop Loss:</b> ${sl_rt_buy:.2f}  (bajo línea canal)\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
