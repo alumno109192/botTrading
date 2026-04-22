@@ -76,6 +76,7 @@ from core.indicators import (
     calcular_rsi, calcular_ema, calcular_atr,
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
     detectar_evening_star, detectar_morning_star,
+    detectar_canal_roto, calcular_sr_multiples,
 )
 
 def calcular_zonas_sr(df, atr, lookback, zone_mult):
@@ -122,109 +123,6 @@ def calcular_zonas_sr(df, atr, lookback, zone_mult):
     zsh = round(support_pivot + zone_width * 0.75, 2)
     zsl = round(support_pivot - zone_width * 0.25, 2)
     return zrl, zrh, zsl, zsh
-
-
-def detectar_canal_roto(df, atr, lookback=40, wing=3):
-    """
-    Detecta si el precio acaba de romper un canal alcista o bajista.
-
-    Método: ajusta una línea de tendencia sobre los swing-lows (canal alcista)
-    y otra sobre los swing-highs (canal bajista) usando regresión lineal.
-    Considera roto si el cierre actual está por debajo/encima del valor
-    proyectado de la línea en más de 0.3×ATR.
-
-    Returns:
-        canal_alcista_roto (bool), canal_bajista_roto (bool),
-        valor_linea_soporte (float), valor_linea_resist (float)
-    """
-    sub   = df.iloc[-lookback:]
-    highs = sub['High'].values
-    lows  = sub['Close'].values   # usamos cierre para reducir ruido
-    n     = len(sub)
-    x     = np.arange(n)
-
-    # Índices de swing lows (soportes de la tendencia alcista)
-    idx_lows = []
-    for i in range(wing, n - wing):
-        if all(lows[i] <= lows[i-j] for j in range(1, wing+1)) and \
-           all(lows[i] <= lows[i+j] for j in range(1, wing+1)):
-            idx_lows.append(i)
-
-    # Índices de swing highs (resistencias de la tendencia bajista)
-    idx_highs = []
-    for i in range(wing, n - wing):
-        if all(highs[i] >= highs[i-j] for j in range(1, wing+1)) and \
-           all(highs[i] >= highs[i+j] for j in range(1, wing+1)):
-            idx_highs.append(i)
-
-    canal_alcista_roto  = False
-    canal_bajista_roto  = False
-    linea_soporte_val   = float(lows[-1])
-    linea_resist_val    = float(highs[-1])
-
-    # Canal alcista: línea sobre swing lows
-    if len(idx_lows) >= 2:
-        xs = np.array(idx_lows)
-        ys = lows[idx_lows]
-        m, b = np.polyfit(xs, ys, 1)
-        if m > 0:  # solo si la línea es ascendente (tendencia alcista)
-            linea_soporte_val = m * (n - 1) + b
-            close_actual = float(df['Close'].iloc[-1])
-            if close_actual < linea_soporte_val - 0.3 * atr:
-                canal_alcista_roto = True
-
-    # Canal bajista: línea sobre swing highs
-    if len(idx_highs) >= 2:
-        xs = np.array(idx_highs)
-        ys = highs[idx_highs]
-        m, b = np.polyfit(xs, ys, 1)
-        if m < 0:  # solo si la línea es descendente
-            linea_resist_val = m * (n - 1) + b
-            close_actual = float(df['Close'].iloc[-1])
-            if close_actual > linea_resist_val + 0.3 * atr:
-                canal_bajista_roto = True
-
-    return canal_alcista_roto, canal_bajista_roto, linea_soporte_val, linea_resist_val
-
-
-def calcular_sr_multiples(df, atr, lookback, zone_mult, n_niveles=5):
-    """
-    Devuelve hasta n_niveles de soporte y resistencia ordenados por proximidad
-    al precio actual. Usado para anclar los TPs a zonas reales del mercado.
-
-    Returns:
-        soportes (list[float]), resistencias (list[float])  — ordenados de más
-        cercano a más lejano respecto al precio actual.
-    """
-    close      = float(df['Close'].iloc[-1])
-    wing       = 3
-    highs      = df['High'].iloc[-lookback-1:-1]
-    lows       = df['Low'].iloc[-lookback-1:-1]
-    min_dist   = atr * 0.5   # filtrar niveles demasiado juntos
-
-    raw_highs, raw_lows = [], []
-    for i in range(wing, len(highs) - wing):
-        val = float(highs.iloc[i])
-        if all(val >= float(highs.iloc[i-j]) for j in range(1, wing+1)) and \
-           all(val >= float(highs.iloc[i+j]) for j in range(1, wing+1)):
-            raw_highs.append(val)
-    for i in range(wing, len(lows) - wing):
-        val = float(lows.iloc[i])
-        if all(val <= float(lows.iloc[i-j]) for j in range(1, wing+1)) and \
-           all(val <= float(lows.iloc[i+j]) for j in range(1, wing+1)):
-            raw_lows.append(val)
-
-    todos = sorted(set(raw_highs + raw_lows))
-
-    # Filtrar niveles muy juntos (clustering)
-    filtrados = []
-    for v in todos:
-        if not filtrados or abs(v - filtrados[-1]) > min_dist:
-            filtrados.append(v)
-
-    soportes     = sorted([v for v in filtrados if v < close - atr * 0.2], reverse=True)[:n_niveles]
-    resistencias = sorted([v for v in filtrados if v > close + atr * 0.2])[:n_niveles]
-    return soportes, resistencias
 
 
 def analizar(simbolo, params):
@@ -519,25 +417,48 @@ def analizar(simbolo, params):
         score_buy  = max(score_buy  - 1, 0)
 
     # ── Contexto multi-TF: ¿es el canal roto un PULLBACK dentro de tendencia? ──
-    # Si 1D/1W es ALCISTA y el 1H rompe un canal a la baja → no es reversión,
-    # es una corrección. Suprimimos señales SELL y generamos alerta de pullback BUY.
-    # Simétricamente para canal bajista roto cuando 1D/1W es BEARISH.
-    _bias_1d  = tf_bias.obtener_sesgo(simbolo, '1D')
-    _bias_1w  = tf_bias.obtener_sesgo(simbolo, '1W')
-    _dir_1d   = _bias_1d['bias']  if _bias_1d  else tf_bias.BIAS_NEUTRAL
-    _dir_1w   = _bias_1w['bias']  if _bias_1w  else tf_bias.BIAS_NEUTRAL
-    # Pullback alcista: canal roto abajo PERO tendencia superior es ALCISTA
-    _htf_alcista = (_dir_1d == tf_bias.BIAS_BULLISH or _dir_1w == tf_bias.BIAS_BULLISH)
-    _htf_bajista = (_dir_1d == tf_bias.BIAS_BEARISH or _dir_1w == tf_bias.BIAS_BEARISH)
-    pullback_alcista = canal_alcista_roto and _htf_alcista   # corrección bajista dentro de uptrend
-    pullback_bajista = canal_bajista_roto and _htf_bajista   # corrección alcista dentro de downtrend
+    # Si 1D/1W o el propio 4H es ALCISTA y el 1H rompe un canal a la baja
+    # → no es reversión, es corrección. Suprimimos SELL y alertamos zona BUY.
+    # Simétricamente para canal bajista roto cuando TFs superiores son BEARISH.
+    _bias_1d   = tf_bias.obtener_sesgo(simbolo, '1D')
+    _bias_1w   = tf_bias.obtener_sesgo(simbolo, '1W')
+    _bias_4h   = tf_bias.obtener_sesgo(simbolo, '4H')
+    _canal_4h  = tf_bias.obtener_canal_4h(simbolo)   # canal roto en 4H publicado por detector_gold_4h
+    _dir_1d    = _bias_1d['bias']  if _bias_1d  else tf_bias.BIAS_NEUTRAL
+    _dir_1w    = _bias_1w['bias']  if _bias_1w  else tf_bias.BIAS_NEUTRAL
+    _dir_4h    = _bias_4h['bias']  if _bias_4h  else tf_bias.BIAS_NEUTRAL
+
+    # Canal roto en 4H alineado con dirección principal → confirmación adicional
+    _canal_4h_alcista_roto = _canal_4h['alcista_roto']  if _canal_4h else False
+    _canal_4h_bajista_roto = _canal_4h['bajista_roto']  if _canal_4h else False
+    _linea_canal_4h_sop    = _canal_4h['linea_soporte'] if _canal_4h else 0.0
+    _linea_canal_4h_res    = _canal_4h['linea_resist']  if _canal_4h else 0.0
+
+    # HTF alcista si 1D, 1W O 4H es BULLISH
+    _htf_alcista = (_dir_1d == tf_bias.BIAS_BULLISH or
+                    _dir_1w == tf_bias.BIAS_BULLISH or
+                    _dir_4h == tf_bias.BIAS_BULLISH)
+    _htf_bajista = (_dir_1d == tf_bias.BIAS_BEARISH or
+                    _dir_1w == tf_bias.BIAS_BEARISH or
+                    _dir_4h == tf_bias.BIAS_BEARISH)
+
+    # Canal 4H también roto en la misma dirección → setup confirmado por 4H
+    canal_sell_confirmado_4h = canal_alcista_roto and _canal_4h_alcista_roto
+    canal_buy_confirmado_4h  = canal_bajista_roto and _canal_4h_bajista_roto
+
+    pullback_alcista = canal_alcista_roto and _htf_alcista and not canal_sell_confirmado_4h
+    pullback_bajista = canal_bajista_roto and _htf_bajista and not canal_buy_confirmado_4h
     # Cuando hay pullback, suprimir la señal en contra de la tendencia superior
     if pullback_alcista:
-        score_sell = max(0, score_sell - 4)   # penalizar SELL fuertemente
-        print(f"  ⚠️ PULLBACK alcista — canal roto bajista pero 1D/1W es BULLISH → penalizar SELL")
+        score_sell = max(0, score_sell - 4)
+        print(f"  ⚠️ PULLBACK alcista — canal roto bajista pero HTF (1D/1W/4H) es BULLISH → penalizar SELL")
     if pullback_bajista:
-        score_buy  = max(0, score_buy  - 4)   # penalizar BUY fuertemente
-        print(f"  ⚠️ PULLBACK bajista — canal roto alcista pero 1D/1W es BEARISH → penalizar BUY")
+        score_buy  = max(0, score_buy  - 4)
+        print(f"  ⚠️ PULLBACK bajista — canal roto alcista pero HTF (1D/1W/4H) es BEARISH → penalizar BUY")
+    if canal_sell_confirmado_4h:
+        print(f"  ✅ Canal SELL confirmado también en 4H (${_linea_canal_4h_sop:.2f})")
+    if canal_buy_confirmado_4h:
+        print(f"  ✅ Canal BUY confirmado también en 4H (${_linea_canal_4h_res:.2f})")
 
     # Umbrales 1H (estrictos para filtrar ruido intradía)
     senal_sell_maxima = score_sell >= 12
@@ -842,10 +763,12 @@ def analizar(simbolo, params):
             rr2 = rr(entry_rt, sl_rt_sell, tp2_rt_sell)
             rr3 = rr(entry_rt, sl_rt_sell, tp3_rt_sell)
             if rr1 >= 1.5:   # R:R mínimo más estricto para este setup
+                _conf_4h_sell = (f"\n📈 <b>Canal 4H también roto</b> — línea ${_linea_canal_4h_sop:.2f}  ← doble confirmación"
+                                 if canal_sell_confirmado_4h else "")
                 msg = (
                     f"🎯 <b>RETEST CANAL SELL — ORO (XAUUSD) 1H</b>\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🔻 Canal alcista ROTO — precio retestea línea\n"
+                    f"🔻 Canal alcista ROTO — precio retestea línea{_conf_4h_sell}\n"
                     f"📌 <b>SELL MARKET:</b> ${entry_rt:.2f}  ← ENTRA AHORA\n"
                     f"🛑 <b>Stop Loss:</b> ${sl_rt_sell:.2f}  (sobre línea canal)\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -911,10 +834,12 @@ def analizar(simbolo, params):
             rr2 = rr(entry_rt, sl_rt_buy, tp2_rt_buy)
             rr3 = rr(entry_rt, sl_rt_buy, tp3_rt_buy)
             if rr1 >= 1.5:
+                _conf_4h_buy = (f"\n📈 <b>Canal 4H también roto</b> — línea ${_linea_canal_4h_res:.2f}  ← doble confirmación"
+                                if canal_buy_confirmado_4h else "")
                 msg = (
                     f"🎯 <b>RETEST CANAL BUY — ORO (XAUUSD) 1H</b>\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🔺 Canal bajista ROTO — precio retestea línea\n"
+                    f"🔺 Canal bajista ROTO — precio retestea línea{_conf_4h_buy}\n"
                     f"📌 <b>BUY MARKET:</b> ${entry_rt:.2f}  ← ENTRA AHORA\n"
                     f"🛑 <b>Stop Loss:</b> ${sl_rt_buy:.2f}  (bajo línea canal)\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"

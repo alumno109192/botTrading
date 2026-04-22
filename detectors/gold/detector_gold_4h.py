@@ -88,6 +88,7 @@ from core.indicators import (
     detectar_evening_star, detectar_morning_star,
     detectar_rotura_alcista, detectar_rotura_bajista,
     detectar_doble_techo, detectar_doble_suelo,
+    detectar_canal_roto, calcular_sr_multiples,
 )
 
 # ══════════════════════════════════════
@@ -357,6 +358,18 @@ def analizar(simbolo, params):
     if ds_detectado:
         print(f"  🔺 [4H] DOBLE SUELO detectado — suelo=${ds_nivel_suelo:.1f} cuello=${ds_neckline:.1f}")
 
+    # ── Detección de canal roto 4H ─────────────────────────────────────────────
+    canal_alcista_roto_4h, canal_bajista_roto_4h, \
+        linea_soporte_canal_4h, linea_resist_canal_4h = detectar_canal_roto(
+            df, atr, lookback=params.get('sr_lookback', 80), wing=3)
+    soportes_sr_4h, resistencias_sr_4h = calcular_sr_multiples(
+        df, atr, lookback=params.get('sr_lookback', 80),
+        zone_mult=params.get('sr_zone_mult', 0.6))
+    if canal_alcista_roto_4h:
+        print(f"  🔻 [4H] CANAL ALCISTA ROTO — línea soporte ${linea_soporte_canal_4h:.2f}")
+    if canal_bajista_roto_4h:
+        print(f"  🔺 [4H] CANAL BAJISTA ROTO — línea resist ${linea_resist_canal_4h:.2f}")
+
 
     score_sell = 0
     score_sell += 2 if en_zona_resist          else 0
@@ -383,6 +396,7 @@ def analizar(simbolo, params):
     score_sell += 3 if fallo_continuacion_bajista else 0
     score_sell += 4 if rotura_bajista          else 0  # rotura con impulso+volumen
     score_sell += 3 if dt_detectado            else 0  # doble techo confirmado
+    score_sell += 2 if canal_alcista_roto_4h   else 0  # canal alcista roto → sesgo bajista
 
     if adx_lateral:
         score_sell = max(0, score_sell - 3)
@@ -462,7 +476,8 @@ def analizar(simbolo, params):
     score_buy  += 3 if fallo_continuacion_alcista else 0
     score_buy  += 4 if rotura_alcista          else 0  # rotura con impulso+volumen
     score_buy  += 3 if ds_detectado            else 0  # doble suelo confirmado
-    
+    score_buy  += 2 if canal_bajista_roto_4h   else 0  # canal bajista roto → sesgo alcista
+
     if adx_lateral:
         score_buy = max(0, score_buy - 3)
 
@@ -564,6 +579,10 @@ def analizar(simbolo, params):
     # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 4H) ──
     _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
     tf_bias.publicar_sesgo(simbolo, '4H', _sesgo_dir, max(score_sell, score_buy))
+    # Publicar datos de canal para que 1H los consulte
+    tf_bias.publicar_canal_4h(simbolo,
+        alcista_roto=canal_alcista_roto_4h, bajista_roto=canal_bajista_roto_4h,
+        linea_soporte=linea_soporte_canal_4h, linea_resist=linea_resist_canal_4h)
     _conf_sell = ""; _conf_buy = ""
     if senal_sell_alerta:
         _ok, _desc = tf_bias.verificar_confluencia(simbolo, '4H', tf_bias.BIAS_BEARISH)

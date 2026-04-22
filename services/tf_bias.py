@@ -20,8 +20,9 @@ from datetime import datetime, timedelta
 
 # ─────────────────────────────────────
 TTL_SESGO_HORAS = 2  # sesgos más viejos que esto se tratan como sin_datos
-_lock       = threading.Lock()
-_bias_store = {}   # {simbolo: {tf: {bias, score, ts}}}
+_lock        = threading.Lock()
+_bias_store  = {}   # {simbolo: {tf: {bias, score, ts}}}
+_canal_store = {}   # {simbolo: {alcista_roto, bajista_roto, linea_soporte, linea_resist, ts}}
 # ─────────────────────────────────────
 
 BIAS_BULLISH = 'BULLISH'
@@ -137,3 +138,28 @@ def estado_completo() -> dict:
     """Retorna copia del estado completo para diagnóstico."""
     with _lock:
         return {s: dict(tfs) for s, tfs in _bias_store.items()}
+
+
+def publicar_canal_4h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
+                      linea_soporte: float, linea_resist: float) -> None:
+    """Publica el estado del canal 4H para que el detector 1H lo consulte."""
+    with _lock:
+        _canal_store[simbolo] = {
+            'alcista_roto':  alcista_roto,
+            'bajista_roto':  bajista_roto,
+            'linea_soporte': linea_soporte,
+            'linea_resist':  linea_resist,
+            'ts':            datetime.now(),
+        }
+
+
+def obtener_canal_4h(simbolo: str) -> dict:
+    """Retorna el último estado de canal 4H o None si no hay datos recientes."""
+    with _lock:
+        datos = _canal_store.get(simbolo)
+        if datos is None:
+            return None
+        edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
+        if edad_h > TTL_SESGO_HORAS:
+            return None
+        return dict(datos)

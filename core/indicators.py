@@ -440,3 +440,98 @@ def detectar_doble_suelo(df: pd.DataFrame, atr: float,
 
     nivel_suelo = round(min(l1_val, l2_val), 2)
     return True, nivel_suelo, round(neckline, 2)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CANAL ROTO + S/R MÚLTIPLES (compartido entre 1H y 4H)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def detectar_canal_roto(df: pd.DataFrame, atr: float,
+                        lookback: int = 40, wing: int = 3) -> tuple:
+    """
+    Detecta si el precio acaba de romper un canal alcista o bajista.
+
+    Ajusta una línea de tendencia sobre swing-lows (canal alcista) y otra
+    sobre swing-highs (canal bajista) mediante regresión lineal.
+    Considera roto si el cierre actual está por debajo/encima del valor
+    proyectado en más de 0.3×ATR.
+
+    Returns:
+        (canal_alcista_roto, canal_bajista_roto,
+         valor_linea_soporte, valor_linea_resist)
+    """
+    sub   = df.iloc[-lookback:]
+    highs = sub['High'].values
+    lows  = sub['Close'].values
+    n     = len(sub)
+
+    idx_lows, idx_highs = [], []
+    for i in range(wing, n - wing):
+        if all(lows[i]  <= lows[i-j]  for j in range(1, wing+1)) and \
+           all(lows[i]  <= lows[i+j]  for j in range(1, wing+1)):
+            idx_lows.append(i)
+        if all(highs[i] >= highs[i-j] for j in range(1, wing+1)) and \
+           all(highs[i] >= highs[i+j] for j in range(1, wing+1)):
+            idx_highs.append(i)
+
+    canal_alcista_roto = False
+    canal_bajista_roto = False
+    linea_soporte_val  = float(lows[-1])
+    linea_resist_val   = float(highs[-1])
+    close_actual       = float(df['Close'].iloc[-1])
+
+    if len(idx_lows) >= 2:
+        xs = np.array(idx_lows)
+        m, b = np.polyfit(xs, lows[idx_lows], 1)
+        if m > 0:
+            linea_soporte_val = m * (n - 1) + b
+            if close_actual < linea_soporte_val - 0.3 * atr:
+                canal_alcista_roto = True
+
+    if len(idx_highs) >= 2:
+        xs = np.array(idx_highs)
+        m, b = np.polyfit(xs, highs[idx_highs], 1)
+        if m < 0:
+            linea_resist_val = m * (n - 1) + b
+            if close_actual > linea_resist_val + 0.3 * atr:
+                canal_bajista_roto = True
+
+    return canal_alcista_roto, canal_bajista_roto, linea_soporte_val, linea_resist_val
+
+
+def calcular_sr_multiples(df: pd.DataFrame, atr: float,
+                          lookback: int = 60, zone_mult: float = 0.5,
+                          n_niveles: int = 5) -> tuple:
+    """
+    Devuelve hasta n_niveles de soporte y resistencia ordenados por proximidad
+    al precio actual. Âncla los TPs a zonas reales del mercado.
+
+    Returns:
+        (soportes, resistencias) — listas de float, más cercano primero.
+    """
+    close    = float(df['Close'].iloc[-1])
+    wing     = 3
+    min_dist = atr * 0.5
+    highs    = df['High'].iloc[-lookback-1:-1]
+    lows_s   = df['Low'].iloc[-lookback-1:-1]
+
+    raw_highs, raw_lows = [], []
+    for i in range(wing, len(highs) - wing):
+        val = float(highs.iloc[i])
+        if all(val >= float(highs.iloc[i-j]) for j in range(1, wing+1)) and \
+           all(val >= float(highs.iloc[i+j]) for j in range(1, wing+1)):
+            raw_highs.append(val)
+    for i in range(wing, len(lows_s) - wing):
+        val = float(lows_s.iloc[i])
+        if all(val <= float(lows_s.iloc[i-j]) for j in range(1, wing+1)) and \
+           all(val <= float(lows_s.iloc[i+j]) for j in range(1, wing+1)):
+            raw_lows.append(val)
+
+    filtrados = []
+    for v in sorted(set(raw_highs + raw_lows)):
+        if not filtrados or abs(v - filtrados[-1]) > min_dist:
+            filtrados.append(v)
+
+    soportes     = sorted([v for v in filtrados if v < close - atr * 0.2], reverse=True)[:n_niveles]
+    resistencias = sorted([v for v in filtrados if v > close + atr * 0.2])[:n_niveles]
+    return soportes, resistencias
