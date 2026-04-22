@@ -518,6 +518,27 @@ def analizar(simbolo, params):
         score_sell = min(score_sell + 1, 23)
         score_buy  = max(score_buy  - 1, 0)
 
+    # ── Contexto multi-TF: ¿es el canal roto un PULLBACK dentro de tendencia? ──
+    # Si 1D/1W es ALCISTA y el 1H rompe un canal a la baja → no es reversión,
+    # es una corrección. Suprimimos señales SELL y generamos alerta de pullback BUY.
+    # Simétricamente para canal bajista roto cuando 1D/1W es BEARISH.
+    _bias_1d  = tf_bias.obtener_sesgo(simbolo, '1D')
+    _bias_1w  = tf_bias.obtener_sesgo(simbolo, '1W')
+    _dir_1d   = _bias_1d['bias']  if _bias_1d  else tf_bias.BIAS_NEUTRAL
+    _dir_1w   = _bias_1w['bias']  if _bias_1w  else tf_bias.BIAS_NEUTRAL
+    # Pullback alcista: canal roto abajo PERO tendencia superior es ALCISTA
+    _htf_alcista = (_dir_1d == tf_bias.BIAS_BULLISH or _dir_1w == tf_bias.BIAS_BULLISH)
+    _htf_bajista = (_dir_1d == tf_bias.BIAS_BEARISH or _dir_1w == tf_bias.BIAS_BEARISH)
+    pullback_alcista = canal_alcista_roto and _htf_alcista   # corrección bajista dentro de uptrend
+    pullback_bajista = canal_bajista_roto and _htf_bajista   # corrección alcista dentro de downtrend
+    # Cuando hay pullback, suprimir la señal en contra de la tendencia superior
+    if pullback_alcista:
+        score_sell = max(0, score_sell - 4)   # penalizar SELL fuertemente
+        print(f"  ⚠️ PULLBACK alcista — canal roto bajista pero 1D/1W es BULLISH → penalizar SELL")
+    if pullback_bajista:
+        score_buy  = max(0, score_buy  - 4)   # penalizar BUY fuertemente
+        print(f"  ⚠️ PULLBACK bajista — canal roto alcista pero 1D/1W es BEARISH → penalizar BUY")
+
     # Umbrales 1H (estrictos para filtrar ruido intradía)
     senal_sell_maxima = score_sell >= 12
     senal_sell_fuerte = score_sell >= 9
@@ -781,8 +802,33 @@ def analizar(simbolo, params):
 
     # ── SEÑALES RETEST DE CANAL ROTO (alta probabilidad) ─────────────────────
     # Setup: precio rompe canal → retrocede al nivel roto → rechaza → ENTRADA
+    # CASO ESPECIAL: si el canal roto va CONTRA la tendencia superior (1D/1W),
+    # el retest NO es una señal en esa dirección, sino un PULLBACK de la tendencia
+    # mayor → aviso de zona de compra/venta en dirección de la tendencia principal.
+
     if retest_canal_sell and not ya_enviada('RETEST_SELL'):
-        if db and db.existe_senal_reciente(simbolo_db, 'VENTA', horas=1):
+        if pullback_alcista:
+            # Canal alcista roto en 1H PERO 1D/1W es BULLISH → pullback, no reversión
+            # El retest de la línea rota es una ZONA DE COMPRA (rebote esperado)
+            if not ya_enviada('PULLBACK_BUY'):
+                _dir_str = f"1D: {_dir_1d}" + (f" | 1W: {_dir_1w}" if _dir_1w != tf_bias.BIAS_NEUTRAL else "")
+                msg = (
+                    f"⚠️ <b>PULLBACK EN TENDENCIA ALCISTA — ORO (XAUUSD) 1H</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🔻 Canal 1H roto a la baja — PERO tendencia superior es ALCISTA\n"
+                    f"🔺 Contexto: <b>{_dir_str}</b> → corrección dentro de uptrend\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📌 <b>ZONA DE COMPRA (pullback):</b> ~${linea_soporte_canal:.2f}\n"
+                    f"💡 Esperar confirmación alcista en 1H en esa zona\n"
+                    f"💡 No operar SELL — va contra la tendencia principal\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 RSI: {round(rsi, 1)}  ATR: ${atr:.2f}  💰 Precio: ${close:.2f}\n"
+                    f"⏱️ 1H  📅 {fecha}"
+                )
+                enviar_telegram(msg)
+                marcar_enviada('PULLBACK_BUY')
+            print(f"  ⛔ Retest SELL suprimido — pullback alcista (1D/1W bullish)")
+        elif db and db.existe_senal_reciente(simbolo_db, 'VENTA', horas=1):
             print(f"  ℹ️  Retest SELL duplicado")
         else:
             # SL: por encima de la línea del canal + buffer
@@ -830,7 +876,27 @@ def analizar(simbolo, params):
                 print(f"  ⛔ Retest SELL bloqueado: R:R {rr1}:1 < 1.5 mínimo")
 
     if retest_canal_buy and not ya_enviada('RETEST_BUY'):
-        if db and db.existe_senal_reciente(simbolo_db, 'COMPRA', horas=1):
+        if pullback_bajista:
+            # Canal bajista roto en 1H PERO 1D/1W es BEARISH → pullback, no reversión
+            if not ya_enviada('PULLBACK_SELL'):
+                _dir_str = f"1D: {_dir_1d}" + (f" | 1W: {_dir_1w}" if _dir_1w != tf_bias.BIAS_NEUTRAL else "")
+                msg = (
+                    f"⚠️ <b>PULLBACK EN TENDENCIA BAJISTA — ORO (XAUUSD) 1H</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🔺 Canal 1H roto al alza — PERO tendencia superior es BAJISTA\n"
+                    f"🔻 Contexto: <b>{_dir_str}</b> → rebote dentro de downtrend\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📌 <b>ZONA DE VENTA (pullback):</b> ~${linea_resist_canal:.2f}\n"
+                    f"💡 Esperar confirmación bajista en 1H en esa zona\n"
+                    f"💡 No operar BUY — va contra la tendencia principal\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 RSI: {round(rsi, 1)}  ATR: ${atr:.2f}  💰 Precio: ${close:.2f}\n"
+                    f"⏱️ 1H  📅 {fecha}"
+                )
+                enviar_telegram(msg)
+                marcar_enviada('PULLBACK_SELL')
+            print(f"  ⛔ Retest BUY suprimido — pullback bajista (1D/1W bearish)")
+        elif db and db.existe_senal_reciente(simbolo_db, 'COMPRA', horas=1):
             print(f"  ℹ️  Retest BUY duplicado")
         else:
             sl_rt_buy   = round(linea_resist_canal - atr * 0.4, 2)
