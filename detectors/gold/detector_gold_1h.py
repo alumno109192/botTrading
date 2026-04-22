@@ -184,11 +184,13 @@ def analizar(simbolo, params):
     body = row['body']; upper_wick = row['upper_wick']; lower_wick = row['lower_wick']
     total_range = row['total_range']; is_bearish = row['is_bearish']; is_bullish = row['is_bullish']
 
-    zrl, zrh, zsl, zsh = calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
+    # df.iloc[:-1]: excluir vela viva para que close = última vela cerrada
+    _df_cerrado = df.iloc[:-1]
+    zrl, zrh, zsl, zsh = calcular_zonas_sr(_df_cerrado, atr, params['sr_lookback'], params['sr_zone_mult'])
 
     # ── Niveles S/R múltiples para TPs estructurales ──────────────────────────
     soportes_sr, resistencias_sr = calcular_sr_multiples(
-        df, atr, params['sr_lookback'], params['sr_zone_mult'], n_niveles=5
+        _df_cerrado, atr, params['sr_lookback'], params['sr_zone_mult'], n_niveles=5
     )
 
     # ── Detección de canal roto ────────────────────────────────────────────────
