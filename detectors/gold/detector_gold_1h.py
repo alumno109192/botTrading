@@ -2,6 +2,7 @@ import os
 from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
 from services.economic_calendar import hay_evento_impacto
+from services.news_monitor import obtener_sesgo_actual
 from adapters.data_provider import get_ohlcv
 
 import yfinance as yf
@@ -504,6 +505,19 @@ def analizar(simbolo, params):
     dxy_bias = get_dxy_bias()
     score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
 
+    # ── Sesgo fundamental de noticias ──────────────────────────────────────────
+    _noticias      = obtener_sesgo_actual()
+    _sesgo_news    = _noticias.get('conclusion', 'ESPERAR')   # BUSCAR_COMPRAS | BUSCAR_VENTAS | ESPERAR
+    _sesgo_etiq    = _noticias.get('sesgo', 'NEUTRAL')
+    _sesgo_score   = _noticias.get('score_medio', 0.0)
+    # Ajuste suave: +1 si noticias alinean con la señal, -1 si contradicen (máx ±1)
+    if _sesgo_news == 'BUSCAR_COMPRAS':
+        score_buy  = min(score_buy  + 1, 23)
+        score_sell = max(score_sell - 1, 0)
+    elif _sesgo_news == 'BUSCAR_VENTAS':
+        score_sell = min(score_sell + 1, 23)
+        score_buy  = max(score_buy  - 1, 0)
+
     # Umbrales 1H (estrictos para filtrar ruido intradía)
     senal_sell_maxima = score_sell >= 12
     senal_sell_fuerte = score_sell >= 9
@@ -593,6 +607,7 @@ def analizar(simbolo, params):
                f"━━━━━━━━━━━━━━━━━━━━\n"
                + (f"🔻 <b>Canal alcista ROTO</b> — nivel canal ${linea_soporte_canal:.2f}\n" if canal_alcista_roto else "")
                + f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+               f"📰 <b>Noticias:</b> {_sesgo_etiq} ({_sesgo_score:+.1f})  ➜  {_sesgo_news.replace('_', ' ')}\n"
                f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
         if db and not db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
             try:
@@ -628,6 +643,7 @@ def analizar(simbolo, params):
                f"━━━━━━━━━━━━━━━━━━━━\n"
                + (f"🔺 <b>Canal bajista ROTO</b> — nivel canal ${linea_resist_canal:.2f}\n" if canal_bajista_roto else "")
                + f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+               f"📰 <b>Noticias:</b> {_sesgo_etiq} ({_sesgo_score:+.1f})  ➜  {_sesgo_news.replace('_', ' ')}\n"
                f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
         if db and not db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
             try:

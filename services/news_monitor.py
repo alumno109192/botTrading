@@ -151,8 +151,32 @@ KEYWORDS_BAJISTA = {
 # ══════════════════════════════════════
 # ESTADO INTERNO
 # ══════════════════════════════════════
-_ultimo_envio = None      # datetime del último mensaje enviado
-_ultimo_sesgo = None      # str del último sesgo notificado
+_ultimo_envio    = None   # datetime del último mensaje enviado
+_ultimo_sesgo    = None   # str del último sesgo notificado
+_ultimo_resultado: dict = {}  # dict completo del último análisis
+
+
+def obtener_sesgo_actual() -> dict:
+    """Devuelve el último sesgo de noticias calculado (thread-safe para lectura).
+
+    Retorna dict con claves:
+        sesgo        : 'ALCISTA_FUERTE' | 'ALCISTA' | 'NEUTRAL' | 'BAJISTA' | 'BAJISTA_FUERTE'
+        score_medio  : float
+        total        : int
+        conclusion   : 'BUSCAR_COMPRAS' | 'BUSCAR_VENTAS' | 'ESPERAR'
+        timestamp    : datetime | None
+    """
+    if not _ultimo_resultado:
+        return {'sesgo': 'NEUTRAL', 'score_medio': 0.0, 'total': 0,
+                'conclusion': 'ESPERAR', 'timestamp': None}
+    sesgo = _ultimo_resultado.get('sesgo', 'NEUTRAL')
+    if sesgo in ('ALCISTA', 'ALCISTA_FUERTE'):
+        conclusion = 'BUSCAR_COMPRAS'
+    elif sesgo in ('BAJISTA', 'BAJISTA_FUERTE'):
+        conclusion = 'BUSCAR_VENTAS'
+    else:
+        conclusion = 'ESPERAR'
+    return {**_ultimo_resultado, 'conclusion': conclusion, 'timestamp': _ultimo_envio}
 
 
 # ══════════════════════════════════════
@@ -251,6 +275,7 @@ def _score_articulo(texto: str) -> int:
 
 def analizar_noticias() -> dict:
     """Recoge noticias de todas las fuentes y devuelve análisis de sentimiento."""
+    global _ultimo_resultado
     todos = []
     titulos_vistos: set = set()   # deduplicar artículos repetidos entre feeds
     for fuente in FUENTES_RSS:
@@ -290,13 +315,14 @@ def analizar_noticias() -> dict:
     top_bajistas = sorted([a for a in scored if a['score'] < 0],
                           key=lambda x: x['score'])[:3]
 
-    return {
+    _ultimo_resultado = {
         'sesgo':        sesgo,
         'score_medio':  round(score_medio, 2),
         'total':        len(scored),
         'top_alcistas': top_alcistas,
         'top_bajistas': top_bajistas,
     }
+    return _ultimo_resultado
 
 
 # ══════════════════════════════════════
@@ -308,6 +334,14 @@ _MAP_SESGO = {
     'NEUTRAL':        ('⚪',   'NEUTRAL',          '↔️  Sin tendencia clara en noticias'),
     'BAJISTA':        ('🔴',   'BAJISTA',          '📉 Sesgo fundamental negativo para el oro'),
     'BAJISTA_FUERTE': ('🔴🔴', 'BAJISTA FUERTE',   '📉 Las noticias apuntan con fuerza a la baja'),
+}
+
+_MAP_CONCLUSION = {
+    'ALCISTA_FUERTE': ('🟢 BUSCAR COMPRAS',  '🟢 Fundamental alinea con LARGO. Priorizar setups BUY.'),
+    'ALCISTA':        ('🟢 BUSCAR COMPRAS',  '🟢 Ligero sesgo alcista. Preferir setups BUY sobre SELL.'),
+    'NEUTRAL':        ('⚪ ESPERAR',          '⚪ Sin sesgo claro. Operar solo setups técnicos muy claros.'),
+    'BAJISTA':        ('🔴 BUSCAR VENTAS',   '🔴 Ligero sesgo bajista. Preferir setups SELL sobre BUY.'),
+    'BAJISTA_FUERTE': ('🔴 BUSCAR VENTAS',   '🔴 Fundamental alinea con CORTO. Priorizar setups SELL.'),
 }
 
 
@@ -344,7 +378,12 @@ def _formatear_mensaje(resultado: dict) -> str:
             lineas.append(f"  • {titulo}")
             lineas.append(f"    <i>({art['fuente']})</i>")
 
+    # ── Conclusión operativa ───────────────────────────────────────────────
+    con_label, con_texto = _MAP_CONCLUSION.get(sesgo, _MAP_CONCLUSION['NEUTRAL'])
     lineas += [
+        f"━━━━━━━━━━━━━━━━━━━━",
+        f"🏁 <b>CONCLUSIÓN OPERATIVA:</b> <b>{con_label}</b>",
+        f"💡 {con_texto}",
         f"━━━━━━━━━━━━━━━━━━━━",
         f"⏰ {ahora}",
         f"⚠️ <i>Solo orientativo. Combinar siempre con análisis técnico.</i>",
