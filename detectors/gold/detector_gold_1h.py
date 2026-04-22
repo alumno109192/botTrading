@@ -257,16 +257,31 @@ def analizar(simbolo, params):
     def _tp_desde_sr(niveles, n, fallback):
         return round(niveles[n-1], 2) if len(niveles) >= n else round(fallback, 2)
 
-    tp1_v = _tp_desde_sr(soportes_sr, 1, sell_limit - atr * params['atr_tp1_mult'])
+    def _tp1_viable_sell(soportes, entry, sl, min_rr, fallback):
+        """Primer soporte que dé R:R >= min_rr; si ninguno califica, usa fallback ATR."""
+        dist_sl = abs(sl - entry)
+        if dist_sl > 0:
+            for nivel in soportes:   # ya ordenados nearest-first (sorted reverse=True)
+                if abs(nivel - entry) / dist_sl >= min_rr:
+                    return round(nivel, 2)
+        return round(fallback, 2)
+
+    def _tp1_viable_buy(resistencias, entry, sl, min_rr, fallback):
+        """Primera resistencia que dé R:R >= min_rr; si ninguna califica, usa fallback ATR."""
+        dist_sl = abs(sl - entry)
+        resis_sobre = sorted([v for v in resistencias if v > entry])
+        if dist_sl > 0:
+            for nivel in resis_sobre:  # ascendentes = nearest-first
+                if abs(nivel - entry) / dist_sl >= min_rr:
+                    return round(nivel, 2)
+        return round(fallback, 2)
+
+    tp1_v = _tp1_viable_sell(soportes_sr, sell_limit, sl_venta, 1.2,
+                             sell_limit - atr * params['atr_tp1_mult'])
     tp2_v = _tp_desde_sr(soportes_sr, 2, sell_limit - atr * params['atr_tp2_mult'])
     tp3_v = _tp_desde_sr(soportes_sr, 3, sell_limit - atr * params['atr_tp3_mult'])
-    tp1_c = _tp_desde_sr(resistencias_sr[::-1], 1, buy_limit + atr * params['atr_tp1_mult']) \
-            if False else _tp_desde_sr(
-                sorted(resistencias_sr, key=lambda v: v - buy_limit),
-                1, buy_limit + atr * params['atr_tp1_mult'])
-    # Re-ordenar correctamente
-    tp1_c = _tp_desde_sr(sorted([v for v in resistencias_sr if v > buy_limit]), 1,
-                         buy_limit + atr * params['atr_tp1_mult'])
+    tp1_c = _tp1_viable_buy(resistencias_sr, buy_limit, sl_compra, 1.2,
+                            buy_limit + atr * params['atr_tp1_mult'])
     tp2_c = _tp_desde_sr(sorted([v for v in resistencias_sr if v > buy_limit]), 2,
                          buy_limit + atr * params['atr_tp2_mult'])
     tp3_c = _tp_desde_sr(sorted([v for v in resistencias_sr if v > buy_limit]), 3,
