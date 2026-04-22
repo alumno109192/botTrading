@@ -193,6 +193,22 @@ def analizar(simbolo, params):
     # ── Detección de canal roto ────────────────────────────────────────────────
     canal_alcista_roto, canal_bajista_roto, linea_soporte_canal, linea_resist_canal = \
         detectar_canal_roto(df, atr, lookback=40)
+
+    # Persistir rotura en memoria (TTL 4h) para que el retest se detecte
+    # aunque en ese momento el precio ya esté cerca de la línea y no parezca "roto"
+    if canal_alcista_roto or canal_bajista_roto:
+        tf_bias.publicar_canal_1h(simbolo, canal_alcista_roto, canal_bajista_roto,
+                                   linea_soporte_canal, linea_resist_canal)
+
+    # Recuperar estado persistido: durante el retest el canal ya NO parece roto
+    # (el precio está cerca de la línea), pero la memoria dice que sí lo fue
+    _mem_canal_1h = tf_bias.obtener_canal_1h(simbolo)
+    if _mem_canal_1h and not canal_alcista_roto and not canal_bajista_roto:
+        canal_alcista_roto  = _mem_canal_1h['alcista_roto']
+        canal_bajista_roto  = _mem_canal_1h['bajista_roto']
+        linea_soporte_canal = _mem_canal_1h['linea_soporte']
+        linea_resist_canal  = _mem_canal_1h['linea_resist']
+
     if canal_alcista_roto:
         print(f"  🔻 Canal alcista ROTO — sesgo bajista reforzado (soporte canal ${linea_soporte_canal:.2f})")
     if canal_bajista_roto:

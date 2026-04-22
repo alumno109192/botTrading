@@ -19,10 +19,12 @@ import threading
 from datetime import datetime, timedelta
 
 # ─────────────────────────────────────
-TTL_SESGO_HORAS = 2  # sesgos más viejos que esto se tratan como sin_datos
-_lock        = threading.Lock()
-_bias_store  = {}   # {simbolo: {tf: {bias, score, ts}}}
-_canal_store = {}   # {simbolo: {alcista_roto, bajista_roto, linea_soporte, linea_resist, ts}}
+TTL_SESGO_HORAS    = 2   # sesgos más viejos que esto se tratan como sin_datos
+TTL_CANAL_1H_HORAS = 4   # canal 1H persiste 4h para detectar el retest posterior
+_lock           = threading.Lock()
+_bias_store     = {}   # {simbolo: {tf: {bias, score, ts}}}
+_canal_store    = {}   # {simbolo: {alcista_roto, bajista_roto, linea_soporte, linea_resist, ts}}  (4H)
+_canal_1h_store = {}   # igual pero para 1H con TTL más largo
 # ─────────────────────────────────────
 
 BIAS_BULLISH = 'BULLISH'
@@ -161,5 +163,30 @@ def obtener_canal_4h(simbolo: str) -> dict:
             return None
         edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
         if edad_h > TTL_SESGO_HORAS:
+            return None
+        return dict(datos)
+
+
+def publicar_canal_1h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
+                      linea_soporte: float, linea_resist: float) -> None:
+    """Persiste el estado del canal 1H. TTL largo (4h) para cubrir la ventana de retest."""
+    with _lock:
+        _canal_1h_store[simbolo] = {
+            'alcista_roto':  alcista_roto,
+            'bajista_roto':  bajista_roto,
+            'linea_soporte': linea_soporte,
+            'linea_resist':  linea_resist,
+            'ts':            datetime.now(),
+        }
+
+
+def obtener_canal_1h(simbolo: str) -> dict:
+    """Retorna el estado persistido del canal 1H o None si expiró (> 4h)."""
+    with _lock:
+        datos = _canal_1h_store.get(simbolo)
+        if datos is None:
+            return None
+        edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
+        if edad_h > TTL_CANAL_1H_HORAS:
             return None
         return dict(datos)

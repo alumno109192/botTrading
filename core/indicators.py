@@ -478,7 +478,7 @@ def detectar_canal_roto(df: pd.DataFrame, atr: float,
     canal_bajista_roto = False
     linea_soporte_val  = float(lows[-1])
     linea_resist_val   = float(highs[-1])
-    close_actual       = float(df['Close'].iloc[-1])
+    close_actual       = float(df['Close'].iloc[-2])  # vela cerrada (igual que el resto del detector)
 
     if len(idx_lows) >= 2:
         xs = np.array(idx_lows)
