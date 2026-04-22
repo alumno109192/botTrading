@@ -18,6 +18,14 @@ Uso:
 import threading
 from datetime import datetime, timedelta
 
+# Import lazy para evitar circular import (adapters depende de services)
+def _get_db():
+    try:
+        from adapters.database import DatabaseManager
+        return DatabaseManager()
+    except Exception:
+        return None
+
 # ─────────────────────────────────────
 TTL_SESGO_HORAS    = 2   # sesgos más viejos que esto se tratan como sin_datos
 TTL_CANAL_1H_HORAS = 4   # canal 1H persiste 4h para detectar el retest posterior
@@ -144,7 +152,7 @@ def estado_completo() -> dict:
 
 def publicar_canal_4h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
                       linea_soporte: float, linea_resist: float) -> None:
-    """Publica el estado del canal 4H para que el detector 1H lo consulte."""
+    """Publica el estado del canal 4H en memoria y en BD (sobrevive restarts)."""
     with _lock:
         _canal_store[simbolo] = {
             'alcista_roto':  alcista_roto,
@@ -153,23 +161,36 @@ def publicar_canal_4h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
             'linea_resist':  linea_resist,
             'ts':            datetime.now(),
         }
+    db = _get_db()
+    if db:
+        try:
+            db.guardar_canal_roto(simbolo, '4H', alcista_roto, bajista_roto,
+                                   linea_soporte, linea_resist)
+        except Exception as e:
+            print(f"  ⚠️ tf_bias: no se pudo guardar canal 4H en BD: {e}")
 
 
 def obtener_canal_4h(simbolo: str) -> dict:
-    """Retorna el último estado de canal 4H o None si no hay datos recientes."""
+    """Retorna el estado de canal 4H: memoria primero, BD como fallback ante restart."""
     with _lock:
         datos = _canal_store.get(simbolo)
-        if datos is None:
-            return None
-        edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
-        if edad_h > TTL_SESGO_HORAS:
-            return None
-        return dict(datos)
+        if datos is not None:
+            edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
+            if edad_h <= TTL_SESGO_HORAS:
+                return dict(datos)
+    # Fallback: leer de BD (cubre el caso de restart del servidor)
+    db = _get_db()
+    if db:
+        try:
+            return db.obtener_canal_roto(simbolo, '4H', ttl_horas=TTL_SESGO_HORAS)
+        except Exception:
+            pass
+    return None
 
 
 def publicar_canal_1h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
                       linea_soporte: float, linea_resist: float) -> None:
-    """Persiste el estado del canal 1H. TTL largo (4h) para cubrir la ventana de retest."""
+    """Persiste el canal 1H en memoria y en BD. TTL 4h para cubrir la ventana de retest."""
     with _lock:
         _canal_1h_store[simbolo] = {
             'alcista_roto':  alcista_roto,
@@ -178,15 +199,28 @@ def publicar_canal_1h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
             'linea_resist':  linea_resist,
             'ts':            datetime.now(),
         }
+    db = _get_db()
+    if db:
+        try:
+            db.guardar_canal_roto(simbolo, '1H', alcista_roto, bajista_roto,
+                                   linea_soporte, linea_resist)
+        except Exception as e:
+            print(f"  ⚠️ tf_bias: no se pudo guardar canal 1H en BD: {e}")
 
 
 def obtener_canal_1h(simbolo: str) -> dict:
-    """Retorna el estado persistido del canal 1H o None si expiró (> 4h)."""
+    """Retorna el canal 1H: memoria primero, BD como fallback ante restart."""
     with _lock:
         datos = _canal_1h_store.get(simbolo)
-        if datos is None:
-            return None
-        edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
-        if edad_h > TTL_CANAL_1H_HORAS:
-            return None
-        return dict(datos)
+        if datos is not None:
+            edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
+            if edad_h <= TTL_CANAL_1H_HORAS:
+                return dict(datos)
+    # Fallback: leer de BD (cubre el caso de restart del servidor)
+    db = _get_db()
+    if db:
+        try:
+            return db.obtener_canal_roto(simbolo, '1H', ttl_horas=TTL_CANAL_1H_HORAS)
+        except Exception:
+            pass
+    return None

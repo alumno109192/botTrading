@@ -795,6 +795,67 @@ class DatabaseManager:
         DELETE FROM ohlcv WHERE symbol = ? AND interval = ? AND ts < ?
         """, (symbol, interval, desde))
 
+    # ═══════════════════════════════════════════════════════════
+    # ESTADO DE CANAL ROTO (persistencia entre deploys/restarts)
+    # ═══════════════════════════════════════════════════════════
+
+    def init_canal_roto_table(self):
+        """Crea la tabla canal_roto_state si no existe."""
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS canal_roto_state (
+            simbolo        TEXT    NOT NULL,
+            tf             TEXT    NOT NULL,
+            alcista_roto   INTEGER NOT NULL DEFAULT 0,
+            bajista_roto   INTEGER NOT NULL DEFAULT 0,
+            linea_soporte  REAL    NOT NULL DEFAULT 0,
+            linea_resist   REAL    NOT NULL DEFAULT 0,
+            ts             TEXT    NOT NULL,
+            PRIMARY KEY (simbolo, tf)
+        )
+        """)
+
+    def guardar_canal_roto(self, simbolo: str, tf: str,
+                           alcista_roto: bool, bajista_roto: bool,
+                           linea_soporte: float, linea_resist: float) -> None:
+        """Upsert del estado de canal roto para (simbolo, tf)."""
+        ts = datetime.now(timezone.utc).isoformat()
+        self.ejecutar_query("""
+        INSERT INTO canal_roto_state
+            (simbolo, tf, alcista_roto, bajista_roto, linea_soporte, linea_resist, ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(simbolo, tf) DO UPDATE SET
+            alcista_roto  = excluded.alcista_roto,
+            bajista_roto  = excluded.bajista_roto,
+            linea_soporte = excluded.linea_soporte,
+            linea_resist  = excluded.linea_resist,
+            ts            = excluded.ts
+        """, (simbolo, tf,
+              int(alcista_roto), int(bajista_roto),
+              linea_soporte, linea_resist, ts))
+
+    def obtener_canal_roto(self, simbolo: str, tf: str,
+                           ttl_horas: float = 4.0) -> dict:
+        """
+        Devuelve el estado persistido de canal roto o None si no existe / expiró.
+        ttl_horas: ventana máxima de validez (default 4h para 1H, 2h para 4H).
+        """
+        desde = (datetime.now(timezone.utc) - timedelta(hours=ttl_horas)).isoformat()
+        result = self.ejecutar_query("""
+        SELECT alcista_roto, bajista_roto, linea_soporte, linea_resist, ts
+        FROM canal_roto_state
+        WHERE simbolo = ? AND tf = ? AND ts >= ?
+        """, (simbolo, tf, desde))
+        if not result.rows:
+            return None
+        row = result.rows[0]
+        return {
+            'alcista_roto':  bool(row['alcista_roto']),
+            'bajista_roto':  bool(row['bajista_roto']),
+            'linea_soporte': float(row['linea_soporte']),
+            'linea_resist':  float(row['linea_resist']),
+            'ts':            row['ts'],
+        }
+
 
 if __name__ == '__main__':
     # Test de conexión

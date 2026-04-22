@@ -55,7 +55,8 @@ threads_detectores = {}
 try:
     DatabaseManager().init_api_key_usage_table()
     DatabaseManager().init_ohlcv_table()
-    logger.info("✅ Tablas api_key_usage y ohlcv listas")
+    DatabaseManager().init_canal_roto_table()
+    logger.info("✅ Tablas api_key_usage, ohlcv y canal_roto_state listas")
 except Exception as _e:
     logger.warning(f"⚠️ No se pudo inicializar tablas BD: {_e}")
 threads_detectores = {}
