@@ -22,8 +22,11 @@ from dotenv import load_dotenv
 load_dotenv()
 from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
+_aviso_macro = ""  # se rellena en analizar() si hay evento próximo
+
 def enviar_telegram(mensaje):
-    return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
+    sufijo = f"\n⚠️ <b>Evento macro próximo:</b> {_aviso_macro}" if _aviso_macro else ""
+    return _enviar_telegram_base(mensaje + sufijo, TELEGRAM_THREAD_ID)
 
 # Inicializar base de datos solo si las variables están configuradas
 db = None
@@ -194,11 +197,16 @@ def analizar_simbolo(simbolo, params):
         print(f"  ⏸️  [15M] Fuera de sesión (07-17 UTC) — análisis saltado")
         return
 
-    # ── Filtro calendario económico ──
-    bloqueado, descripcion = hay_evento_impacto(ventana_minutos=45)
-    if bloqueado:
-        print(f"  🚫 [15M] Señal bloqueada por evento macro: {descripcion}")
-        return
+    # ── Aviso calendario económico (ya NO bloquea, solo advierte) ──
+    global _aviso_macro
+    try:
+        _hay_evento, _desc_evento = hay_evento_impacto(ventana_minutos=45)
+        _aviso_macro = _desc_evento if _hay_evento else ""
+        if _hay_evento:
+            print(f"  ⚠️ [15M] Evento macro próximo (señal permitida): {_desc_evento}")
+    except RuntimeError as _e:
+        _aviso_macro = ""
+        print(f"  ⚠️ {_e}")
 
     try:
         # Descargar datos 5M y resamplear a 15M (comparte caché con detectores 5M y 1H)

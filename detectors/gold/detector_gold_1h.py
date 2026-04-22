@@ -17,8 +17,11 @@ from dotenv import load_dotenv
 load_dotenv()
 from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
+_aviso_macro = ""  # se rellena en analizar() si hay evento próximo
+
 def enviar_telegram(mensaje):
-    return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
+    sufijo = f"\n⚠️ <b>Evento macro próximo:</b> {_aviso_macro}" if _aviso_macro else ""
+    return _enviar_telegram_base(mensaje + sufijo, TELEGRAM_THREAD_ID)
 
 db = None
 try:
@@ -128,11 +131,16 @@ def calcular_zonas_sr(df, atr, lookback, zone_mult):
 def analizar(simbolo, params):
     simbolo_db = f"{simbolo}_1H"
 
-    # ── Filtro calendario económico ──
-    bloqueado, descripcion = hay_evento_impacto(ventana_minutos=60)
-    if bloqueado:
-        print(f"  🚫 [1H] Señal bloqueada por evento macro: {descripcion}")
-        return
+    # ── Aviso calendario económico (ya NO bloquea, solo advierte) ──
+    global _aviso_macro
+    try:
+        _hay_evento, _desc_evento = hay_evento_impacto(ventana_minutos=60)
+        _aviso_macro = _desc_evento if _hay_evento else ""
+        if _hay_evento:
+            print(f"  ⚠️ [1H] Evento macro próximo (señal permitida): {_desc_evento}")
+    except RuntimeError as _e:
+        _aviso_macro = ""
+        print(f"  ⚠️ {_e}")
 
     print(f"\n🔍 Analizando {simbolo} [1H intradía]...")
 
