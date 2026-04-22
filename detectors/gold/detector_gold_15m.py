@@ -6,7 +6,7 @@ Optimizado para capturar movimientos rápidos con alta frecuencia
 import os
 from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
-from services.economic_calendar import hay_evento_impacto
+from services.economic_calendar import obtener_aviso_macro
 from adapters.data_provider import get_ohlcv
 import yfinance as yf
 import pandas as pd
@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
-_aviso_macro = ""  # se rellena en analizar() si hay evento próximo
+_aviso_macro = ""
 
 def enviar_telegram(mensaje):
     sufijo = f"\n⚠️ <b>Evento macro próximo:</b> {_aviso_macro}" if _aviso_macro else ""
@@ -197,16 +197,9 @@ def analizar_simbolo(simbolo, params):
         print(f"  ⏸️  [15M] Fuera de sesión (07-17 UTC) — análisis saltado")
         return
 
-    # ── Aviso calendario económico (ya NO bloquea, solo advierte) ──
+    # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
     global _aviso_macro
-    try:
-        _hay_evento, _desc_evento = hay_evento_impacto(ventana_minutos=45)
-        _aviso_macro = _desc_evento if _hay_evento else ""
-        if _hay_evento:
-            print(f"  ⚠️ [15M] Evento macro próximo (señal permitida): {_desc_evento}")
-    except RuntimeError as _e:
-        _aviso_macro = ""
-        print(f"  ⚠️ {_e}")
+    _aviso_macro = obtener_aviso_macro(45, '15M', simbolo)
 
     try:
         # Descargar datos 5M y resamplear a 15M (comparte caché con detectores 5M y 1H)

@@ -56,7 +56,8 @@ try:
     DatabaseManager().init_api_key_usage_table()
     DatabaseManager().init_ohlcv_table()
     DatabaseManager().init_canal_roto_table()
-    logger.info("✅ Tablas api_key_usage, ohlcv y canal_roto_state listas")
+    DatabaseManager().init_macro_events_log_table()
+    logger.info("✅ Tablas api_key_usage, ohlcv, canal_roto_state y macro_events_log listas")
 except Exception as _e:
     logger.warning(f"⚠️ No se pudo inicializar tablas BD: {_e}")
 threads_detectores = {}

@@ -201,6 +201,44 @@ def hay_evento_impacto(ventana_minutos: int = 60) -> tuple:
     return False, ""
 
 
+def obtener_aviso_macro(ventana_minutos: int, tf: str, simbolo: str = '') -> str:
+    """
+    Punto de entrada único para todos los detectores.
+
+    - Si hay evento próximo → imprime aviso, guarda log en BD y devuelve la
+      descripción del evento (para adjuntarla al mensaje de Telegram).
+    - Si el calendario está expirado → imprime advertencia y devuelve "".
+    - Si no hay evento → devuelve "".
+
+    Args:
+        ventana_minutos: ventana de bloqueo en minutos (30 para 5M, 45 para 15M, 60 para 1H+)
+        tf:              timeframe del detector llamante ("1H", "4H", "1D", ...)
+        simbolo:         símbolo analizado (para el log de BD)
+
+    Returns:
+        str: descripción del evento si hay uno próximo, "" en caso contrario.
+    """
+    try:
+        hay_evento, descripcion = hay_evento_impacto(ventana_minutos)
+    except RuntimeError as e:
+        print(f"  ⚠️ [{tf}] Calendario económico: {e}")
+        return ""
+
+    if not hay_evento:
+        return ""
+
+    print(f"  ⚠️ [{tf}] Evento macro próximo (señal permitida con aviso): {descripcion}")
+
+    # Guardar en BD de forma best-effort
+    try:
+        from adapters.database import DatabaseManager
+        DatabaseManager().guardar_macro_event_log(tf, simbolo, descripcion, ventana_minutos)
+    except Exception as _e:
+        print(f"  ⚠️ No se pudo guardar macro_event_log: {_e}")
+
+    return descripcion
+
+
 def proximos_eventos(n: int = 5) -> list:
     """
     Retorna los próximos N eventos programados a partir de ahora.

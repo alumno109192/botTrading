@@ -11,13 +11,13 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
-from services.economic_calendar import hay_evento_impacto
+from services.economic_calendar import obtener_aviso_macro
 
 # Cargar variables de entorno
 load_dotenv()
 from adapters.telegram import enviar_telegram as _enviar_telegram_base
 
-_aviso_macro = ""  # se rellena en analizar() si hay evento próximo
+_aviso_macro = ""
 
 def enviar_telegram(mensaje):
     sufijo = f"\n⚠️ <b>Evento macro próximo:</b> {_aviso_macro}" if _aviso_macro else ""
@@ -159,16 +159,9 @@ def analizar(simbolo, params):
         print(f"  ⏸️  [4H] Fuera de sesión (06-22 UTC) — análisis saltado")
         return
 
-    # ── Aviso calendario económico (ya NO bloquea, solo advierte) ──
+    # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
     global _aviso_macro
-    try:
-        _hay_evento, _desc_evento = hay_evento_impacto(ventana_minutos=60)
-        _aviso_macro = _desc_evento if _hay_evento else ""
-        if _hay_evento:
-            print(f"  ⚠️ [4H] Evento macro próximo (señal permitida): {_desc_evento}")
-    except RuntimeError as _e:
-        _aviso_macro = ""
-        print(f"  ⚠️ {_e}")
+    _aviso_macro = obtener_aviso_macro(60, '4H', simbolo)
 
     # Descargar datos 4H
     try:

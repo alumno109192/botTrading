@@ -798,6 +798,35 @@ class DatabaseManager:
     # ═══════════════════════════════════════════════════════════
     # ESTADO DE CANAL ROTO (persistencia entre deploys/restarts)
     # ═══════════════════════════════════════════════════════════
+    # MACRO EVENTS LOG
+    # ═══════════════════════════════════════════════════════════
+
+    def init_macro_events_log_table(self):
+        """Crea la tabla macro_events_log si no existe."""
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS macro_events_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp       TEXT    NOT NULL,
+            tf              TEXT    NOT NULL,
+            simbolo         TEXT    NOT NULL DEFAULT '',
+            evento          TEXT    NOT NULL,
+            ventana_minutos INTEGER NOT NULL
+        )
+        """)
+
+    def guardar_macro_event_log(self, tf: str, simbolo: str,
+                                evento: str, ventana_minutos: int) -> None:
+        """Inserta un registro en macro_events_log cuando un detector detecta un evento próximo."""
+        ts = datetime.now(timezone.utc).isoformat()
+        self.ejecutar_insert(
+            """
+            INSERT INTO macro_events_log (timestamp, tf, simbolo, evento, ventana_minutos)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ts, tf, simbolo, evento, ventana_minutos),
+        )
+
+    # ═══════════════════════════════════════════════════════════
 
     def init_canal_roto_table(self):
         """Crea la tabla canal_roto_state si no existe."""
