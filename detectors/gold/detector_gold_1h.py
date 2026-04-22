@@ -364,6 +364,33 @@ def analizar(simbolo, params):
     cancelar_sell       = close > zrh * (1 + cd / 100)
     cancelar_buy        = close < zsl * (1 - cd / 100)
 
+    # ── DETECCIÓN RETEST DE CANAL ROTO ────────────────────────────────────────
+    # Tras romper el canal, el precio retrocede hacia la línea rota (ahora resistencia/soporte)
+    # Este es el setup de alta probabilidad: entrada en el retest con SL ajustado
+    _tol_canal = atr * 1.2   # zona de retest: ±1.2 ATR alrededor de la línea del canal
+
+    # SELL retest: canal alcista roto + precio rebota hacia línea (ahora resistencia)
+    retest_canal_sell = (
+        canal_alcista_roto and
+        abs(high - linea_soporte_canal) <= _tol_canal and   # precio cerca de la línea rota
+        close < linea_soporte_canal and                      # cierra POR DEBAJO (rechazo)
+        is_bearish and                                       # vela bajista de rechazo
+        rsi < 65                                             # RSI no en sobrecompra extrema (no perseguir)
+    )
+    # BUY retest: canal bajista roto + precio cae hacia línea (ahora soporte)
+    retest_canal_buy = (
+        canal_bajista_roto and
+        abs(low - linea_resist_canal) <= _tol_canal and     # precio cerca de la línea rota
+        close > linea_resist_canal and                       # cierra POR ENCIMA (rebote)
+        is_bullish and                                       # vela alcista de rebote
+        rsi > 35                                             # RSI no en sobreventa extrema
+    )
+
+    if retest_canal_sell:
+        print(f"  🎯 RETEST CANAL SELL detectado — línea ${linea_soporte_canal:.2f}, precio ${close:.2f}")
+    if retest_canal_buy:
+        print(f"  🎯 RETEST CANAL BUY detectado — línea ${linea_resist_canal:.2f}, precio ${close:.2f}")
+
     # ── SCORING VENTA ──────────────────────────────────────────
     intento_rotura_fallido = (high >= zrl) and (close < zrl)
     shooting_star     = is_bearish and upper_wick > body*2 and lower_wick < body*0.3 and en_zona_resist
@@ -735,6 +762,105 @@ def analizar(simbolo, params):
                             print(f"  ⚠️ Error BD: {e}")
                     enviar_telegram(msg)
                     marcar_enviada(tipo_clave)
+
+    # ── SEÑALES RETEST DE CANAL ROTO (alta probabilidad) ─────────────────────
+    # Setup: precio rompe canal → retrocede al nivel roto → rechaza → ENTRADA
+    if retest_canal_sell and not ya_enviada('RETEST_SELL'):
+        if db and db.existe_senal_reciente(simbolo_db, 'VENTA', horas=1):
+            print(f"  ℹ️  Retest SELL duplicado")
+        else:
+            # SL: por encima de la línea del canal + buffer
+            sl_rt_sell  = round(linea_soporte_canal + atr * 0.4, 2)
+            # TPs: primeros niveles de soporte reales
+            tp1_rt_sell = _tp_desde_sr(soportes_sr, 1, close - atr * params['atr_tp1_mult'])
+            tp2_rt_sell = _tp_desde_sr(soportes_sr, 2, close - atr * params['atr_tp2_mult'])
+            tp3_rt_sell = _tp_desde_sr(soportes_sr, 3, close - atr * params['atr_tp3_mult'])
+            entry_rt    = round(close, 2)
+            rr1 = rr(entry_rt, sl_rt_sell, tp1_rt_sell)
+            rr2 = rr(entry_rt, sl_rt_sell, tp2_rt_sell)
+            rr3 = rr(entry_rt, sl_rt_sell, tp3_rt_sell)
+            if rr1 >= 1.5:   # R:R mínimo más estricto para este setup
+                msg = (
+                    f"🎯 <b>RETEST CANAL SELL — ORO (XAUUSD) 1H</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🔻 Canal alcista ROTO — precio retestea línea\n"
+                    f"📌 <b>SELL MARKET:</b> ${entry_rt:.2f}  ← ENTRA AHORA\n"
+                    f"🛑 <b>Stop Loss:</b> ${sl_rt_sell:.2f}  (sobre línea canal)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🎯 <b>TP1:</b> ${tp1_rt_sell:.2f}  R:R {rr1}:1  (zona S/R)\n"
+                    f"🎯 <b>TP2:</b> ${tp2_rt_sell:.2f}  R:R {rr2}:1  (zona S/R)\n"
+                    f"🎯 <b>TP3:</b> ${tp3_rt_sell:.2f}  R:R {rr3}:1  (zona S/R)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📐 <b>Línea canal:</b> ${linea_soporte_canal:.2f}  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                    f"📐 <b>ATR:</b> ${atr:.2f}  📊 <b>Score:</b> {score_sell}/23\n"
+                    f"⏱️ 1H  📅 {fecha}  🏆 Setup retest canal"
+                )
+                if db:
+                    try:
+                        db.guardar_senal({
+                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                            'direccion': 'VENTA', 'precio_entrada': entry_rt,
+                            'tp1': tp1_rt_sell, 'tp2': tp2_rt_sell, 'tp3': tp3_rt_sell,
+                            'sl': sl_rt_sell, 'score': score_sell,
+                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                            'patron_velas': f"Retest canal alcista roto, línea ${linea_soporte_canal:.2f}",
+                            'version_detector': 'GOLD 1H-v2.0-RETEST'
+                        })
+                    except Exception as e:
+                        print(f"  ⚠️ Error BD: {e}")
+                enviar_telegram(msg)
+                marcar_enviada('RETEST_SELL')
+            else:
+                print(f"  ⛔ Retest SELL bloqueado: R:R {rr1}:1 < 1.5 mínimo")
+
+    if retest_canal_buy and not ya_enviada('RETEST_BUY'):
+        if db and db.existe_senal_reciente(simbolo_db, 'COMPRA', horas=1):
+            print(f"  ℹ️  Retest BUY duplicado")
+        else:
+            sl_rt_buy   = round(linea_resist_canal - atr * 0.4, 2)
+            tp1_rt_buy  = _tp_desde_sr(sorted([v for v in resistencias_sr if v > close]), 1,
+                                       close + atr * params['atr_tp1_mult'])
+            tp2_rt_buy  = _tp_desde_sr(sorted([v for v in resistencias_sr if v > close]), 2,
+                                       close + atr * params['atr_tp2_mult'])
+            tp3_rt_buy  = _tp_desde_sr(sorted([v for v in resistencias_sr if v > close]), 3,
+                                       close + atr * params['atr_tp3_mult'])
+            entry_rt    = round(close, 2)
+            rr1 = rr(entry_rt, sl_rt_buy, tp1_rt_buy)
+            rr2 = rr(entry_rt, sl_rt_buy, tp2_rt_buy)
+            rr3 = rr(entry_rt, sl_rt_buy, tp3_rt_buy)
+            if rr1 >= 1.5:
+                msg = (
+                    f"🎯 <b>RETEST CANAL BUY — ORO (XAUUSD) 1H</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🔺 Canal bajista ROTO — precio retestea línea\n"
+                    f"📌 <b>BUY MARKET:</b> ${entry_rt:.2f}  ← ENTRA AHORA\n"
+                    f"🛑 <b>Stop Loss:</b> ${sl_rt_buy:.2f}  (bajo línea canal)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🎯 <b>TP1:</b> ${tp1_rt_buy:.2f}  R:R {rr1}:1  (zona S/R)\n"
+                    f"🎯 <b>TP2:</b> ${tp2_rt_buy:.2f}  R:R {rr2}:1  (zona S/R)\n"
+                    f"🎯 <b>TP3:</b> ${tp3_rt_buy:.2f}  R:R {rr3}:1  (zona S/R)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📐 <b>Línea canal:</b> ${linea_resist_canal:.2f}  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                    f"📐 <b>ATR:</b> ${atr:.2f}  📊 <b>Score:</b> {score_buy}/23\n"
+                    f"⏱️ 1H  📅 {fecha}  🏆 Setup retest canal"
+                )
+                if db:
+                    try:
+                        db.guardar_senal({
+                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                            'direccion': 'COMPRA', 'precio_entrada': entry_rt,
+                            'tp1': tp1_rt_buy, 'tp2': tp2_rt_buy, 'tp3': tp3_rt_buy,
+                            'sl': sl_rt_buy, 'score': score_buy,
+                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                            'patron_velas': f"Retest canal bajista roto, línea ${linea_resist_canal:.2f}",
+                            'version_detector': 'GOLD 1H-v2.0-RETEST'
+                        })
+                    except Exception as e:
+                        print(f"  ⚠️ Error BD: {e}")
+                enviar_telegram(msg)
+                marcar_enviada('RETEST_BUY')
+            else:
+                print(f"  ⛔ Retest BUY bloqueado: R:R {rr1}:1 < 1.5 mínimo")
 
     # ── CANCELACIONES ───────────────────────────────────────────
     if cancelar_sell and not ya_enviada('CANCEL_SELL'):
