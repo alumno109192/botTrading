@@ -166,10 +166,6 @@ def en_sesion_activa():
 def analizar_simbolo(simbolo, params):
     global perdidas_consecutivas, ultima_senal_timestamp
 
-    if not en_sesion_activa():
-        print(f"  ⏸️  [5M] Fuera de sesión (07-17 UTC) — análisis saltado")
-        return
-
     # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
     global _aviso_macro
     _aviso_macro = obtener_aviso_macro(30, '5M', simbolo)

@@ -155,10 +155,6 @@ def calcular_zonas_sr(df, atr, lookback, zone_mult):
 def analizar(simbolo, params):
     print(f"\n🔍 Analizando {simbolo} [4H]...")
 
-    if not en_sesion_activa_4h():
-        print(f"  ⏸️  [4H] Fuera de sesión (06-22 UTC) — análisis saltado")
-        return
-
     # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
     global _aviso_macro
     _aviso_macro = obtener_aviso_macro(60, '4H', simbolo)
