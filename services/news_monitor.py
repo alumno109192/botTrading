@@ -53,9 +53,9 @@ MIN_ARTICULOS   = 3             # mínimo artículos para emitir señal
 # ══════════════════════════════════════
 FUENTES_RSS = [
     {
-        'nombre':       'Kitco News',
-        'url':          'https://www.kitco.com/rss/KitcoNews.rss',
-        'filtro_gold':  False,   # ya es específico de metales preciosos
+        'nombre':       'Investing.com Gold',
+        'url':          'https://www.investing.com/rss/news_25.rss',
+        'filtro_gold':  True,    # commodities/mercados — filtrar por keywords oro
     },
     {
         'nombre':       'Yahoo Finance – GC=F',
@@ -63,8 +63,8 @@ FUENTES_RSS = [
         'filtro_gold':  False,
     },
     {
-        'nombre':       'Reuters Business',
-        'url':          'https://feeds.reuters.com/reuters/businessNews',
+        'nombre':       'MarketWatch Markets',
+        'url':          'https://feeds.marketwatch.com/marketwatch/marketpulse/',
         'filtro_gold':  True,    # filtrar por keywords oro
     },
     {
@@ -421,7 +421,7 @@ def main():
         "📰 <b>Monitor de Noticias ORO iniciado</b>\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"⏱️ Resumen cada {CHECK_INTERVAL // 3600} horas\n"
-        "📡 Fuentes: Kitco · Yahoo Finance · Reuters · CNBC\n"
+        "📡 Fuentes: Investing.com · Yahoo Finance · MarketWatch · CNBC\n"
         "🎯 Detecta sesgo fundamental XAUUSD\n"
         "⚠️ <i>Complemento del análisis técnico</i>"
     )
