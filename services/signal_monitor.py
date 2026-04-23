@@ -843,7 +843,7 @@ def monitor_senales():
 
             # Cada ~hora (cada 120 ticks × 30s = 60 min) cerrar señales antiguas
             if ciclo % 120 == 0:
-                cerrar_senales_antiguas(db, dias=7)
+                cerrar_senales_antiguas(db, dias=2)
 
             # Heartbeat cada 10 ticks (~5 min) → puebla bot_logs y confirma que el monitor corre
             if ciclo % 10 == 0:

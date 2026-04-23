@@ -112,16 +112,11 @@ def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple
         desc = _build_desc(sesgo_simbolo, tfs_superiores, tf_actual,
                            confirmados, contrarios, sin_datos)
 
-        # Regla dura: 1D nunca puede ser contrario
-        contra_1d = any(tf == '1D' for tf, _, _ in contrarios)
-        if contra_1d:
-            return False, f"🚫 Bloqueada — 1D contrario\n{desc}"
-
         # Sin datos en TFs superiores → permitir con aviso
         if len(confirmados) == 0 and len(contrarios) == 0:
             return True, f"⏳ TFs superiores sin datos — señal permitida\n{desc}"
 
-        # Mayóría estricta confirma → permitir; empate → bloquear
+        # Mayoría confirma → permitir; empate o mayoría contraria → bloquear
         if len(confirmados) > len(contrarios):
             return True, desc
 
