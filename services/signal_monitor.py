@@ -133,7 +133,8 @@ def calcular_beneficio_pct(precio_entrada: float, precio_actual: float,
 
 def verificar_niveles_compra(senal: dict, precio_actual: float,
                             precio_min: float, precio_max: float,
-                            db: DatabaseManager):
+                            db: DatabaseManager,
+                            progreso_50_enviado: set = None):
     """Verifica niveles para señales de COMPRA.
 
     Usa precio_max (High de los últimos 5m) para detectar TPs alcanzados
@@ -223,6 +224,27 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         enviar_notificacion_telegram(mensaje, simbolo)
         return
 
+    # Verificar progreso 50% hacia TP1 — aviso intermedio
+    if progreso_50_enviado is not None and senal_id not in progreso_50_enviado:
+        dist_total = abs(tp1 - precio_entrada)
+        dist_recorrida = precio_max - precio_entrada  # BUY: precio sube
+        if dist_total > 0 and dist_recorrida >= dist_total * 0.5:
+            pct = round(dist_recorrida / dist_total * 100)
+            beneficio_parcial = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
+            msg_50 = (
+                f"⚡ <b>Trade avanzando — 50% hacia TP1</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 {simbolo} | COMPRA\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Actual: ${precio_actual:.2f}  ({pct}% del camino)\n"
+                f"🎯 TP1: ${tp1:.2f}  |  Faltan ${tp1 - precio_actual:.2f}\n"
+                f"💵 P&L actual: {beneficio_parcial:+.2f}%\n"
+                f"🔒 Considera mover SL a breakeven (${precio_entrada:.2f})"
+            )
+            enviar_notificacion_telegram(msg_50, simbolo)
+            progreso_50_enviado.add(senal_id)
+            print(f"  ⚡ [50%] {simbolo} COMPRA — notificación de progreso enviada")
+
     # Verificar SL (Stop Loss) — usa Low reciente para capturar caídas entre polls
     if precio_min <= sl and not sl_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
@@ -246,7 +268,8 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 
 def verificar_niveles_venta(senal: dict, precio_actual: float,
                            precio_min: float, precio_max: float,
-                           db: DatabaseManager):
+                           db: DatabaseManager,
+                           progreso_50_enviado: set = None):
     """Verifica niveles para señales de VENTA.
 
     Usa precio_min (Low de los últimos 5m) para detectar TPs alcanzados
@@ -335,6 +358,27 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
+
+    # Verificar progreso 50% hacia TP1 — aviso intermedio
+    if progreso_50_enviado is not None and senal_id not in progreso_50_enviado:
+        dist_total = abs(precio_entrada - tp1)
+        dist_recorrida = precio_entrada - precio_min  # VENTA: precio baja
+        if dist_total > 0 and dist_recorrida >= dist_total * 0.5:
+            pct = round(dist_recorrida / dist_total * 100)
+            beneficio_parcial = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
+            msg_50 = (
+                f"⚡ <b>Trade avanzando — 50% hacia TP1</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 {simbolo} | VENTA\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Actual: ${precio_actual:.2f}  ({pct}% del camino)\n"
+                f"🎯 TP1: ${tp1:.2f}  |  Faltan ${precio_actual - tp1:.2f}\n"
+                f"💵 P&L actual: {beneficio_parcial:+.2f}%\n"
+                f"🔒 Considera mover SL a breakeven (${precio_entrada:.2f})"
+            )
+            enviar_notificacion_telegram(msg_50, simbolo)
+            progreso_50_enviado.add(senal_id)
+            print(f"  ⚡ [50%] {simbolo} VENTA — notificación de progreso enviada")
 
     # Verificar SL (Stop Loss) — usa High reciente para capturar subidas entre polls
     if precio_max >= sl and not sl_alcanzado:
@@ -606,6 +650,8 @@ def monitor_senales():
 
     # Registro del último momento en que se revisó cada señal (id → datetime)
     ultimo_check: dict = {}
+    # Set de IDs de señales para las que ya se envió el aviso del 50% recorrido
+    _progreso_50_enviado: set = set()
     ciclo = 0
     # ISO week numbers de la última apertura/cierre notificados (evita mensajes duplicados)
     _semana_apertura_enviada: int = -1
@@ -736,15 +782,16 @@ def monitor_senales():
                           f"TPs: {tp1:.2f}/{tp2:.2f}/{tp3:.2f} SL: {sl:.2f}")
 
                     if direccion == 'COMPRA':
-                        verificar_niveles_compra(senal, precio_actual, precio_min, precio_max, db)
+                        verificar_niveles_compra(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
                     else:
-                        verificar_niveles_venta(senal, precio_actual, precio_min, precio_max, db)
+                        verificar_niveles_venta(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
 
             # Limpiar del diccionario señales que ya no están activas
             ids_activos = {s['id'] for s in senales_activas} if senales_activas else set()
             for sid in list(ultimo_check):
                 if sid not in ids_activos:
                     del ultimo_check[sid]
+            _progreso_50_enviado.intersection_update(ids_activos)
 
             # Cada 2 ticks (60s) verificar confirmaciones pendientes de señales 1H
             if ciclo % 2 == 0:
