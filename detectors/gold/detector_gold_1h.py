@@ -188,6 +188,13 @@ def analizar(simbolo, params):
     _df_cerrado = df.iloc[:-1]
     zrl, zrh, zsl, zsh = calcular_zonas_sr(_df_cerrado, atr, params['sr_lookback'], params['sr_zone_mult'])
 
+    # ── Vela viva (en formación) — para detección de rebotes/rechazos en tiempo real ──
+    row_live   = df.iloc[-1]
+    close_live = float(row_live['Close'])
+    low_live   = float(row_live['Low'])
+    high_live  = float(row_live['High'])
+    open_live  = float(row_live['Open'])
+
     # ── Niveles S/R múltiples para TPs estructurales ──────────────────────────
     soportes_sr, resistencias_sr = calcular_sr_multiples(
         _df_cerrado, atr, params['sr_lookback'], params['sr_zone_mult'], n_niveles=5
@@ -354,6 +361,27 @@ def analizar(simbolo, params):
     en_zona_soporte     = (low  >= zsl - tol) and (low  <= zsh + tol)
     cancelar_sell       = close > zrh * (1 + cd / 100)
     cancelar_buy        = close < zsl * (1 - cd / 100)
+
+    # ── Detección en vela VIVA: rebote de soporte / rechazo de resistencia ────
+    # Permite alertas DURANTE la formación de la vela sin esperar al cierre.
+    # BUY: la vela en curso tocó el soporte (low en zona) y ya está rebotando.
+    rebote_soporte_live = (
+        (low_live  >= zsl - tol) and (low_live  <= zsh + tol) and  # low tocó zona soporte
+        close_live > open_live and                                   # vela alcista (rebote)
+        close_live > zsh - tol and                                   # cierre saliendo de la zona
+        low_live   < zsh                                             # efectivamente entró en zona
+    )
+    # SELL: la vela en curso tocó la resistencia y está rechazando.
+    rechazo_resist_live = (
+        (high_live >= zrl - tol) and (high_live <= zrh + tol) and  # high tocó zona resist
+        close_live < open_live and                                   # vela bajista (rechazo)
+        close_live < zrh + tol and                                   # cierre en/bajo la zona
+        high_live  > zrl                                             # efectivamente tocó zona
+    )
+    if rebote_soporte_live:
+        print(f"  ⚡ [LIVE] Rebote en soporte — low_live=${low_live:.2f}  close_live=${close_live:.2f}")
+    if rechazo_resist_live:
+        print(f"  ⚡ [LIVE] Rechazo en resistencia — high_live=${high_live:.2f}  close_live=${close_live:.2f}")
 
     # ── DETECCIÓN RETEST DE CANAL ROTO ────────────────────────────────────────
     # Tras romper el canal, el precio retrocede hacia la línea rota (ahora resistencia/soporte)
@@ -588,6 +616,12 @@ def analizar(simbolo, params):
         print(f"  ✅ Canal BUY confirmado en TFs superiores: {_htf_labels}")
 
     # Umbrales 1H (estrictos para filtrar ruido intradía)
+    # Bonus de vela viva: +3 si la vela en curso ya confirmó rebote/rechazo en zona
+    if rebote_soporte_live:
+        score_buy  = min(score_buy  + 3, 23)
+    if rechazo_resist_live:
+        score_sell = min(score_sell + 3, 23)
+
     senal_sell_maxima = score_sell >= 12
     senal_sell_fuerte = score_sell >= 9
     senal_sell_media  = score_sell >= 6
@@ -618,6 +652,11 @@ def analizar(simbolo, params):
 
     def ya_enviada(tipo): return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800
     def marcar_enviada(tipo): alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
+
+    # Clave para alertas de vela viva (caduca al cierre de la vela, TTL 1h)
+    clave_vela_live = f"{simbolo}_1H_LIVE_{df.index[-1].strftime('%Y-%m-%d %H')}"
+    def ya_enviada_live(tipo): return alertas_enviadas.get(f"{clave_vela_live}_{tipo}", 0) > time.time() - 3600
+    def marcar_enviada_live(tipo): alertas_enviadas[f"{clave_vela_live}_{tipo}"] = time.time()
 
     # ── FILTRO R:R MÍNIMO 1.2 (evaluar ANTES de cualquier señal) ──
     rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
@@ -658,6 +697,80 @@ def analizar(simbolo, params):
             senal_buy_maxima = senal_buy_fuerte = False
         else:
             _conf_buy = _desc
+
+    # ── ALERTA INMEDIATA: rebote/rechazo en vela VIVA ────────────────────────
+    # Se dispara mientras la vela está formándose — no espera al cierre.
+    # El precio YA tocó la zona y está rebotando/rechazando: entry = market price ahora.
+    if rebote_soporte_live and senal_buy_alerta and not cancelar_buy and not cancelar_buy_rr and not ya_enviada_live('LIVE_BUY'):
+        nv = ("🔥 BUY MÁXIMA" if senal_buy_maxima else
+              "🟢 BUY FUERTE" if senal_buy_fuerte else
+              "⚡ BUY MEDIA"  if senal_buy_media  else
+              "👀 BUY ALERTA")
+        # SL debajo del mínimo de la vela viva + buffer
+        sl_live = round(low_live - atr * 0.3, 2)
+        rr_live = rr(close_live, sl_live, tp1_c)
+        msg = (f"⚡ <b>REBOTE EN SOPORTE — ORO (XAUUSD) 1H</b>  ← VELA EN CURSO\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"📊 <b>Nivel:</b> {nv} | V-REVERSAL ACTIVO\n"
+               f"💰 <b>Precio actual:</b>  ${close_live:.2f}  (ENTRADA MARKET)\n"
+               f"📉 <b>Low vela:</b>       ${low_live:.2f}  ← tocó soporte ${zsl:.0f}-${zsh:.0f}\n"
+               f"🛑 <b>Stop Loss:</b>      ${sl_live:.2f}  (-${round(close_live - sl_live, 2)})\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr_live}:1\n"
+               f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(close_live, sl_live, tp2_c)}:1\n"
+               f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(close_live, sl_live, tp3_c)}:1\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+               f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🕐 Vela aún abierta")
+        if db and not db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
+            try:
+                db.guardar_senal({
+                    'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                    'direccion': 'COMPRA', 'precio_entrada': close_live,
+                    'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_live,
+                    'score': score_buy,
+                    'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                    'patron_velas': f"ReboteVivo:True, Low={low_live:.2f}",
+                    'version_detector': 'GOLD 1H-v2.0'
+                })
+            except Exception as e:
+                print(f"  ⚠️ Error BD: {e}")
+        enviar_telegram(msg); marcar_enviada_live('LIVE_BUY')
+
+    if rechazo_resist_live and senal_sell_alerta and not cancelar_sell and not cancelar_sell_rr and not ya_enviada_live('LIVE_SELL'):
+        nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
+              "🔴 SELL FUERTE" if senal_sell_fuerte else
+              "⚡ SELL MEDIA"  if senal_sell_media  else
+              "👀 SELL ALERTA")
+        sl_live = round(high_live + atr * 0.3, 2)
+        rr_live = rr(close_live, sl_live, tp1_v)
+        msg = (f"⚡ <b>RECHAZO EN RESISTENCIA — ORO (XAUUSD) 1H</b>  ← VELA EN CURSO\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"📊 <b>Nivel:</b> {nv} | V-REVERSAL ACTIVO\n"
+               f"💰 <b>Precio actual:</b>  ${close_live:.2f}  (ENTRADA MARKET)\n"
+               f"📈 <b>High vela:</b>       ${high_live:.2f}  ← tocó resist ${zrl:.0f}-${zrh:.0f}\n"
+               f"🛑 <b>Stop Loss:</b>      ${sl_live:.2f}  (+${round(sl_live - close_live, 2)})\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr_live}:1\n"
+               f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(close_live, sl_live, tp2_v)}:1\n"
+               f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(close_live, sl_live, tp3_v)}:1\n"
+               f"━━━━━━━━━━━━━━━━━━━━\n"
+               f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+               f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🕐 Vela aún abierta")
+        if db and not db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
+            try:
+                db.guardar_senal({
+                    'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                    'direccion': 'VENTA', 'precio_entrada': close_live,
+                    'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_live,
+                    'score': score_sell,
+                    'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                    'patron_velas': f"RechazoVivo:True, High={high_live:.2f}",
+                    'version_detector': 'GOLD 1H-v2.0'
+                })
+            except Exception as e:
+                print(f"  ⚠️ Error BD: {e}")
+        enviar_telegram(msg); marcar_enviada_live('LIVE_SELL')
 
     # ── ALERTAS DE APROXIMACIÓN → SEÑAL ACCIONABLE (pon la orden limit ahora) ──
     if aproximando_resist and not en_zona_resist and not cancelar_sell and not cancelar_sell_rr and senal_sell_alerta and not ya_enviada('PREP_SELL'):
@@ -733,8 +846,9 @@ def analizar(simbolo, params):
         enviar_telegram(msg); marcar_enviada('PREP_BUY')
 
     # ── SEÑALES SELL (en zona) — confirmación si ya hubo señal accionable ──
+    _tiene_rechazo_confirmado = en_zona_resist and (vela_rechazo or evening_star or intento_rotura_fallido)
     if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
-        if ya_enviada('PREP_SELL') and not (senal_sell_fuerte or senal_sell_maxima):
+        if ya_enviada('PREP_SELL') and not (senal_sell_fuerte or senal_sell_maxima) and not _tiene_rechazo_confirmado:
             print(f"  ℹ️  SELL ALERTA/MEDIA ignorada: señal accionable ya enviada")
         else:
             if senal_sell_maxima:  nivel = "🔥 SELL MÁXIMA (1H)"
@@ -792,8 +906,10 @@ def analizar(simbolo, params):
                     marcar_enviada(tipo_clave)
 
     # ── SEÑALES BUY (en zona) — confirmación si ya hubo señal accionable ──
+    # Si el precio realmente tocó la zona Y hay patrón de rebote → siempre confirmar
+    _tiene_rebote_confirmado = en_zona_soporte and (vela_rebote or morning_star or intento_caida_fallido)
     if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
-        if ya_enviada('PREP_BUY') and not (senal_buy_fuerte or senal_buy_maxima):
+        if ya_enviada('PREP_BUY') and not (senal_buy_fuerte or senal_buy_maxima) and not _tiene_rebote_confirmado:
             print(f"  ℹ️  BUY ALERTA/MEDIA ignorada: señal accionable ya enviada")
         else:
             if senal_buy_maxima:   nivel = "🔥 BUY MÁXIMA (1H)"
