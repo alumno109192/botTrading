@@ -284,16 +284,68 @@ def analizar(simbolo, params):
                     return round(nivel, 2)
         return round(fallback, 2)
 
+    def _recortar_tp_venta(tp_objetivo, tp_anterior, soportes, atr):
+        """
+        VENTA (precio baja): ajusta tp_objetivo asegurando que:
+          1. Esté al menos sep_min (0.4×ATR) por debajo de tp_anterior.
+             Si no lo está (e.g. TP2 = mismo nivel que TP1 por bug de índice,
+             o fallback ATR calculado desde entry queda por encima de TP1),
+             toma el primer soporte significativo por debajo de tp_anterior.
+          2. No haya un soporte bloqueante entre tp_anterior y tp_objetivo
+             (el precio lo tocaría antes de llegar). Si lo hay, recorta al soporte
+             más cercano a tp_anterior (el que toca primero bajando).
+        """
+        sep_min = atr * 0.4
+        # ── Guardia: tp_objetivo debe ser menor que tp_anterior ──────────────
+        if tp_objetivo >= tp_anterior - sep_min:
+            siguientes = sorted(
+                [s for s in soportes if s < tp_anterior - sep_min], reverse=True
+            )
+            tp_objetivo = siguientes[0] if siguientes else tp_anterior - atr * 1.0
+        # ── Recorte: ¿hay un soporte bloqueante entre ambos? ─────────────────
+        # Excluye niveles demasiado cercanos a tp_anterior (dentro de sep_min)
+        blockers = sorted(
+            [s for s in soportes if tp_objetivo < s <= tp_anterior - sep_min],
+            reverse=True   # mayor primero = más cercano a tp_anterior = precio lo toca primero
+        )
+        return round(blockers[0], 2) if blockers else round(tp_objetivo, 2)
+
+    def _recortar_tp_compra(tp_objetivo, tp_anterior, resistencias, atr):
+        """
+        COMPRA (precio sube): análogo a _recortar_tp_venta pero hacia arriba.
+        Recorta tp_objetivo si hay una resistencia bloqueante entre tp_anterior
+        y tp_objetivo (la más cercana a tp_anterior = la que el precio toca primero).
+        """
+        sep_min = atr * 0.4
+        # ── Guardia ───────────────────────────────────────────────────────────
+        if tp_objetivo <= tp_anterior + sep_min:
+            siguientes = sorted(
+                [r for r in resistencias if r > tp_anterior + sep_min]
+            )
+            tp_objetivo = siguientes[0] if siguientes else tp_anterior + atr * 1.0
+        # ── Recorte ───────────────────────────────────────────────────────────
+        blockers = sorted(
+            [r for r in resistencias if tp_anterior + sep_min <= r < tp_objetivo]
+        )   # menor primero = más cercano a tp_anterior = precio lo toca primero subiendo
+        return round(blockers[0], 2) if blockers else round(tp_objetivo, 2)
+
     tp1_v = _tp1_viable_sell(soportes_sr, sell_limit, sl_venta, 1.2,
                              sell_limit - atr * params['atr_tp1_mult'])
-    tp2_v = _tp_desde_sr(soportes_sr, 2, sell_limit - atr * params['atr_tp2_mult'])
-    tp3_v = _tp_desde_sr(soportes_sr, 3, sell_limit - atr * params['atr_tp3_mult'])
+    tp2_v = _recortar_tp_venta(
+                _tp_desde_sr(soportes_sr, 2, sell_limit - atr * params['atr_tp2_mult']),
+                tp1_v, soportes_sr, atr)
+    tp3_v = _recortar_tp_venta(
+                _tp_desde_sr(soportes_sr, 3, sell_limit - atr * params['atr_tp3_mult']),
+                tp2_v, soportes_sr, atr)
     tp1_c = _tp1_viable_buy(resistencias_sr, buy_limit, sl_compra, 1.2,
                             buy_limit + atr * params['atr_tp1_mult'])
-    tp2_c = _tp_desde_sr(sorted([v for v in resistencias_sr if v > buy_limit]), 2,
-                         buy_limit + atr * params['atr_tp2_mult'])
-    tp3_c = _tp_desde_sr(sorted([v for v in resistencias_sr if v > buy_limit]), 3,
-                         buy_limit + atr * params['atr_tp3_mult'])
+    _resis_sobre = sorted([v for v in resistencias_sr if v > buy_limit])
+    tp2_c = _recortar_tp_compra(
+                _tp_desde_sr(_resis_sobre, 2, buy_limit + atr * params['atr_tp2_mult']),
+                tp1_c, resistencias_sr, atr)
+    tp3_c = _recortar_tp_compra(
+                _tp_desde_sr(_resis_sobre, 3, buy_limit + atr * params['atr_tp3_mult']),
+                tp2_c, resistencias_sr, atr)
 
     avg_candle_range    = df['total_range'].iloc[-6:-1].mean()
     aproximando_resist  = (zrl - close > 0 and zrl - close < avg_candle_range * av and close > float(df['Close'].iloc[-5]))
