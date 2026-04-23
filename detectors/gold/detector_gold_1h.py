@@ -242,18 +242,24 @@ def analizar(simbolo, params):
             swing_l_vals.append(l)
 
     # Para SELL: SL en último swing HIGH por encima de la entrada + 0.3×ATR buffer
+    # Cap: si el swing está muy lejos, usar el techo de zona + buffer (invalidación natural)
+    sl_zona_sell = round(zrh + atr * 0.5, 2)
     sl_swing_sell_candidates = [v for v in swing_h_vals if v > sell_limit]
     if sl_swing_sell_candidates:
         sl_venta = round(min(sl_swing_sell_candidates) + atr * 0.3, 2)
     else:
         sl_venta = round(sell_limit + atr * asm, 2)  # fallback ATR
+    sl_venta = min(sl_venta, sl_zona_sell)  # nunca más lejos que la zona rota
 
     # Para BUY: SL en último swing LOW por debajo de la entrada - 0.3×ATR buffer
+    # Cap: si el swing está muy lejos, usar el suelo de zona + buffer (invalidación natural)
+    sl_zona_buy = round(zsl - atr * 0.5, 2)
     sl_swing_buy_candidates = [v for v in swing_l_vals if v < buy_limit]
     if sl_swing_buy_candidates:
         sl_compra = round(max(sl_swing_buy_candidates) - atr * 0.3, 2)
     else:
         sl_compra = round(buy_limit - atr * asm, 2)   # fallback ATR
+    sl_compra = max(sl_compra, sl_zona_buy)  # nunca más lejos que la zona rota
 
     # ── TPs en zonas S/R reales (con fallback a ATR si no hay suficientes niveles) ──
     def _tp_desde_sr(niveles, n, fallback):
