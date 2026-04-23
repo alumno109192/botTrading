@@ -670,6 +670,11 @@ def analizar(simbolo, params):
         print(f"  ⛔ BUY bloqueada: R:R TP1 = {rr_buy_tp1}:1 < 1.2 mínimo")
         if db: db.guardar_log(f"BUY bloqueada R:R={rr_buy_tp1} | close={close:.2f} SL={sl_compra:.2f} TP1={tp1_c:.2f}", 'WARNING', 'gold_1h', simbolo)
 
+    # Guardar flags ANTES de exclusión mutua — los PREP son avisos informativos
+    # y deben dispararse aunque el bias dominante sea la dirección opuesta.
+    _prep_sell_alerta = senal_sell_alerta
+    _prep_buy_alerta  = senal_buy_alerta
+
     # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
     if senal_sell_alerta and senal_buy_alerta:
         if score_sell >= score_buy:
@@ -773,7 +778,7 @@ def analizar(simbolo, params):
         enviar_telegram(msg); marcar_enviada_live('LIVE_SELL')
 
     # ── ALERTAS DE APROXIMACIÓN → SEÑAL ACCIONABLE (pon la orden limit ahora) ──
-    if aproximando_resist and not en_zona_resist and not cancelar_sell and not cancelar_sell_rr and senal_sell_alerta and not ya_enviada('PREP_SELL'):
+    if aproximando_resist and not en_zona_resist and not cancelar_sell and not cancelar_sell_rr and _prep_sell_alerta and not ya_enviada('PREP_SELL'):
         nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
               "🔴 SELL FUERTE" if senal_sell_fuerte else
               "⚡ SELL MEDIA"  if senal_sell_media  else
@@ -809,7 +814,7 @@ def analizar(simbolo, params):
                 print(f"  ⚠️ Error BD: {e}")
         enviar_telegram(msg); marcar_enviada('PREP_SELL')
 
-    if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not cancelar_buy_rr and senal_buy_alerta and not ya_enviada('PREP_BUY'):
+    if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not cancelar_buy_rr and _prep_buy_alerta and not ya_enviada('PREP_BUY'):
         nv = ("🔥 BUY MÁXIMA" if senal_buy_maxima else
               "🟢 BUY FUERTE" if senal_buy_fuerte else
               "⚡ BUY MEDIA"  if senal_buy_media  else
