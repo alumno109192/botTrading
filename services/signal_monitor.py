@@ -747,6 +747,8 @@ def monitor_senales():
                             try:
                                 db.guardar_log(f"_fetch_precios_ticker devolvió None para {ticker} ({base})",
                                                'WARNING', 'signal_monitor', base)
+                            except Exception:
+                                pass
 
                 # ── Paso 3: verificar niveles usando precios cacheados ────────
                 for senal in senales_a_revisar:
@@ -786,11 +788,25 @@ def monitor_senales():
                     sl  = float(senal['sl'])
 
                     etiqueta_tf = f"[{categoria.upper():<8} {intervalo}s]"
-                    print(f"  📊 {etiqueta_tf} {simbolo} | {direccion} | "
-                          f"Entrada: ${precio_entrada:.2f} | "
-                          f"Actual: ${precio_actual:.2f} (H:{precio_max:.2f} L:{precio_min:.2f}) | "
-                          f"P&L: {beneficio_actual:+.2f}% | "
-                          f"TPs: {tp1:.2f}/{tp2:.2f}/{tp3:.2f} SL: {sl:.2f}")
+                    linea = (
+                        f"  📊 {etiqueta_tf} {simbolo} | {direccion} | "
+                        f"Entrada: ${precio_entrada:.2f} | "
+                        f"Actual: ${precio_actual:.2f} (H:{precio_max:.2f} L:{precio_min:.2f}) | "
+                        f"P&L: {beneficio_actual:+.2f}% | "
+                        f"TPs: {tp1:.2f}/{tp2:.2f}/{tp3:.2f} SL: {sl:.2f}"
+                    )
+                    print(linea)
+                    try:
+                        db.guardar_log(
+                            f"#{senal_id} {simbolo} {direccion} | "
+                            f"entry={precio_entrada:.2f} actual={precio_actual:.2f} "
+                            f"(H:{precio_max:.2f} L:{precio_min:.2f}) "
+                            f"P&L={beneficio_actual:+.2f}% | "
+                            f"TP1={tp1:.2f} TP2={tp2:.2f} TP3={tp3:.2f} SL={sl:.2f}",
+                            'INFO', 'signal_monitor', simbolo.split('_')[0]
+                        )
+                    except Exception:
+                        pass
 
                     if direccion == 'COMPRA':
                         verificar_niveles_compra(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
