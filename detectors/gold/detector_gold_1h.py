@@ -706,7 +706,9 @@ def analizar(simbolo, params):
     # ── ALERTA INMEDIATA: rebote/rechazo en vela VIVA ────────────────────────
     # Se dispara mientras la vela está formándose — no espera al cierre.
     # El precio YA tocó la zona y está rebotando/rechazando: entry = market price ahora.
-    if rebote_soporte_live and senal_buy_alerta and not cancelar_buy and not cancelar_buy_rr and not ya_enviada_live('LIVE_BUY'):
+    # IMPORTANTE: usa flags pre-exclusión-mutua (_prep_*) para que un sesgo general
+    # en la dirección opuesta no suprima alertas de acción de precio real.
+    if rebote_soporte_live and _prep_buy_alerta and not cancelar_buy and not cancelar_buy_rr and not ya_enviada_live('LIVE_BUY'):
         nv = ("🔥 BUY MÁXIMA" if senal_buy_maxima else
               "🟢 BUY FUERTE" if senal_buy_fuerte else
               "⚡ BUY MEDIA"  if senal_buy_media  else
@@ -742,7 +744,7 @@ def analizar(simbolo, params):
                 print(f"  ⚠️ Error BD: {e}")
         enviar_telegram(msg); marcar_enviada_live('LIVE_BUY')
 
-    if rechazo_resist_live and senal_sell_alerta and not cancelar_sell and not cancelar_sell_rr and not ya_enviada_live('LIVE_SELL'):
+    if rechazo_resist_live and _prep_sell_alerta and not cancelar_sell and not cancelar_sell_rr and not ya_enviada_live('LIVE_SELL'):
         nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
               "🔴 SELL FUERTE" if senal_sell_fuerte else
               "⚡ SELL MEDIA"  if senal_sell_media  else
@@ -852,7 +854,9 @@ def analizar(simbolo, params):
 
     # ── SEÑALES SELL (en zona) — confirmación si ya hubo señal accionable ──
     _tiene_rechazo_confirmado = en_zona_resist and (vela_rechazo or evening_star or intento_rotura_fallido)
-    if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
+    # Usar pre-exclusión cuando hay confirmación de acción de precio real en zona
+    _sell_activa = senal_sell_alerta or (_prep_sell_alerta and _tiene_rechazo_confirmado)
+    if _sell_activa and not cancelar_sell and rr_sell_tp1 >= 1.2:
         if ya_enviada('PREP_SELL') and not (senal_sell_fuerte or senal_sell_maxima) and not _tiene_rechazo_confirmado:
             print(f"  ℹ️  SELL ALERTA/MEDIA ignorada: señal accionable ya enviada")
         else:
@@ -877,7 +881,7 @@ def analizar(simbolo, params):
                 else:
                     # Precio saltó directo a la zona sin pre-alerta → señal completa con DB
                     if db and db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
-                        print(f"  ℹ️  Señal VENTA 1H duplicada"); return
+                        print(f"  ⚠️  Señal VENTA 1H duplicada — ya existe ACTIVA/PENDIENTE en BD"); return
                     msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>     ${close:.2f}\n"
@@ -913,7 +917,9 @@ def analizar(simbolo, params):
     # ── SEÑALES BUY (en zona) — confirmación si ya hubo señal accionable ──
     # Si el precio realmente tocó la zona Y hay patrón de rebote → siempre confirmar
     _tiene_rebote_confirmado = en_zona_soporte and (vela_rebote or morning_star or intento_caida_fallido)
-    if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
+    # Usar pre-exclusión cuando hay confirmación de acción de precio real en zona
+    _buy_activa = senal_buy_alerta or (_prep_buy_alerta and _tiene_rebote_confirmado)
+    if _buy_activa and not cancelar_buy and rr_buy_tp1 >= 1.2:
         if ya_enviada('PREP_BUY') and not (senal_buy_fuerte or senal_buy_maxima) and not _tiene_rebote_confirmado:
             print(f"  ℹ️  BUY ALERTA/MEDIA ignorada: señal accionable ya enviada")
         else:
@@ -938,7 +944,7 @@ def analizar(simbolo, params):
                 else:
                     # Precio saltó directo a la zona sin pre-alerta → señal completa con DB
                     if db and db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
-                        print(f"  ℹ️  Señal COMPRA 1H duplicada"); return
+                        print(f"  ⚠️  Señal COMPRA 1H duplicada — ya existe ACTIVA/PENDIENTE en BD"); return
                     msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>    ${close:.2f}\n"
