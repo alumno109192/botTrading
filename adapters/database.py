@@ -827,6 +827,30 @@ class DatabaseManager:
         DELETE FROM ohlcv WHERE symbol = ? AND interval = ? AND ts < ?
         """, (symbol, interval, desde))
 
+    def obtener_precio_reciente_bd(self, symbol: str, interval: str = '5m',
+                                   max_minutos: int = 10) -> tuple | None:
+        """
+        Lee las últimas velas de la tabla ohlcv (sin usar yfinance ni locks).
+        Retorna (close_actual, high_max_5velas, low_min_5velas) o None si la
+        vela más reciente tiene más de max_minutos de antigüedad.
+        """
+        desde = (datetime.now(timezone.utc) - timedelta(minutes=max_minutos)).isoformat()
+        result = self.ejecutar_query("""
+        SELECT ts, close, high, low
+        FROM ohlcv
+        WHERE symbol = ? AND interval = ? AND ts >= ?
+        ORDER BY ts DESC LIMIT 5
+        """, (symbol, interval, desde))
+
+        if not result.rows:
+            return None
+
+        rows = result.rows
+        precio_actual = float(rows[0]['close'])
+        precio_max    = max(float(r['high'])  for r in rows)
+        precio_min    = min(float(r['low'])   for r in rows)
+        return (precio_actual, precio_max, precio_min)
+
     # ═══════════════════════════════════════════════════════════
     # ESTADO DE CANAL ROTO (persistencia entre deploys/restarts)
     # ═══════════════════════════════════════════════════════════

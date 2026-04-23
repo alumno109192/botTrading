@@ -55,20 +55,37 @@ SIMBOLO_TO_TICKER = {
     'XAGUSD':  'SI=F',      # Silver Futures
 }
 
-def _fetch_precios_ticker(ticker: str) -> tuple | None:
-    """Descarga velas de 1 minuto para un ticker de yfinance y devuelve
-    (precio_actual, precio_max_5m, precio_min_5m) o None si hay error.
+def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
+    """Obtiene (precio_actual, precio_max_5velas, precio_min_5velas) para un ticker.
 
-    Llamar UNA sola vez por ticker por ciclo y reutilizar el resultado
-    para todas las señales que compartan el mismo subyacente.
+    Estrategia sin contención de lock:
+      1. Lee de la tabla ohlcv de BD (datos frescos del ohlcv_poller, sin lock).
+         Si la vela más reciente tiene <= 10 min → devuelve directamente.
+      2. Fallback a yfinance (con _yf_lock) solo si la BD no tiene datos recientes.
     """
+    # ── Paso 1: BD (rápido, sin lock) ────────────────────────────────────────
+    if db is not None:
+        try:
+            res = db.obtener_precio_reciente_bd(ticker, '5m', max_minutos=10)
+            if res is not None:
+                return res
+        except Exception as e:
+            print(f"⚠️ [{ticker}] Error leyendo precio de BD: {e}")
+
+    # ── Paso 2: yfinance (fallback) con timeout en el lock ───────────────────
     try:
-        with _yf_lock:
+        acquired = _yf_lock.acquire(timeout=8)
+        if not acquired:
+            print(f"⚠️ [{ticker}] Lock yfinance ocupado >8s — skip este tick")
+            return None
+        try:
             hist = yf.Ticker(ticker).history(period='1d', interval='1m')
+        finally:
+            _yf_lock.release()
         if hist.empty:
             return None
         precio_actual = float(hist['Close'].iloc[-1])
-        ventana       = hist.tail(5)          # últimos 5 minutos
+        ventana       = hist.tail(5)
         precio_max    = float(ventana['High'].max())
         precio_min    = float(ventana['Low'].min())
         return (precio_actual, precio_max, precio_min)
@@ -738,7 +755,7 @@ def monitor_senales():
 
                     cache_precios: dict = {}   # ticker → (actual, max, min)
                     for ticker, base in tickers_necesarios.items():
-                        result = _fetch_precios_ticker(ticker)
+                        result = _fetch_precios_ticker(ticker, db=db)
                         if result is not None:
                             cache_precios[ticker] = result
                             print(f"  📡 {base} ({ticker}): ${result[0]:.2f}  H:{result[1]:.2f}  L:{result[2]:.2f}")
