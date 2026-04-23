@@ -744,6 +744,9 @@ def monitor_senales():
                             print(f"  📡 {base} ({ticker}): ${result[0]:.2f}  H:{result[1]:.2f}  L:{result[2]:.2f}")
                         else:
                             print(f"  ⚠️ Sin datos para {base} ({ticker})")
+                            try:
+                                db.guardar_log(f"_fetch_precios_ticker devolvió None para {ticker} ({base})",
+                                               'WARNING', 'signal_monitor', base)
 
                 # ── Paso 3: verificar niveles usando precios cacheados ────────
                 for senal in senales_a_revisar:
@@ -761,7 +764,15 @@ def monitor_senales():
 
                     precio_actual, precio_max, precio_min = precios
 
-                    db.registrar_precio(senal_id, precio_actual, senal_data=senal)
+                    try:
+                        db.registrar_precio(senal_id, precio_actual, senal_data=senal)
+                    except Exception as e_reg:
+                        print(f"  ❌ registrar_precio falló para señal {senal_id}: {e_reg}")
+                        try:
+                            db.guardar_log(f"registrar_precio error señal #{senal_id}: {e_reg}",
+                                           'ERROR', 'signal_monitor', simbolo.split('_')[0])
+                        except Exception:
+                            pass
 
                     precio_entrada = float(senal['precio_entrada'])
                     direccion      = senal['direccion']
@@ -801,6 +812,17 @@ def monitor_senales():
             if ciclo % 120 == 0:
                 cerrar_senales_antiguas(db, dias=7)
 
+            # Heartbeat cada 10 ticks (~5 min) → puebla bot_logs y confirma que el monitor corre
+            if ciclo % 10 == 0:
+                n_activas = len(senales_activas) if senales_activas else 0
+                try:
+                    db.guardar_log(
+                        f"Monitor tick #{ciclo} | señales activas: {n_activas}",
+                        'INFO', 'signal_monitor'
+                    )
+                except Exception:
+                    pass
+
             print(f"[{ahora.strftime('%H:%M:%S')}] ⏳ Próximo tick en {_TICK}s...")
             time.sleep(_TICK)
 
@@ -810,9 +832,11 @@ def monitor_senales():
 
         except Exception as e:
             print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en monitor: {e}")
+            import traceback; traceback.print_exc()
             print("🔄 Reintentando en 60 segundos...")
             try:
                 db = DatabaseManager()
+                db.guardar_log(f"Monitor crash: {e}", 'ERROR', 'signal_monitor')
                 print("✅ Reconexón a BD exitosa")
             except Exception as re_err:
                 print(f"⚠️  Reconexón fallida: {re_err}")
