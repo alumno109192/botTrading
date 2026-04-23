@@ -6,6 +6,7 @@ Maneja todas las operaciones CRUD para señales, historial de precios y estadís
 import os
 import json
 import threading
+import time
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
@@ -82,8 +83,12 @@ class DatabaseManager:
         else:
             return {"type": "text", "value": str(param)}
     
+    # Códigos HTTP transitorios que se reintentan
+    _RETRY_CODES = {502, 503, 429}
+    _MAX_RETRIES = 2
+
     def ejecutar_query(self, query: str, params: tuple = ()) -> Any:
-        """Ejecuta una query usando la API HTTP de Turso"""
+        """Ejecuta una query usando la API HTTP de Turso (con retry en errores transitorios)"""
         try:
             # Convertir parámetros al formato Turso
             converted_params = [self._convert_param(p) for p in params] if params else []
@@ -101,16 +106,34 @@ class DatabaseManager:
                 ]
             }
             
-            # Hacer request a la API
-            response = requests.post(
-                f'{self.api_url}/v2/pipeline',
-                headers=self.headers,
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"HTTP {response.status_code}: {response.text}")
+            # Hacer request a la API (con retry en errores transitorios)
+            last_exc = None
+            for intento in range(self._MAX_RETRIES + 1):
+                if intento > 0:
+                    time.sleep(intento * 1.5)
+                try:
+                    response = requests.post(
+                        f'{self.api_url}/v2/pipeline',
+                        headers=self.headers,
+                        json=payload,
+                        timeout=30
+                    )
+                except requests.exceptions.RequestException as req_e:
+                    last_exc = req_e
+                    continue
+
+                if response.status_code in self._RETRY_CODES:
+                    last_exc = Exception(f"HTTP {response.status_code}: {response.text[:120]}")
+                    continue
+
+                if response.status_code != 200:
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+                last_exc = None
+                break
+
+            if last_exc is not None:
+                raise last_exc
             
             # Parsear respuesta
             data = response.json()
@@ -177,14 +200,33 @@ class DatabaseManager:
                     }
                 ]
             }
-            response = requests.post(
-                f'{self.api_url}/v2/pipeline',
-                headers=self.headers,
-                json=payload,
-                timeout=30
-            )
-            if response.status_code != 200:
-                raise Exception(f"HTTP {response.status_code}: {response.text}")
+            last_exc = None
+            for intento in range(self._MAX_RETRIES + 1):
+                if intento > 0:
+                    time.sleep(intento * 1.5)
+                try:
+                    response = requests.post(
+                        f'{self.api_url}/v2/pipeline',
+                        headers=self.headers,
+                        json=payload,
+                        timeout=30
+                    )
+                except requests.exceptions.RequestException as req_e:
+                    last_exc = req_e
+                    continue
+
+                if response.status_code in self._RETRY_CODES:
+                    last_exc = Exception(f"HTTP {response.status_code}: {response.text[:120]}")
+                    continue
+
+                if response.status_code != 200:
+                    raise Exception(f"HTTP {response.status_code}: {response.text}")
+
+                last_exc = None
+                break
+
+            if last_exc is not None:
+                raise last_exc
             data = response.json()
             if data and 'results' in data and len(data['results']) >= 2:
                 result_data = data['results'][1].get('response', {}).get('result', {})
