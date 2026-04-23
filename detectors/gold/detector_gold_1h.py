@@ -574,8 +574,10 @@ def analizar(simbolo, params):
     cancelar_buy_rr  = rr_buy_tp1 < 1.2
     if cancelar_sell_rr:
         print(f"  ⛔ SELL bloqueada: R:R TP1 = {rr_sell_tp1}:1 < 1.2 mínimo")
+        if db: db.guardar_log(f"SELL bloqueada R:R={rr_sell_tp1} | close={close:.2f} SL={sl_venta:.2f} TP1={tp1_v:.2f}", 'WARNING', 'gold_1h', simbolo)
     if cancelar_buy_rr:
         print(f"  ⛔ BUY bloqueada: R:R TP1 = {rr_buy_tp1}:1 < 1.2 mínimo")
+        if db: db.guardar_log(f"BUY bloqueada R:R={rr_buy_tp1} | close={close:.2f} SL={sl_compra:.2f} TP1={tp1_c:.2f}", 'WARNING', 'gold_1h', simbolo)
 
     # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
     if senal_sell_alerta and senal_buy_alerta:

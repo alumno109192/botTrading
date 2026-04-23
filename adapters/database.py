@@ -240,6 +240,20 @@ class DatabaseManager:
         
         senal_id = self.ejecutar_insert(query, params)
         print(f"✅ Señal guardada con ID: {senal_id}")
+        # Log automático al guardar señal
+        try:
+            simbolo = senal_data['simbolo']
+            direccion = senal_data['direccion']
+            score = senal_data['score']
+            entry = senal_data['precio_entrada']
+            tp1 = senal_data['tp1']
+            sl = senal_data['sl']
+            self.guardar_log(
+                f"Señal #{senal_id} {direccion} | entry={entry:.2f} TP1={tp1:.2f} SL={sl:.2f} score={score} estado={estado}",
+                nivel='INFO', modulo=senal_data.get('version_detector', ''), simbolo=simbolo
+            )
+        except Exception:
+            pass
         return senal_id
     
     def existe_senal_reciente(self, simbolo: str, direccion: str, horas: int = 2) -> bool:
@@ -824,6 +838,30 @@ class DatabaseManager:
             VALUES (?, ?, ?, ?, ?)
             """,
             (ts, tf, simbolo, evento, ventana_minutos),
+        )
+
+    # ═══════════════════════════════════════════════════════════
+
+    def init_bot_logs_table(self):
+        """Crea la tabla bot_logs si no existe."""
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS bot_logs (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT    NOT NULL,
+            nivel     TEXT    NOT NULL DEFAULT 'INFO',
+            modulo    TEXT    NOT NULL DEFAULT '',
+            simbolo   TEXT    NOT NULL DEFAULT '',
+            mensaje   TEXT    NOT NULL
+        )
+        """)
+
+    def guardar_log(self, mensaje: str, nivel: str = 'INFO',
+                    modulo: str = '', simbolo: str = '') -> None:
+        """Inserta un registro en bot_logs."""
+        ts = datetime.now(timezone.utc).isoformat()
+        self.ejecutar_insert(
+            "INSERT INTO bot_logs (timestamp, nivel, modulo, simbolo, mensaje) VALUES (?, ?, ?, ?, ?)",
+            (ts, nivel.upper(), modulo, simbolo, mensaje),
         )
 
     # ═══════════════════════════════════════════════════════════
