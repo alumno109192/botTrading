@@ -58,6 +58,7 @@ try:
     DatabaseManager().init_canal_roto_table()
     DatabaseManager().init_macro_events_log_table()
     DatabaseManager().init_bot_logs_table()
+    DatabaseManager().init_historial_precios_table()
     logger.info("✅ Tablas api_key_usage, ohlcv, canal_roto_state, macro_events_log y bot_logs listas")
 except Exception as _e:
     logger.warning(f"⚠️ No se pudo inicializar tablas BD: {_e}")

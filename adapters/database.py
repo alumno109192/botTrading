@@ -440,7 +440,22 @@ class DatabaseManager:
     # ═══════════════════════════════════════════════════════════
     # HISTORIAL DE PRECIOS
     # ═══════════════════════════════════════════════════════════
-    
+
+    def init_historial_precios_table(self):
+        """Crea la tabla historial_precios si no existe."""
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS historial_precios (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            senal_id       INTEGER NOT NULL,
+            timestamp      TEXT    NOT NULL,
+            precio         REAL    NOT NULL,
+            distancia_tp1  REAL,
+            distancia_tp2  REAL,
+            distancia_tp3  REAL,
+            distancia_sl   REAL
+        )
+        """)
+
     def registrar_precio(self, senal_id: int, precio_actual: float, senal_data: dict = None):
         """
         Registra un snapshot de precio para análisis histórico.
@@ -473,26 +488,29 @@ class DatabaseManager:
             dist_tp3 = ((tp3 - precio_actual) / precio_entrada) * 100
             dist_sl = ((sl - precio_actual) / precio_entrada) * 100
         
-        # Insertar en historial
+        # CRÍTICO: actualizar precio_actual en la señal PRIMERO
+        # Si el historial falla, al menos el campo principal queda actualizado
+        self.actualizar_precio_actual(senal_id, precio_actual)
+
+        # Insertar en historial (secundario — fallo no bloquea el UPDATE anterior)
         insert_query = """
         INSERT INTO historial_precios (
             senal_id, timestamp, precio,
             distancia_tp1, distancia_tp2, distancia_tp3, distancia_sl
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """
-        
-        self.ejecutar_query(insert_query, (
-            senal_id,
-            datetime.now(timezone.utc).isoformat(),
-            precio_actual,
-            dist_tp1,
-            dist_tp2,
-            dist_tp3,
-            dist_sl
-        ))
-        
-        # También actualizar precio_actual en la señal
-        self.actualizar_precio_actual(senal_id, precio_actual)
+        try:
+            self.ejecutar_query(insert_query, (
+                senal_id,
+                datetime.now(timezone.utc).isoformat(),
+                precio_actual,
+                dist_tp1,
+                dist_tp2,
+                dist_tp3,
+                dist_sl
+            ))
+        except Exception as e:
+            print(f"⚠️ registrar_precio: fallo INSERT historial (no crítico): {e}")
     
     # ═══════════════════════════════════════════════════════════
     # ESTADÍSTICAS Y ANÁLISIS
