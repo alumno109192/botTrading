@@ -92,6 +92,7 @@ from core.indicators import (
     detectar_rotura_alcista, detectar_rotura_bajista,
     detectar_doble_techo, detectar_doble_suelo,
     detectar_canal_roto, calcular_sr_multiples,
+    detectar_precio_en_canal,
 )
 
 # ══════════════════════════════════════
@@ -367,6 +368,14 @@ def analizar(simbolo, params):
     if canal_bajista_roto_4h:
         print(f"  🔺 [4H] CANAL BAJISTA ROTO — línea resist ${linea_resist_canal_4h:.2f}")
 
+    en_resist_canal_bajista, en_soporte_canal_alcista, \
+        linea_resist_canal_precio_4h, linea_soporte_canal_precio_4h = detectar_precio_en_canal(
+            df, atr, lookback=params.get('sr_lookback', 80), wing=3)
+    if en_resist_canal_bajista:
+        print(f"  📐 [4H] PRECIO EN DIRECTRIZ BAJISTA — resist ${linea_resist_canal_precio_4h:.2f}")
+    if en_soporte_canal_alcista:
+        print(f"  📐 [4H] PRECIO EN DIRECTRIZ ALCISTA — soporte ${linea_soporte_canal_precio_4h:.2f}")
+
 
     score_sell = 0
     score_sell += 2 if en_zona_resist          else 0
@@ -394,6 +403,7 @@ def analizar(simbolo, params):
     score_sell += 4 if rotura_bajista          else 0  # rotura con impulso+volumen
     score_sell += 3 if dt_detectado            else 0  # doble techo confirmado
     score_sell += 2 if canal_alcista_roto_4h   else 0  # canal alcista roto → sesgo bajista
+    score_sell += 3 if en_resist_canal_bajista  else 0  # precio tocando directriz bajista
 
     if adx_lateral:
         score_sell = max(0, score_sell - 3)
@@ -474,6 +484,7 @@ def analizar(simbolo, params):
     score_buy  += 4 if rotura_alcista          else 0  # rotura con impulso+volumen
     score_buy  += 3 if ds_detectado            else 0  # doble suelo confirmado
     score_buy  += 2 if canal_bajista_roto_4h   else 0  # canal bajista roto → sesgo alcista
+    score_buy  += 3 if en_soporte_canal_alcista else 0  # precio tocando directriz alcista
 
     if adx_lateral:
         score_buy = max(0, score_buy - 3)
@@ -555,8 +566,8 @@ def analizar(simbolo, params):
                 del alertas_enviadas[_k]
 
     # ── FILTRO PROXIMIDAD: solo operar cerca de zona O fallo de continuación ──
-    cerca_resistencia = en_zona_resist or aproximando_resistencia or fallo_continuacion_bajista
-    cerca_soporte     = en_zona_soporte or aproximando_soporte     or fallo_continuacion_alcista
+    cerca_resistencia = en_zona_resist or aproximando_resistencia or fallo_continuacion_bajista or en_resist_canal_bajista
+    cerca_soporte     = en_zona_soporte or aproximando_soporte     or fallo_continuacion_alcista or en_soporte_canal_alcista
     if not cerca_resistencia:
         if senal_sell_alerta: print(f"  ⏳ SELL ignorada: precio lejos de resistencia")
         senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False

@@ -499,6 +499,63 @@ def detectar_canal_roto(df: pd.DataFrame, atr: float,
     return canal_alcista_roto, canal_bajista_roto, linea_soporte_val, linea_resist_val
 
 
+def detectar_precio_en_canal(df: pd.DataFrame, atr: float,
+                              lookback: int = 40, wing: int = 3) -> tuple:
+    """
+    Detecta si el precio está TOCANDO la directriz de un canal sin haberla roto.
+
+    - en_resist_canal_bajista : precio a ≤ 0.5×ATR por debajo de la directriz
+      superior bajista (canal descendente), o el máximo de la vela la alcanzó.
+    - en_soporte_canal_alcista: precio a ≤ 0.5×ATR por encima de la directriz
+      inferior alcista (canal ascendente).
+
+    Returns:
+        (en_resist_canal_bajista, en_soporte_canal_alcista,
+         linea_resist_val, linea_soporte_val)
+    """
+    sub   = df.iloc[-lookback:]
+    highs = sub['High'].values
+    lows  = sub['Close'].values
+    n     = len(sub)
+
+    idx_lows, idx_highs = [], []
+    for i in range(wing, n - wing):
+        if all(lows[i]  <= lows[i-j]  for j in range(1, wing+1)) and \
+           all(lows[i]  <= lows[i+j]  for j in range(1, wing+1)):
+            idx_lows.append(i)
+        if all(highs[i] >= highs[i-j] for j in range(1, wing+1)) and \
+           all(highs[i] >= highs[i+j] for j in range(1, wing+1)):
+            idx_highs.append(i)
+
+    en_resist_canal_bajista  = False
+    en_soporte_canal_alcista = False
+    linea_resist_val  = float(highs[-1])
+    linea_soporte_val = float(lows[-1])
+    close_actual = float(df['Close'].iloc[-2])
+    high_actual  = float(df['High'].iloc[-2])
+
+    if len(idx_highs) >= 2:
+        xs = np.array(idx_highs)
+        m, b = np.polyfit(xs, highs[idx_highs], 1)
+        if m < 0:  # canal bajista confirmado (directriz descendente)
+            linea_resist_val = m * (n - 1) + b
+            dist = linea_resist_val - close_actual
+            # precio está bajo la línea pero a ≤ 0.5×ATR, o el high la tocó
+            if (0 <= dist <= 0.5 * atr) or (high_actual >= linea_resist_val - 0.3 * atr):
+                en_resist_canal_bajista = True
+
+    if len(idx_lows) >= 2:
+        xs = np.array(idx_lows)
+        m, b = np.polyfit(xs, lows[idx_lows], 1)
+        if m > 0:  # canal alcista confirmado (directriz ascendente)
+            linea_soporte_val = m * (n - 1) + b
+            dist = close_actual - linea_soporte_val
+            if 0 <= dist <= 0.5 * atr:
+                en_soporte_canal_alcista = True
+
+    return en_resist_canal_bajista, en_soporte_canal_alcista, linea_resist_val, linea_soporte_val
+
+
 def calcular_sr_multiples(df: pd.DataFrame, atr: float,
                           lookback: int = 60, zone_mult: float = 0.5,
                           n_niveles: int = 5) -> tuple:
