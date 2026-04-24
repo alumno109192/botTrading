@@ -1093,6 +1093,83 @@ class DatabaseManager:
             resultado[nivel] = [dict(r) for r in res.rows] if res.rows else []
         return resultado
 
+    # ── Tabla senal_analisis (histórico de análisis de obstáculos) ────────────
+
+    def init_senal_analisis_table(self) -> None:
+        """Crea la tabla senal_analisis para histórico de análisis de obstáculos."""
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS senal_analisis (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            senal_id         INTEGER NOT NULL,
+            timestamp        TEXT    NOT NULL,
+            tiene_obstaculos INTEGER NOT NULL,
+            impacto_tp1      TEXT,
+            impacto_tp2      TEXT,
+            impacto_tp3      TEXT,
+            recomendacion    TEXT    NOT NULL,
+            obstaculos_json  TEXT,
+            todas_a_favor    INTEGER DEFAULT 0
+        )""")
+        self.ejecutar_query(
+            "CREATE INDEX IF NOT EXISTS idx_senal_analisis_senal "
+            "ON senal_analisis(senal_id)"
+        )
+
+    def guardar_analisis_senal(self, senal_id: int, resultado: dict) -> None:
+        """
+        Persiste el resultado de analizar_obstaculos() en senal_analisis.
+
+        Args:
+            senal_id : ID de la señal analizada.
+            resultado: Dict devuelto por core.signal_analyzer.analizar_obstaculos().
+        """
+        ts = datetime.now(timezone.utc).isoformat()
+        self.ejecutar_query(
+            """INSERT INTO senal_analisis
+               (senal_id, timestamp, tiene_obstaculos, impacto_tp1, impacto_tp2,
+                impacto_tp3, recomendacion, obstaculos_json, todas_a_favor)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                senal_id,
+                ts,
+                int(bool(resultado.get('tiene_obstaculos', False))),
+                resultado.get('impacto_tp1'),
+                resultado.get('impacto_tp2'),
+                resultado.get('impacto_tp3'),
+                resultado.get('recomendacion', 'OPERAR_NORMAL'),
+                json.dumps(resultado.get('obstaculos', []), ensure_ascii=False),
+                int(bool(resultado.get('todas_a_favor', False))),
+            )
+        )
+
+    def obtener_ultimo_analisis(self, senal_id: int) -> dict | None:
+        """
+        Devuelve el análisis más reciente de una señal, o None si no hay.
+
+        Returns:
+            Dict con id, senal_id, timestamp, tiene_obstaculos, impacto_tp1/2/3,
+            recomendacion, obstaculos, todas_a_favor.
+        """
+        res = self.ejecutar_query(
+            "SELECT * FROM senal_analisis WHERE senal_id = ? ORDER BY id DESC LIMIT 1",
+            (senal_id,)
+        )
+        if not res.rows:
+            return None
+        r = dict(res.rows[0])
+        return {
+            'id':               r['id'],
+            'senal_id':         r['senal_id'],
+            'timestamp':        r['timestamp'],
+            'tiene_obstaculos': bool(r['tiene_obstaculos']),
+            'impacto_tp1':      r['impacto_tp1'],
+            'impacto_tp2':      r['impacto_tp2'],
+            'impacto_tp3':      r['impacto_tp3'],
+            'recomendacion':    r['recomendacion'],
+            'obstaculos':       json.loads(r.get('obstaculos_json') or '[]'),
+            'todas_a_favor':    bool(r['todas_a_favor']),
+        }
+
 
 if __name__ == '__main__':
     # Test de conexión

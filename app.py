@@ -102,7 +102,8 @@ try:
     DatabaseManager().init_bot_logs_table()
     DatabaseManager().init_historial_precios_table()
     DatabaseManager().init_nivel_touches_tables()
-    logger.info("✅ Tablas api_key_usage, ohlcv, canal_roto_state, macro_events_log, bot_logs, nivel_touches listas")
+    DatabaseManager().init_senal_analisis_table()
+    logger.info("✅ Tablas api_key_usage, ohlcv, canal_roto_state, macro_events_log, bot_logs, nivel_touches, senal_analisis listas")
 except Exception as _e:
     logger.warning(f"⚠️ No se pudo inicializar tablas BD: {_e}")
 threads_detectores = {}
