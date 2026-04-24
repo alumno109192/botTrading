@@ -18,8 +18,9 @@ import yfinance as yf
 sys.stdout.reconfigure(line_buffering=True)
 
 # ── LOGGING PERSISTENTE ────────────────────────────────────────────────────
+_LOG_FILE = 'logfile.txt'
 _log_handler = RotatingFileHandler(
-    'logfile.txt', maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8'
+    _LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8'
 )
 _log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
 logging.basicConfig(
@@ -27,6 +28,47 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout), _log_handler],
 )
 logger = logging.getLogger('bottrading')
+
+# ── REDIRIGIR print() AL FICHERO DE LOG ───────────────────────────────────
+# Los detectores usan print() en lugar de logging. Esta clase Tee escribe
+# simultáneamente a la consola (stdout original) y al fichero de log.
+class _TeeStream:
+    """Duplica escrituras a stdout y al fichero de log."""
+    def __init__(self, original_stream, log_path, max_bytes=5*1024*1024):
+        self._console   = original_stream
+        self._log_path  = log_path
+        self._max_bytes = max_bytes
+
+    def write(self, text):
+        self._console.write(text)
+        self._console.flush()
+        try:
+            # Rotar si excede tamaño
+            if os.path.exists(self._log_path) and os.path.getsize(self._log_path) > self._max_bytes:
+                import shutil
+                shutil.copyfile(self._log_path, self._log_path + '.1')
+                open(self._log_path, 'w').close()
+            with open(self._log_path, 'a', encoding='utf-8') as f:
+                f.write(text)
+        except Exception:
+            pass  # Nunca bloquear el bot por un error de log
+
+    def flush(self):
+        self._console.flush()
+
+    def reconfigure(self, **kwargs):
+        # Compatibilidad con el reconfigure() de sys.stdout
+        try:
+            self._console.reconfigure(**kwargs)
+        except Exception:
+            pass
+
+    def __getattr__(self, name):
+        return getattr(self._console, name)
+
+sys.stdout = _TeeStream(sys.stdout, _LOG_FILE)
+sys.stderr = _TeeStream(sys.stderr, _LOG_FILE)
+# ── fin Tee ───────────────────────────────────────────────────────────────
 
 # ── PARCHE: serializar yf.download para evitar contaminación entre threads ──
 _yf_original_download = yf.download
