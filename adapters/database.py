@@ -1024,6 +1024,76 @@ class DatabaseManager:
         }
 
 
+    # ═══════════════════════════════════════════════════════════
+    # RENDIMIENTO — Tablas de toques de nivel (TP1, TP2, TP3, BreakEven)
+    # ═══════════════════════════════════════════════════════════
+
+    def init_nivel_touches_tables(self):
+        """Crea las 4 tablas de registro de toques de nivel si no existen."""
+        for tabla in ('tp1_hits', 'tp2_hits', 'tp3_hits', 'breakeven_hits'):
+            self.ejecutar_query(f"""
+            CREATE TABLE IF NOT EXISTS {tabla} (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                senal_id     INTEGER NOT NULL,
+                simbolo      TEXT    NOT NULL,
+                direccion    TEXT    NOT NULL,
+                precio_nivel REAL    NOT NULL,
+                precio_actual REAL   NOT NULL,
+                beneficio_pct REAL,
+                timestamp    TEXT    NOT NULL
+            )
+            """)
+            self.ejecutar_query(
+                f"CREATE INDEX IF NOT EXISTS idx_{tabla}_senal ON {tabla}(senal_id)"
+            )
+
+    def _registrar_nivel_hit(self, tabla: str, senal_id: int, simbolo: str,
+                              direccion: str, precio_nivel: float,
+                              precio_actual: float, beneficio_pct: float) -> None:
+        """Inserta un registro en la tabla de toques de nivel indicada."""
+        ts = datetime.now(timezone.utc).isoformat()
+        self.ejecutar_insert(
+            f"""
+            INSERT INTO {tabla}
+                (senal_id, simbolo, direccion, precio_nivel, precio_actual, beneficio_pct, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (senal_id, simbolo, direccion, precio_nivel, precio_actual, beneficio_pct, ts),
+        )
+
+    def registrar_tp1_hit(self, senal_id: int, simbolo: str, direccion: str,
+                          precio_tp1: float, precio_actual: float, beneficio_pct: float) -> None:
+        self._registrar_nivel_hit('tp1_hits', senal_id, simbolo, direccion,
+                                  precio_tp1, precio_actual, beneficio_pct)
+
+    def registrar_tp2_hit(self, senal_id: int, simbolo: str, direccion: str,
+                          precio_tp2: float, precio_actual: float, beneficio_pct: float) -> None:
+        self._registrar_nivel_hit('tp2_hits', senal_id, simbolo, direccion,
+                                  precio_tp2, precio_actual, beneficio_pct)
+
+    def registrar_tp3_hit(self, senal_id: int, simbolo: str, direccion: str,
+                          precio_tp3: float, precio_actual: float, beneficio_pct: float) -> None:
+        self._registrar_nivel_hit('tp3_hits', senal_id, simbolo, direccion,
+                                  precio_tp3, precio_actual, beneficio_pct)
+
+    def registrar_breakeven_hit(self, senal_id: int, simbolo: str, direccion: str,
+                                precio_be: float, precio_actual: float) -> None:
+        self._registrar_nivel_hit('breakeven_hits', senal_id, simbolo, direccion,
+                                  precio_be, precio_actual, 0.0)
+
+    def obtener_hits_senal(self, senal_id: int) -> dict:
+        """Retorna todos los toques de nivel registrados para una señal."""
+        resultado = {}
+        for nivel, tabla in (('tp1', 'tp1_hits'), ('tp2', 'tp2_hits'),
+                              ('tp3', 'tp3_hits'), ('breakeven', 'breakeven_hits')):
+            res = self.ejecutar_query(
+                f"SELECT * FROM {tabla} WHERE senal_id = ? ORDER BY timestamp ASC",
+                (senal_id,)
+            )
+            resultado[nivel] = [dict(r) for r in res.rows] if res.rows else []
+        return resultado
+
+
 if __name__ == '__main__':
     # Test de conexión
     try:

@@ -180,6 +180,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     if precio_max >= tp3 and not tp3_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp3, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
+        db.registrar_tp3_hit(senal_id, simbolo, 'COMPRA', tp3, precio_actual, beneficio)
 
         mensaje = f"""
 🎯🎯🎯 <b>TP3 ALCANZADO!</b>
@@ -201,6 +202,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     if precio_max >= tp2 and not tp2_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp2, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
+        db.registrar_tp2_hit(senal_id, simbolo, 'COMPRA', tp2, precio_actual, beneficio)
 
         mensaje = f"""
 🎯🎯 <b>TP2 ALCANZADO</b>
@@ -223,6 +225,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     if precio_max >= tp1 and not tp1_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp1, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
+        db.registrar_tp1_hit(senal_id, simbolo, 'COMPRA', tp1, precio_actual, beneficio)
 
         mensaje = f"""
 🎯 <b>TP1 ALCANZADO</b>
@@ -267,6 +270,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         if tp1_alcanzado:
             # TP1 ya se tocó → SL fue movido a breakeven automáticamente → cierre en 0
             db.actualizar_estado_senal(senal_id, 'BREAKEVEN', 0.0)
+            db.registrar_breakeven_hit(senal_id, simbolo, 'COMPRA', sl, precio_actual)
             mensaje = (
                 f"🔄 <b>BREAKEVEN — {simbolo}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -329,6 +333,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     if precio_min <= tp3 and not tp3_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp3, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
+        db.registrar_tp3_hit(senal_id, simbolo, 'VENTA', tp3, precio_actual, beneficio)
 
         mensaje = f"""
 🎯🎯🎯 <b>TP3 ALCANZADO!</b>
@@ -350,6 +355,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     if precio_min <= tp2 and not tp2_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp2, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
+        db.registrar_tp2_hit(senal_id, simbolo, 'VENTA', tp2, precio_actual, beneficio)
 
         mensaje = f"""
 🎯🎯 <b>TP2 ALCANZADO</b>
@@ -372,6 +378,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     if precio_min <= tp1 and not tp1_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp1, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
+        db.registrar_tp1_hit(senal_id, simbolo, 'VENTA', tp1, precio_actual, beneficio)
 
         mensaje = f"""
 🎯 <b>TP1 ALCANZADO</b>
@@ -416,6 +423,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         if tp1_alcanzado:
             # TP1 ya se tocó → SL fue movido a breakeven automáticamente → cierre en 0
             db.actualizar_estado_senal(senal_id, 'BREAKEVEN', 0.0)
+            db.registrar_breakeven_hit(senal_id, simbolo, 'VENTA', sl, precio_actual)
             mensaje = (
                 f"🔄 <b>BREAKEVEN — {simbolo}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
