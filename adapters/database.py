@@ -433,15 +433,27 @@ class DatabaseManager:
         """
         now = datetime.now(timezone.utc).isoformat()
         
-        # Actualiza flags correspondientes sin cerrar la señal — solo TP3/SL la cierran
+        # Actualiza flags correspondientes sin cerrar la señal — solo TP3/SL/BREAKEVEN la cierran
         if nuevo_estado == 'TP1':
+            # Al alcanzar TP1 se mueve el SL automáticamente a breakeven (precio_entrada)
             query = """
             UPDATE senales 
-            SET tp1_alcanzado = TRUE, fecha_tp1 = ?
+            SET tp1_alcanzado = TRUE, fecha_tp1 = ?,
+                sl = precio_entrada
             WHERE id = ?
             """
             self.ejecutar_query(query, (now, senal_id))
-            
+
+        elif nuevo_estado == 'BREAKEVEN':
+            # Precio volvió al nivel de entrada tras haber tocado TP1 — cierre en 0
+            query = """
+            UPDATE senales
+            SET sl_alcanzado = TRUE, fecha_sl = ?,
+                estado = 'BREAKEVEN', fecha_cierre = ?, beneficio_final_pct = 0.0
+            WHERE id = ?
+            """
+            self.ejecutar_query(query, (now, now, senal_id))
+
         elif nuevo_estado == 'TP2':
             query = """
             UPDATE senales 

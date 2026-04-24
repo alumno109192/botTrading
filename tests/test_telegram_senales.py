@@ -397,6 +397,40 @@ def test_18_setup_caducado():
     return send(msg, "TEST 18 — Setup caducado (PENDIENTE_CONFIRM expiró)")
 
 # ─────────────────────────────────────────────────────────────
+# TEST 18b — BREAKEVEN SELL (TP1 tocado, precio volvió a entrada)
+# ─────────────────────────────────────────────────────────────
+def test_18b_breakeven_sell():
+    msg = (
+        f"🔄 <b>BREAKEVEN — XAUUSD_1H</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 VENTA | TP1 alcanzado previamente\n"
+        f"💰 Entrada: $4,752.00\n"
+        f"📍 Precio tocó breakeven: $4,752.00\n"
+        f"📈 Actual: $4,753.40\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ Trade cerrado en <b>0% de pérdida</b>\n"
+        f"🔍 El bot buscará nueva oportunidad de entrada"
+    )
+    return send(msg, "TEST 18b — BREAKEVEN SELL (precio volvió a entrada tras TP1)")
+
+# ─────────────────────────────────────────────────────────────
+# TEST 18c — BREAKEVEN BUY (TP1 tocado, precio volvió a entrada)
+# ─────────────────────────────────────────────────────────────
+def test_18c_breakeven_buy():
+    msg = (
+        f"🔄 <b>BREAKEVEN — XAUUSD_1H</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 COMPRA | TP1 alcanzado previamente\n"
+        f"💰 Entrada: $4,618.00\n"
+        f"📍 Precio tocó breakeven: $4,618.00\n"
+        f"📉 Actual: $4,616.80\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ Trade cerrado en <b>0% de pérdida</b>\n"
+        f"🔍 El bot buscará nueva oportunidad de entrada"
+    )
+    return send(msg, "TEST 18c — BREAKEVEN BUY (precio volvió a entrada tras TP1)")
+
+# ─────────────────────────────────────────────────────────────
 # TEST 19 — SELL MÁXIMA (score muy alto, múltiples confluencias)
 # ─────────────────────────────────────────────────────────────
 def test_19_sell_maxima():
@@ -466,6 +500,8 @@ if __name__ == '__main__':
         test_16_progreso_50,
         test_17_confirmacion_entrada,
         test_18_setup_caducado,
+        test_18b_breakeven_sell,
+        test_18c_breakeven_buy,
         test_19_sell_maxima,
         test_20_fin,
     ]

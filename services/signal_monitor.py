@@ -262,24 +262,38 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
             progreso_50_enviado.add(senal_id)
             print(f"  ⚡ [50%] {simbolo} COMPRA — notificación de progreso enviada")
 
-    # Verificar SL (Stop Loss) — usa Low reciente para capturar caídas entre polls
+    # Verificar SL / Breakeven — usa Low reciente
     if precio_min <= sl and not sl_alcanzado:
-        beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
-        db.actualizar_estado_senal(senal_id, 'SL', beneficio)
-        
-        mensaje = f"""
-❌ <b>STOP LOSS ACTIVADO</b>
-
-📊 {simbolo} | COMPRA
-💰 Entrada: ${precio_entrada:.2f}
-🛑 SL: ${sl:.2f}
-📉 Actual: ${precio_actual:.2f}
-💸 Pérdida: {beneficio:.2f}%
-
-📋 <b>ACCIÓN RECOMENDADA:</b>
-🔴 Cerrar el 100% de la posición
-        """
-        enviar_notificacion_telegram(mensaje, simbolo)
+        if tp1_alcanzado:
+            # TP1 ya se tocó → SL fue movido a breakeven automáticamente → cierre en 0
+            db.actualizar_estado_senal(senal_id, 'BREAKEVEN', 0.0)
+            mensaje = (
+                f"🔄 <b>BREAKEVEN — {simbolo}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 COMPRA | TP1 alcanzado previamente\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Precio tocó breakeven: ${sl:.2f}\n"
+                f"📉 Actual: ${precio_actual:.2f}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ Trade cerrado en <b>0% de pérdida</b>\n"
+                f"🔍 El bot buscará nueva oportunidad de entrada"
+            )
+            enviar_notificacion_telegram(mensaje, simbolo)
+            print(f"  🔄 [{simbolo}] BREAKEVEN BUY — cerrada en entrada ${precio_entrada:.2f}")
+        else:
+            beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
+            db.actualizar_estado_senal(senal_id, 'SL', beneficio)
+            mensaje = (
+                f"❌ <b>STOP LOSS ACTIVADO</b>\n\n"
+                f"📊 {simbolo} | COMPRA\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"🛑 SL: ${sl:.2f}\n"
+                f"📉 Actual: ${precio_actual:.2f}\n"
+                f"💸 Pérdida: {beneficio:.2f}%\n\n"
+                f"📋 <b>ACCIÓN RECOMENDADA:</b>\n"
+                f"🔴 Cerrar el 100% de la posición"
+            )
+            enviar_notificacion_telegram(mensaje, simbolo)
         return
 
 
@@ -397,24 +411,38 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
             progreso_50_enviado.add(senal_id)
             print(f"  ⚡ [50%] {simbolo} VENTA — notificación de progreso enviada")
 
-    # Verificar SL (Stop Loss) — usa High reciente para capturar subidas entre polls
+    # Verificar SL / Breakeven — usa High reciente
     if precio_max >= sl and not sl_alcanzado:
-        beneficio = calcular_beneficio_pct(precio_entrada, sl, 'VENTA')
-        db.actualizar_estado_senal(senal_id, 'SL', beneficio)
-
-        mensaje = f"""
-❌ <b>STOP LOSS ACTIVADO</b>
-
-📊 {simbolo} | VENTA
-💰 Entrada: ${precio_entrada:.2f}
-🛑 SL: ${sl:.2f}
-📈 Actual: ${precio_actual:.2f}
-💸 Pérdida: {beneficio:.2f}%
-
-📋 <b>ACCIÓN RECOMENDADA:</b>
-🔴 Cerrar el 100% de la posición
-        """
-        enviar_notificacion_telegram(mensaje, simbolo)
+        if tp1_alcanzado:
+            # TP1 ya se tocó → SL fue movido a breakeven automáticamente → cierre en 0
+            db.actualizar_estado_senal(senal_id, 'BREAKEVEN', 0.0)
+            mensaje = (
+                f"🔄 <b>BREAKEVEN — {simbolo}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 VENTA | TP1 alcanzado previamente\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Precio tocó breakeven: ${sl:.2f}\n"
+                f"📈 Actual: ${precio_actual:.2f}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ Trade cerrado en <b>0% de pérdida</b>\n"
+                f"🔍 El bot buscará nueva oportunidad de entrada"
+            )
+            enviar_notificacion_telegram(mensaje, simbolo)
+            print(f"  🔄 [{simbolo}] BREAKEVEN SELL — cerrada en entrada ${precio_entrada:.2f}")
+        else:
+            beneficio = calcular_beneficio_pct(precio_entrada, sl, 'VENTA')
+            db.actualizar_estado_senal(senal_id, 'SL', beneficio)
+            mensaje = (
+                f"❌ <b>STOP LOSS ACTIVADO</b>\n\n"
+                f"📊 {simbolo} | VENTA\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"🛑 SL: ${sl:.2f}\n"
+                f"📈 Actual: ${precio_actual:.2f}\n"
+                f"💸 Pérdida: {beneficio:.2f}%\n\n"
+                f"📋 <b>ACCIÓN RECOMENDADA:</b>\n"
+                f"🔴 Cerrar el 100% de la posición"
+            )
+            enviar_notificacion_telegram(mensaje, simbolo)
         return
 
 
