@@ -480,9 +480,11 @@ def _confirmar_con_velas_1m(ticker: str, direccion: str, precio_entrada: float) 
             ema_sym = '<' if ema9 < ema21 else '>'
 
         desc = (
-            f"1M: EMA9={ema9:.2f} {ema_sym} EMA21={ema21:.2f} | "
+            f"1M: EMA9={ema9:.2f} {'>' if ema9 > ema21 else '<'} EMA21={ema21:.2f} | "
             f"RSI={rsi:.1f} | Precio=${precio_actual:.2f} | ATR={atr_1m:.2f}"
         )
+        # Escapar para HTML (el desc se usa dentro de <code>...</code>)
+        desc = desc.replace('<', '&lt;').replace('>', '&gt;')
         return confirmado, desc
 
     except Exception as e:
