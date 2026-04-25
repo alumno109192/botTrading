@@ -39,10 +39,10 @@ class DatabaseManager:
         return cls._instance
 
     def __init__(self):
+        """Inicializa la conexión a Turso usando URL y TOKEN del .env"""
         if self._initialized:
             return
         self._initialized = True
-        """Inicializa la conexión a Turso usando URL y TOKEN del .env"""
         self.db_url = os.environ.get('TURSO_DATABASE_URL')
         self.db_token = os.environ.get('TURSO_AUTH_TOKEN')
         
@@ -1169,6 +1169,19 @@ class DatabaseManager:
             'obstaculos':       json.loads(r.get('obstaculos_json') or '[]'),
             'todas_a_favor':    bool(r['todas_a_favor']),
         }
+
+
+def get_db() -> Optional[DatabaseManager]:
+    """Retorna el singleton DatabaseManager, o None si Turso no está configurado.
+
+    Centraliza la lógica de inicialización opcional de la BD para que los
+    detectores no repitan el mismo bloque try/except en cada módulo.
+    """
+    turso_url = os.environ.get('TURSO_DATABASE_URL')
+    turso_token = os.environ.get('TURSO_AUTH_TOKEN')
+    if not turso_url or not turso_token:
+        return None
+    return DatabaseManager()
 
 
 if __name__ == '__main__':

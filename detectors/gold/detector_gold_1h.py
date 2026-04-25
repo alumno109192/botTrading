@@ -23,19 +23,8 @@ def enviar_telegram(mensaje):
     sufijo = f"\n⚠️ <b>Evento macro próximo:</b> {_aviso_macro}" if _aviso_macro else ""
     return _enviar_telegram_base(mensaje + sufijo, TELEGRAM_THREAD_ID)
 
-db = None
-try:
-    turso_url = os.environ.get('TURSO_DATABASE_URL')
-    turso_token = os.environ.get('TURSO_AUTH_TOKEN')
-    if turso_url and turso_token:
-        from adapters.database import DatabaseManager
-        db = DatabaseManager()
-        print("✅ Sistema de tracking de BD activado (Gold 1H)")
-    else:
-        print("⚠️  Variables Turso no configuradas - Sistema funcionará sin tracking de BD")
-except Exception as e:
-    print(f"⚠️  No se pudo inicializar BD: {e}")
-    db = None
+from adapters.database import get_db
+db = get_db()
 
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID')

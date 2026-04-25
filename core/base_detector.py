@@ -64,19 +64,8 @@ class BaseDetector(ABC):
         self.aviso_macro: str = ""
 
         # Inicializar BD si las variables están configuradas
-        self.db = None
-        try:
-            turso_url = os.environ.get('TURSO_DATABASE_URL')
-            turso_token = os.environ.get('TURSO_AUTH_TOKEN')
-            if turso_url and turso_token:
-                from adapters.database import DatabaseManager
-                self.db = DatabaseManager()
-                print(f"✅ [{tf_label}] Sistema de tracking de BD activado")
-            else:
-                print(f"⚠️  [{tf_label}] Variables Turso no configuradas - sin tracking BD")
-        except Exception as e:
-            print(f"⚠️  [{tf_label}] No se pudo inicializar BD: {e}")
-            self.db = None
+        from adapters.database import get_db
+        self.db = get_db()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Método abstracto — debe implementarse en cada subclase
