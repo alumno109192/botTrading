@@ -693,7 +693,7 @@ def monitor_senales():
     logger.info(f"⏱️  Swing  (4H/1D):   cada {_INTERVALO_SWING}s")
     logger.info(f"⚡ Fetch deduplicado: 1 llamada por ticker subyacente por ciclo")
     logger.info("="*60)
-    logger.info()
+
 
     # Inicializar conexión a base de datos
     db = None

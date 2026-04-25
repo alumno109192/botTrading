@@ -81,7 +81,7 @@ def iniciar_detectores(estado_sistema, threads_detectores):
     logger.info("🥇 GOLD SIGNAL BOT — Clean Architecture")
     logger.info("=" * 60)
     logger.info(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info()
+
     logger.info(f"📊 Detectores activos: {len(activos)}")
     for key in activos:
         logger.info(f"  🔹 {activos[key]['label']}")
@@ -89,7 +89,7 @@ def iniciar_detectores(estado_sistema, threads_detectores):
     for key in SERVICE_REGISTRY:
         logger.info(f"  🔹 {SERVICE_REGISTRY[key]['label']}")
     logger.info("=" * 60)
-    logger.info()
+
 
     # ── Detectores ──────────────────────────────────────────
     for clave, config in DETECTOR_REGISTRY.items():
