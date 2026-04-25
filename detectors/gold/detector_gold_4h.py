@@ -897,57 +897,42 @@ class GoldDetector4H(BaseDetector):
                         logger.error(f"  ⚠️ Error BD: {e}")
                 self.enviar(msg); self.marcar_enviada(f"{clave_vela}_DSUELO")
 
-    # ══════════════════════════════════════
-    # BUCLE PRINCIPAL
-    # ══════════════════════════════════════
-    def main():
-        logger.info("🚀 Detector GOLD 4H iniciado")
-        logger.info(f"⏱️  Revisando cada {CHECK_INTERVAL//60} minutos")
-
-        self.enviar("🚀 <b>Detector GOLD 4H iniciado</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━\n"
-                        "📊 Monitorizando: XAUUSD (Gold)\n"
-                        "⏱️ Timeframe: 4H\n"
-                        "🔄 Revisión cada 7 minutos\n"
-                        "💚 Filtros más estrictos que 1D\n"
-                        "✅ Score mínimo: 5 (alerta), 9 (media), 12 (fuerte), 14 (máxima)\n"
-                        "━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🔴 Resistencia: $4,750 - $4,900\n"
-                        f"🟢 Soporte:     $4,200 - $4,400")
-
-        ciclo = 0
-        while True:
-            ciclo += 1
-            ahora_utc = datetime.now(timezone.utc)
-
-            # ── Sábado: futuros Gold cerrados. Domingo 18:00 UTC abre Globex ──
-            if ahora_utc.weekday() == 5:  # 5=Sábado únicamente
-                from datetime import timedelta
-                proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
-                segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
-                logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
-                time.sleep(segundos_espera)
-                continue
-
-            ahora = ahora_utc.strftime('%Y-%m-%d %H:%M:%S')
-            logger.info(f"\n{'='*60}")
-            logger.info(f"[{ahora}] 🔄 CICLO #{ciclo} - Iniciando análisis GOLD 4H")
-            logger.info(f"{'='*60}")
-        
-            for simbolo, params in SIMBOLOS.items():
-                logger.info(f"\n📊 Analizando {simbolo} [4H]...")
-                analizar(simbolo, params)
-        
-            logger.info(f"\n{'='*60}")
-            logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ Ciclo #{ciclo} completado")
-            logger.info(f"⏳ Esperando {CHECK_INTERVAL//60} minutos hasta el próximo análisis...")
-            logger.info(f"{'='*60}\n")
-            time.sleep(CHECK_INTERVAL)
-
-    if __name__ == '__main__':
-        main()
-
 
 def analizar(simbolo, params):
     return GoldDetector4H(simbolo=simbolo, tf_label='4H', params=params, telegram_thread_id=TELEGRAM_THREAD_ID).analizar(simbolo, params)
+
+
+def main():
+    logger.info("🚀 Detector GOLD 4H iniciado")
+    logger.info(f"⏱️  Revisando cada {CHECK_INTERVAL // 60} minutos")
+    enviar_telegram("🚀 <b>Detector GOLD 4H iniciado</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "📊 Monitorizando: XAUUSD (Gold)\n"
+                    "⏱️ Timeframe: 4H\n"
+                    "🔄 Revisión cada 7 minutos\n"
+                    "💚 Filtros más estrictos que 1D")
+    ciclo = 0
+    while True:
+        ciclo += 1
+        ahora_utc = datetime.now(timezone.utc)
+        if ahora_utc.weekday() == 5:
+            from datetime import timedelta
+            proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(
+                hour=18, minute=0, second=0, microsecond=0)
+            segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
+            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado.")
+            time.sleep(segundos_espera)
+            continue
+        ahora = ahora_utc.strftime('%Y-%m-%d %H:%M:%S')
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"[{ahora}] 🔄 CICLO #{ciclo} - Iniciando análisis GOLD 4H")
+        for simbolo, params in SIMBOLOS.items():
+            logger.info(f"\n📊 Analizando {simbolo} [4H]...")
+            analizar(simbolo, params)
+        logger.info(f"⏳ Esperando {CHECK_INTERVAL // 60} minutos...")
+        time.sleep(CHECK_INTERVAL)
+
+
+if __name__ == '__main__':
+    main()
 

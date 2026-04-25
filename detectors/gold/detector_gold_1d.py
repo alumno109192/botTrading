@@ -1128,43 +1128,37 @@ class GoldDetector1D(BaseDetector):
                         logger.error(f"  ⚠️ Error BD: {e}")
                 self.enviar(msg); self.marcar_enviada(f"{clave_vela}_DSUELO")
 
-    # ══════════════════════════════════════
-    # BUCLE PRINCIPAL
-    # ══════════════════════════════════════
-    def main():
-        logger.info("🚀 Detector de señales iniciado")
-        logger.info(f"⏱️  Revisando cada {CHECK_INTERVAL//60} minutos")
-        logger.info(f"📊 Símbolos: {list(SIMBOLOS.keys())}")
-
-        # Enviar mensaje de arranque
-        self.enviar("🚀 <b>Detector de señales iniciado</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━\n"
-                        "📊 Monitorizando: XAUUSD\n"
-                        "⏱️ Timeframe: 1D\n"
-                        "🔄 Revisión cada 10 minutos\n"
-                        "🎯 Sistema con confluencia técnico + sentimiento\n"
-                        "✅ Solo señales de ALTA CALIDAD\n"
-                        "💎 Calidad > Cantidad")
-
-        while True:
-            # ── Fin de semana: los mercados de futuros cierran → no analizar ──
-            ahora_utc = datetime.now(timezone.utc)
-            if ahora_utc.weekday() == 5:  # 5=Sábado únicamente
-                from datetime import timedelta
-                proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
-                segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
-                logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
-                time.sleep(segundos_espera)
-                continue
-
-            for simbolo, params in SIMBOLOS.items():
-                analizar(simbolo, params)
-            logger.info(f"\n⏳ Esperando {CHECK_INTERVAL//60} minutos...\n")
-            time.sleep(CHECK_INTERVAL)
-
-    if __name__ == '__main__':
-        main()
 
 def analizar(simbolo, params):
     return GoldDetector1D(simbolo=simbolo, tf_label='1D', params=params, telegram_thread_id=TELEGRAM_THREAD_ID).analizar(simbolo, params)
+
+
+def main():
+    logger.info("🚀 Detector de señales GOLD 1D iniciado")
+    logger.info(f"⏱️  Revisando cada {CHECK_INTERVAL // 60} minutos")
+    logger.info(f"📊 Símbolos: {list(SIMBOLOS.keys())}")
+    enviar_telegram("🚀 <b>Detector de señales GOLD 1D iniciado</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "📊 Monitorizando: XAUUSD\n"
+                    "⏱️ Timeframe: 1D\n"
+                    "🔄 Revisión cada 10 minutos\n"
+                    "💎 Calidad > Cantidad")
+    while True:
+        ahora_utc = datetime.now(timezone.utc)
+        if ahora_utc.weekday() == 5:
+            from datetime import timedelta
+            proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(
+                hour=18, minute=0, second=0, microsecond=0)
+            segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
+            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado.")
+            time.sleep(segundos_espera)
+            continue
+        for simbolo, params in SIMBOLOS.items():
+            analizar(simbolo, params)
+        logger.info(f"\n⏳ Esperando {CHECK_INTERVAL // 60} minutos...\n")
+        time.sleep(CHECK_INTERVAL)
+
+
+if __name__ == '__main__':
+    main()
 

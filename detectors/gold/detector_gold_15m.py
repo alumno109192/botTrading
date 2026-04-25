@@ -496,55 +496,38 @@ class GoldDetector15M(BaseDetector):
         except Exception as e:
             logger.error(f"❌ Error analizando {simbolo}: {e}")
 
-    # ══════════════════════════════════════
-    # FUNCIÓN MAIN (para importación desde run_detectors)
-    # ══════════════════════════════════════
-    def main():
-        """Función principal para ejecutar el detector"""
-        self.enviar("🚀 <b>Detector GOLD 15M SCALPING iniciado</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━\n"
-                        "⏱️  Análisis cada 2 minutos\n"
-                        "⚡ Optimizado para operaciones rápidas\n"
-                        "🎯 TPs: $30 / $50 / $80\n"
-                        "📊 Score mínimo: 3/15")
-    
-        ciclo = 0
-        while True:
-            ciclo += 1
-            ahora_utc = datetime.now(timezone.utc)
-
-            # ── Sábado: futuros Gold cerrados. Domingo 18:00 UTC abre Globex ──
-            if ahora_utc.weekday() == 5:  # 5=Sábado únicamente
-                from datetime import timedelta
-                proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
-                segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
-                logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
-                time.sleep(segundos_espera)
-                continue
-
-            logger.info("\n" + "="*60)
-            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 CICLO #{ciclo} - GOLD 15M SCALPING")
-            logger.info("="*60 + "\n")
-        
-            for simbolo, params in SIMBOLOS.items():
-                logger.info(f"📊 Analizando {simbolo} [15M SCALPING]...\n")
-                logger.info(f"🔍 Analizando {simbolo}...")
-                analizar_simbolo(simbolo, params)
-        
-            logger.info("\n" + "="*60)
-            logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ Ciclo #{ciclo} completado")
-            logger.info(f"⏳ Esperando {CHECK_INTERVAL//60} minutos...")
-            logger.info("="*60 + "\n")
-        
-            time.sleep(CHECK_INTERVAL)
-
-    # ══════════════════════════════════════
-    # BUCLE PRINCIPAL
-    # ══════════════════════════════════════
-    if __name__ == "__main__":
-        main()
 
 
 def analizar_simbolo(simbolo, params):
     return GoldDetector15M(simbolo=simbolo, tf_label='15M', params=params, telegram_thread_id=TELEGRAM_THREAD_ID).analizar(simbolo, params)
+
+
+def main():
+    """Función principal para ejecutar el detector."""
+    enviar_telegram("🚀 <b>Detector GOLD 15M SCALPING iniciado</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "⏱️  Análisis cada 2 minutos\n"
+                    "⚡ Optimizado para operaciones rápidas\n"
+                    "📊 Score mínimo: 3/15")
+    ciclo = 0
+    while True:
+        ciclo += 1
+        ahora_utc = datetime.now(timezone.utc)
+        if ahora_utc.weekday() == 5:
+            from datetime import timedelta
+            proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(
+                hour=18, minute=0, second=0, microsecond=0)
+            segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
+            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado.")
+            time.sleep(segundos_espera)
+            continue
+        logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 CICLO #{ciclo} - GOLD 15M SCALPING")
+        for simbolo, params in SIMBOLOS.items():
+            analizar_simbolo(simbolo, params)
+        logger.info(f"⏳ Esperando {CHECK_INTERVAL // 60} minutos...")
+        time.sleep(CHECK_INTERVAL)
+
+
+if __name__ == "__main__":
+    main()
 

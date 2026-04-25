@@ -427,55 +427,47 @@ class GoldDetector5M(BaseDetector):
             logger.error(f"❌ Error analizando {simbolo} [5M]: {e}")
 
 
-    # ══════════════════════════════════════
-    # FUNCIÓN MAIN
-    # ══════════════════════════════════════
-    def main():
-        """Función principal para ejecutar el detector"""
-        global perdidas_consecutivas
-        self.enviar("🚀 <b>Detector GOLD 5M MICRO-SCALP iniciado</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━\n"
-                        "⏱️  Análisis cada 1 minuto\n"
-                        "⚡ Confluencia 1D + 4H + 1H + 15M\n"
-                        "🎯 TPs: $20 / $35 / $60\n"
-                        "🔒 Operaciones máx 30 min")
-
-        # Cargar pérdidas consecutivas desde BD al arrancar (sobrevive reinicios)
-        if self.db:
-            try:
-                perdidas_consecutivas = self.db.contar_perdidas_consecutivas('XAUUSD_5M')
-                logger.info(f"📊 [5M] Pérdidas consecutivas cargadas desde BD: {perdidas_consecutivas}")
-            except Exception:
-                pass
-
-        ciclo = 0
-        while True:
-            ciclo += 1
-            ahora_utc = datetime.now(timezone.utc)
-
-            # ── Sábado: futuros Gold cerrados. Domingo 18:00 UTC abre Globex ──
-            if ahora_utc.weekday() == 5:  # 5=Sábado únicamente
-                from datetime import timedelta
-                proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
-                segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
-                logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
-                time.sleep(segundos_espera)
-                continue
-
-            logger.info(f"\n[{ahora_utc.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 CICLO #{ciclo} — GOLD 5M MICRO-SCALP")
-
-            for simbolo, params in SIMBOLOS.items():
-                logger.info(f"📊 Analizando {simbolo} [5M MICRO-SCALP]...")
-                analizar_simbolo(simbolo, params)
-
-            logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ Ciclo #{ciclo} completado — esperando {CHECK_INTERVAL}s")
-            time.sleep(CHECK_INTERVAL)
-
-
-    if __name__ == "__main__":
-        main()
 
 
 def analizar_simbolo(simbolo, params):
     return GoldDetector5M(simbolo=simbolo, tf_label='5M', params=params, telegram_thread_id=TELEGRAM_THREAD_ID).analizar(simbolo, params)
+
+
+def main():
+    """Función principal para ejecutar el detector."""
+    global perdidas_consecutivas
+    enviar_telegram("🚀 <b>Detector GOLD 5M MICRO-SCALP iniciado</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "⏱️  Análisis cada 1 minuto\n"
+                    "⚡ Confluencia 1D + 4H + 1H + 15M\n"
+                    "🔒 Operaciones máx 30 min")
+    try:
+        from adapters.database import get_db as _get_db
+        _db = _get_db()
+        if _db:
+            perdidas_consecutivas = _db.contar_perdidas_consecutivas('XAUUSD_5M')
+            logger.info(f"📊 [5M] Pérdidas consecutivas cargadas desde BD: {perdidas_consecutivas}")
+    except Exception:
+        pass
+    ciclo = 0
+    while True:
+        ciclo += 1
+        ahora_utc = datetime.now(timezone.utc)
+        if ahora_utc.weekday() == 5:
+            from datetime import timedelta
+            proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(
+                hour=18, minute=0, second=0, microsecond=0)
+            segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
+            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado.")
+            time.sleep(segundos_espera)
+            continue
+        logger.info(f"\n[{ahora_utc.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 CICLO #{ciclo} — GOLD 5M MICRO-SCALP")
+        for simbolo, params in SIMBOLOS.items():
+            analizar_simbolo(simbolo, params)
+        logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ Ciclo #{ciclo} completado — esperando {CHECK_INTERVAL}s")
+        time.sleep(CHECK_INTERVAL)
+
+
+if __name__ == "__main__":
+    main()
 
