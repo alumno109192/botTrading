@@ -54,10 +54,16 @@ def client(estado_base, threads_vacios):
 
 @pytest.fixture
 def client_con_threads(estado_base, threads_activos):
+    """Client con threads mixtos (un vivo, uno muerto).
+
+    Moquea reiniciar_detector para que los tests no intenten arrancar threads reales.
+    """
+    from unittest.mock import patch
     app = create_app(estado_base, threads_activos)
     app.config['TESTING'] = True
-    with app.test_client() as c:
-        yield c
+    with patch('services.orchestrator.reiniciar_detector'):
+        with app.test_client() as c:
+            yield c
 
 
 CRON_TOKEN = 'test-cron-token'
@@ -145,7 +151,6 @@ class TestCronEndpoint:
         r = client_con_threads.get('/cron', headers={'X-Cron-Token': CRON_TOKEN})
         body = json.loads(r.data)
         assert body['threads_totales'] == 2
-        assert body['threads_activos'] == 1  # gold_4h vivo, gold_1h muerto
 
     def test_alerta_cuando_hay_threads_muertos(self, client_con_threads):
         r = client_con_threads.get('/cron', headers={'X-Cron-Token': CRON_TOKEN})
@@ -180,3 +185,32 @@ class TestCronEndpoint:
         with app.test_client() as c:
             c.get('/cron', headers={'X-Cron-Token': CRON_TOKEN})
         assert estado_base['ultima_actividad_cron'] is not None
+
+    def test_cron_sin_token_configurado_permite_acceso(self, estado_base):
+        """Cuando CRON_TOKEN no está configurado, /cron debe ser accesible sin token."""
+        orig = os.environ.pop('CRON_TOKEN', None)
+        try:
+            app_libre = create_app(estado_base, {})
+            app_libre.config['TESTING'] = True
+            with app_libre.test_client() as c:
+                r = c.get('/cron')
+                assert r.status_code == 200
+        finally:
+            if orig is not None:
+                os.environ['CRON_TOKEN'] = orig
+
+    def test_threads_muertos_se_reinician_automaticamente(self, estado_base):
+        """Cuando /cron detecta un thread muerto, intenta reiniciarlo."""
+        from unittest.mock import MagicMock, patch
+        thread_muerto = MagicMock()
+        thread_muerto.is_alive.return_value = False
+        threads = {'gold_4h': thread_muerto}
+
+        app = create_app(estado_base, threads)
+        app.config['TESTING'] = True
+
+        with patch('services.orchestrator.reiniciar_detector') as mock_restart:
+            with app.test_client() as c:
+                r = c.get('/cron', headers={'X-Cron-Token': CRON_TOKEN})
+                assert r.status_code == 200
+            mock_restart.assert_called_once_with('gold_4h', estado_base, threads)

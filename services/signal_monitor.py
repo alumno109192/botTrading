@@ -16,6 +16,9 @@ from adapters.database import DatabaseManager
 # (tanto yf.download() como yf.Ticker().history())
 from adapters.yf_lock import _yf_lock
 
+import logging
+logger = logging.getLogger('bottrading')
+
 # Cargar variables de entorno
 load_dotenv()
 
@@ -70,13 +73,13 @@ def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
             if res is not None:
                 return res
         except Exception as e:
-            print(f"⚠️ [{ticker}] Error leyendo precio de BD: {e}")
+            logger.error(f"⚠️ [{ticker}] Error leyendo precio de BD: {e}")
 
     # ── Paso 2: yfinance (fallback) con timeout en el lock ───────────────────
     try:
         acquired = _yf_lock.acquire(timeout=8)
         if not acquired:
-            print(f"⚠️ [{ticker}] Lock yfinance ocupado >8s — skip este tick")
+            logger.warning(f"⚠️ [{ticker}] Lock yfinance ocupado >8s — skip este tick")
             return None
         try:
             hist = yf.Ticker(ticker).history(period='1d', interval='1m')
@@ -90,7 +93,7 @@ def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
         precio_min    = float(ventana['Low'].min())
         return (precio_actual, precio_max, precio_min)
     except Exception as e:
-        print(f"❌ Error descargando {ticker}: {e}")
+        logger.error(f"❌ Error descargando {ticker}: {e}")
         return None
 
 
@@ -109,7 +112,7 @@ def obtener_precio_actual(simbolo: str) -> tuple | None:
     simbolo_base = simbolo.split('_')[0]
     ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
     if not ticker:
-        print(f"⚠️ Símbolo desconocido: {simbolo} (base: {simbolo_base})")
+        logger.warning(f"⚠️ Símbolo desconocido: {simbolo} (base: {simbolo_base})")
         return None
     return _fetch_precios_ticker(ticker)
 
@@ -131,12 +134,12 @@ def enviar_notificacion_telegram(mensaje: str, simbolo: str = None):
         response = requests.post(url, json=data, timeout=10)
 
         if response.status_code == 200:
-            print(f"✅ Notificación enviada: {mensaje[:50]}...")
+            logger.info(f"✅ Notificación enviada: {mensaje[:50]}...")
         else:
-            print(f"⚠️ Error enviando notificación: {response.status_code}")
+            logger.error(f"⚠️ Error enviando notificación: {response.status_code}")
             
     except Exception as e:
-        print(f"❌ Error en Telegram: {e}")
+        logger.error(f"❌ Error en Telegram: {e}")
 
 
 def calcular_beneficio_pct(precio_entrada: float, precio_actual: float, 
@@ -168,7 +171,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         tp3 = float(senal['tp3'])
         sl  = float(senal['sl'])
     except (TypeError, ValueError):
-        print(f"\u26a0\ufe0f [monitor] Se\u00f1al {senal_id} tiene precios nulos/inv\u00e1lidos — saltando")
+        logger.info(f"\u26a0\ufe0f [monitor] Se\u00f1al {senal_id} tiene precios nulos/inv\u00e1lidos — saltando")
         return
     # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
     tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
@@ -263,7 +266,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
             )
             enviar_notificacion_telegram(msg_50, simbolo)
             progreso_50_enviado.add(senal_id)
-            print(f"  ⚡ [50%] {simbolo} COMPRA — notificación de progreso enviada")
+            logger.info(f"  ⚡ [50%] {simbolo} COMPRA — notificación de progreso enviada")
 
     # Verificar SL / Breakeven — usa Low reciente
     if precio_min <= sl and not sl_alcanzado:
@@ -283,7 +286,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
                 f"🔍 El bot buscará nueva oportunidad de entrada"
             )
             enviar_notificacion_telegram(mensaje, simbolo)
-            print(f"  🔄 [{simbolo}] BREAKEVEN BUY — cerrada en entrada ${precio_entrada:.2f}")
+            logger.info(f"  🔄 [{simbolo}] BREAKEVEN BUY — cerrada en entrada ${precio_entrada:.2f}")
         else:
             beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
             db.actualizar_estado_senal(senal_id, 'SL', beneficio)
@@ -321,7 +324,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         tp3 = float(senal['tp3'])
         sl  = float(senal['sl'])
     except (TypeError, ValueError):
-        print(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
+        logger.warning(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
         return
     # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
     tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
@@ -416,7 +419,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
             )
             enviar_notificacion_telegram(msg_50, simbolo)
             progreso_50_enviado.add(senal_id)
-            print(f"  ⚡ [50%] {simbolo} VENTA — notificación de progreso enviada")
+            logger.info(f"  ⚡ [50%] {simbolo} VENTA — notificación de progreso enviada")
 
     # Verificar SL / Breakeven — usa High reciente
     if precio_max >= sl and not sl_alcanzado:
@@ -436,7 +439,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
                 f"🔍 El bot buscará nueva oportunidad de entrada"
             )
             enviar_notificacion_telegram(mensaje, simbolo)
-            print(f"  🔄 [{simbolo}] BREAKEVEN SELL — cerrada en entrada ${precio_entrada:.2f}")
+            logger.info(f"  🔄 [{simbolo}] BREAKEVEN SELL — cerrada en entrada ${precio_entrada:.2f}")
         else:
             beneficio = calcular_beneficio_pct(precio_entrada, sl, 'VENTA')
             db.actualizar_estado_senal(senal_id, 'SL', beneficio)
@@ -538,7 +541,7 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
         return
 
     ahora = datetime.now(timezone.utc)
-    print(f"  ⏳ Pendientes de confirmación 1H: {len(pendientes)}")
+    logger.info(f"  ⏳ Pendientes de confirmación 1H: {len(pendientes)}")
 
     for senal in pendientes:
         senal_id  = senal['id']
@@ -566,14 +569,14 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
                 f"⌛ Esperó {int(antiguedad_h*60)} min sin alineación inferior"
             )
             enviar_notificacion_telegram(msg_caduca, simbolo)
-            print(f"  ⏰ Señal {senal_id} ({simbolo} {direccion}) caducada por timeout")
+            logger.info(f"  ⏰ Señal {senal_id} ({simbolo} {direccion}) caducada por timeout")
             continue
 
 # Obtener ticker para este símbolo
         simbolo_base = simbolo.split('_')[0]
         ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
         if not ticker:
-            print(f"  ⚠️ Ticker desconocido para {simbolo} — saltando")
+            logger.warning(f"  ⚠️ Ticker desconocido para {simbolo} — saltando")
             continue
 
         try:
@@ -591,7 +594,7 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
         confirmado, desc_1m = _confirmar_con_velas_1m(ticker, direccion, precio_entrada)
 
         if not confirmado:
-            print(f"  ⏳ {simbolo} {direccion} ({int(antiguedad_h*60)}min) — 1M no confirma: {desc_1m}")
+            logger.info(f"  ⏳ {simbolo} {direccion} ({int(antiguedad_h*60)}min) — 1M no confirma: {desc_1m}")
             continue
 
         # ✅ Confirmación recibida — activar señal y notificar
@@ -615,7 +618,7 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
             f"<code>{desc_1m}</code>"
         )
         enviar_notificacion_telegram(msg_confirm, simbolo)
-        print(f"  ✅ Señal {senal_id} ({simbolo} {direccion}) confirmada: {desc_1m}")
+        logger.info(f"  ✅ Señal {senal_id} ({simbolo} {direccion}) confirmada: {desc_1m}")
 
 
 def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
@@ -641,7 +644,7 @@ def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
         for row in result.rows:
             senal = dict(row)
             db.cerrar_senal(senal['id'], 'CANCELADA', 0.0)
-            print(f"🗓️ Señal {senal['id']} cerrada por antigüedad (>{dias} días)")
+            logger.info(f"🗓️ Señal {senal['id']} cerrada por antigüedad (>{dias} días)")
 
 
 
@@ -681,26 +684,26 @@ def monitor_senales():
       • 1H        → cada 2 minutos
       • 4H / 1D   → cada 5 minutos
     """
-    print("="*60)
-    print("🔍 MONITOR DE SEÑALES INICIADO")
-    print("="*60)
-    print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"⏱️  Scalping (5M/15M): cada {_INTERVALO_SCALPING}s  ← tick base")
-    print(f"⏱️  Intraday  (1H):    cada {_INTERVALO_INTRADAY}s")
-    print(f"⏱️  Swing  (4H/1D):   cada {_INTERVALO_SWING}s")
-    print(f"⚡ Fetch deduplicado: 1 llamada por ticker subyacente por ciclo")
-    print("="*60)
-    print()
+    logger.info("="*60)
+    logger.info("🔍 MONITOR DE SEÑALES INICIADO")
+    logger.info("="*60)
+    logger.info(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"⏱️  Scalping (5M/15M): cada {_INTERVALO_SCALPING}s  ← tick base")
+    logger.info(f"⏱️  Intraday  (1H):    cada {_INTERVALO_INTRADAY}s")
+    logger.info(f"⏱️  Swing  (4H/1D):   cada {_INTERVALO_SWING}s")
+    logger.info(f"⚡ Fetch deduplicado: 1 llamada por ticker subyacente por ciclo")
+    logger.info("="*60)
+    logger.info()
 
     # Inicializar conexión a base de datos
     db = None
     while db is None:
         try:
             db = DatabaseManager()
-            print("✅ Conexión a base de datos establecida")
+            logger.info("✅ Conexión a base de datos establecida")
         except Exception as e:
-            print(f"⚠️  Base de datos no disponible: {e}")
-            print("🔁 Reintentando en 60 segundos...")
+            logger.warning(f"⚠️  Base de datos no disponible: {e}")
+            logger.info("🔁 Reintentando en 60 segundos...")
             time.sleep(60)
 
     # Registro del último momento en que se revisó cada señal (id → datetime)
@@ -730,7 +733,7 @@ def monitor_senales():
                     hour=21, minute=0, second=0, microsecond=0
                 )
                 segundos_espera = min((apertura - ahora_utc).total_seconds(), 3600)
-                print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Fin de semana — "
+                logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Fin de semana — "
                       f"monitor en pausa hasta Dom 21:00 UTC. Revisando en {int(segundos_espera//60)} min...")
                 time.sleep(segundos_espera)
                 continue
@@ -746,7 +749,7 @@ def monitor_senales():
                 )
                 enviar_notificacion_telegram(msg)
                 _semana_apertura_enviada = semana_actual
-                print(f"[{ahora_utc.strftime('%H:%M')} UTC] 🟢 Mensaje apertura enviado a Telegram")
+                logger.info(f"[{ahora_utc.strftime('%H:%M')} UTC] 🟢 Mensaje apertura enviado a Telegram")
 
             # ── Notificación CIERRE DE MERCADOS (Viernes ≥21:00 UTC) ────────
             if ahora_utc.weekday() == 4 and ahora_utc.hour >= 21 and semana_actual != _semana_cierre_enviada:
@@ -757,17 +760,17 @@ def monitor_senales():
                 )
                 enviar_notificacion_telegram(msg)
                 _semana_cierre_enviada = semana_actual
-                print(f"[{ahora_utc.strftime('%H:%M')} UTC] 🔴 Mensaje cierre enviado a Telegram")
+                logger.info(f"[{ahora_utc.strftime('%H:%M')} UTC] 🔴 Mensaje cierre enviado a Telegram")
 
             ahora = ahora_utc.astimezone()   # hora local para logs existentes
-            print(f"\n[{ahora.strftime('%H:%M:%S')}] 🔄 Tick #{ciclo}")
+            logger.info(f"\n[{ahora.strftime('%H:%M:%S')}] 🔄 Tick #{ciclo}")
 
             senales_activas = db.obtener_senales_activas()
 
             if not senales_activas:
-                print(f"[{ahora.strftime('%H:%M:%S')}] 📭 No hay señales activas")
+                logger.info(f"[{ahora.strftime('%H:%M:%S')}] 📭 No hay señales activas")
             else:
-                print(f"[{ahora.strftime('%H:%M:%S')}] 📊 Señales activas: {len(senales_activas)}")
+                logger.info(f"[{ahora.strftime('%H:%M:%S')}] 📊 Señales activas: {len(senales_activas)}")
 
                 # ── Paso 1: decidir qué señales toca revisar este tick ──────
                 senales_a_revisar = []
@@ -781,7 +784,7 @@ def monitor_senales():
                         ultimo_check[senal_id] = ahora
 
                 if not senales_a_revisar:
-                    print(f"[{ahora.strftime('%H:%M:%S')}] ⏭️  Ninguna señal requiere revisión este tick")
+                    logger.info(f"[{ahora.strftime('%H:%M:%S')}] ⏭️  Ninguna señal requiere revisión este tick")
                 else:
                     # ── Paso 2: fetch deduplicado — 1 llamada por ticker ─────
                     tickers_necesarios = {}
@@ -796,9 +799,9 @@ def monitor_senales():
                         result = _fetch_precios_ticker(ticker, db=db)
                         if result is not None:
                             cache_precios[ticker] = result
-                            print(f"  📡 {base} ({ticker}): ${result[0]:.2f}  H:{result[1]:.2f}  L:{result[2]:.2f}")
+                            logger.info(f"  📡 {base} ({ticker}): ${result[0]:.2f}  H:{result[1]:.2f}  L:{result[2]:.2f}")
                         else:
-                            print(f"  ⚠️ Sin datos para {base} ({ticker})")
+                            logger.warning(f"  ⚠️ Sin datos para {base} ({ticker})")
                             try:
                                 db.guardar_log(f"_fetch_precios_ticker devolvió None para {ticker} ({base})",
                                                'WARNING', 'signal_monitor', base)
@@ -816,7 +819,7 @@ def monitor_senales():
                     ticker = SIMBOLO_TO_TICKER.get(base)
                     precios = cache_precios.get(ticker) if ticker else None
                     if precios is None:
-                        print(f"  ⚠️ No se pudo obtener precio de {simbolo}")
+                        logger.warning(f"  ⚠️ No se pudo obtener precio de {simbolo}")
                         continue
 
                     precio_actual, precio_max, precio_min = precios
@@ -824,7 +827,7 @@ def monitor_senales():
                     try:
                         db.registrar_precio(senal_id, precio_actual, senal_data=senal)
                     except Exception as e_reg:
-                        print(f"  ❌ registrar_precio falló para señal {senal_id}: {e_reg}")
+                        logger.error(f"  ❌ registrar_precio falló para señal {senal_id}: {e_reg}")
                         try:
                             db.guardar_log(f"registrar_precio error señal #{senal_id}: {e_reg}",
                                            'ERROR', 'signal_monitor', simbolo.split('_')[0])
@@ -850,7 +853,7 @@ def monitor_senales():
                         f"P&L: {beneficio_actual:+.2f}% | "
                         f"TPs: {tp1:.2f}/{tp2:.2f}/{tp3:.2f} SL: {sl:.2f}"
                     )
-                    print(linea)
+                    logger.info(linea)
                     try:
                         db.guardar_log(
                             f"#{senal_id} {simbolo} {direccion} | "
@@ -894,23 +897,23 @@ def monitor_senales():
                 except Exception:
                     pass
 
-            print(f"[{ahora.strftime('%H:%M:%S')}] ⏳ Próximo tick en {_TICK}s...")
+            logger.info(f"[{ahora.strftime('%H:%M:%S')}] ⏳ Próximo tick en {_TICK}s...")
             time.sleep(_TICK)
 
         except KeyboardInterrupt:
-            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Monitor detenido por usuario")
+            logger.warning(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Monitor detenido por usuario")
             break
 
         except Exception as e:
-            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en monitor: {e}")
+            logger.error(f"\n[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en monitor: {e}")
             import traceback; traceback.print_exc()
-            print("🔄 Reintentando en 60 segundos...")
+            logger.info("🔄 Reintentando en 60 segundos...")
             try:
                 db = DatabaseManager()
                 db.guardar_log(f"Monitor crash: {e}", 'ERROR', 'signal_monitor')
-                print("✅ Reconexón a BD exitosa")
+                logger.info("✅ Reconexón a BD exitosa")
             except Exception as re_err:
-                print(f"⚠️  Reconexón fallida: {re_err}")
+                logger.warning(f"⚠️  Reconexón fallida: {re_err}")
             time.sleep(60)
 
 

@@ -24,6 +24,9 @@ def enviar_telegram(mensaje):
     return _enviar_telegram_base(mensaje + sufijo, TELEGRAM_THREAD_ID)
 
 from adapters.database import get_db
+import logging
+logger = logging.getLogger('bottrading')
+
 db = get_db()
 
 # ══════════════════════════════════════
@@ -262,7 +265,7 @@ def calcular_zonas_sr(df, atr, lookback, zone_mult):
 
 
 def analizar(simbolo, params):
-    print(f"\n🔍 Analizando {simbolo}...")
+    logger.info(f"\n🔍 Analizando {simbolo}...")
 
     # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
     global _aviso_macro
@@ -272,12 +275,12 @@ def analizar(simbolo, params):
     try:
         df, is_delayed = get_ohlcv(params['ticker_yf'], period='2y', interval='1d')
         if is_delayed:
-            print("  ⚠️  [1D] Datos con delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
+            logger.warning("  ⚠️  [1D] Datos con delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
         if df.empty or len(df) < 210:
-            print(f"⚠️ Datos insuficientes para {simbolo}")
+            logger.warning(f"⚠️ Datos insuficientes para {simbolo}")
             return
     except Exception as e:
-        print(f"❌ Error descargando {simbolo}: {e}")
+        logger.error(f"❌ Error descargando {simbolo}: {e}")
         return
 
     # Limpiar columnas multi-index si existen
@@ -367,7 +370,7 @@ def analizar(simbolo, params):
     rsms = params['rsi_min_sell']
     rsmb = params['rsi_max_buy']
     asm  = params['atr_sl_mult']
-    print(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
+    logger.info(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
 
     # ── Precios límite ──
     sell_limit = zrl + (zrh - zrl) * (lop / 100 * 10)
@@ -454,13 +457,13 @@ def analizar(simbolo, params):
         df, atr, lookback=_dt_lookback, tol_mult=0.8)
 
     if rotura_alcista:
-        print(f"  🚀 [1D] ROTURA ALCISTA detectada — cerró sobre resistencia ${zrh:.1f}")
+        logger.info(f"  🚀 [1D] ROTURA ALCISTA detectada — cerró sobre resistencia ${zrh:.1f}")
     if rotura_bajista:
-        print(f"  📉 [1D] ROTURA BAJISTA detectada — cerró bajo soporte ${zsl:.1f}")
+        logger.info(f"  📉 [1D] ROTURA BAJISTA detectada — cerró bajo soporte ${zsl:.1f}")
     if dt_detectado:
-        print(f"  🔻 [1D] DOBLE TECHO detectado — techo=${dt_nivel_techo:.1f} cuello=${dt_neckline:.1f}")
+        logger.info(f"  🔻 [1D] DOBLE TECHO detectado — techo=${dt_nivel_techo:.1f} cuello=${dt_neckline:.1f}")
     if ds_detectado:
-        print(f"  🔺 [1D] DOBLE SUELO detectado — suelo=${ds_nivel_suelo:.1f} cuello=${ds_neckline:.1f}")
+        logger.info(f"  🔺 [1D] DOBLE SUELO detectado — suelo=${ds_nivel_suelo:.1f} cuello=${ds_neckline:.1f}")
 
     score_sell = 0
     score_sell += 2 if en_zona_resist          else 0
@@ -649,9 +652,9 @@ def analizar(simbolo, params):
     rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
     rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
     if rr_sell_tp1 < 1.2:
-        print(f"  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.2")
+        logger.warning(f"  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.2")
     if rr_buy_tp1 < 1.2:
-        print(f"  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.2")
+        logger.warning(f"  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.2")
 
     # ══════════════════════════════════
     # LOG EN CONSOLA
@@ -673,7 +676,7 @@ def analizar(simbolo, params):
             abs(ultimo_score_sell - score_sell) <= 1 and 
             abs(ultimo_score_buy - score_buy) <= 1):
             ya_analizado = True
-            print(f"  ℹ️  Vela {fecha} ya analizada - Sin cambios significativos")
+            logger.info(f"  ℹ️  Vela {fecha} ya analizada - Sin cambios significativos")
             return  # No enviar alertas repetidas
     
     # Actualizar último análisis
@@ -683,21 +686,21 @@ def analizar(simbolo, params):
         'score_buy': score_buy
     }
     
-    print(f"  📅 Vela: {fecha}")
-    print(f"  💰 Precio cierre: {round(close, 2)}")
-    print(f"  📊 Score SELL: {score_sell}/21 | Score BUY: {score_buy}/21")
-    print(f"  {emoji_sentimiento} Sentimiento: {sentimiento_general} (Bajista:{sentimiento_bajista_score}/10 | Alcista:{sentimiento_alcista_score}/10)")
-    print(f"  🔴 SELL → Alerta:{senal_sell_alerta} Media:{senal_sell_media} Fuerte:{senal_sell_fuerte} Máxima:{senal_sell_maxima}")
-    print(f"  🟢 BUY  → Alerta:{senal_buy_alerta}  Media:{senal_buy_media}  Fuerte:{senal_buy_fuerte}  Máxima:{senal_buy_maxima}")
+    logger.info(f"  📅 Vela: {fecha}")
+    logger.info(f"  💰 Precio cierre: {round(close, 2)}")
+    logger.info(f"  📊 Score SELL: {score_sell}/21 | Score BUY: {score_buy}/21")
+    logger.info(f"  {emoji_sentimiento} Sentimiento: {sentimiento_general} (Bajista:{sentimiento_bajista_score}/10 | Alcista:{sentimiento_alcista_score}/10)")
+    logger.info(f"  🔴 SELL → Alerta:{senal_sell_alerta} Media:{senal_sell_media} Fuerte:{senal_sell_fuerte} Máxima:{senal_sell_maxima}")
+    logger.info(f"  🟢 BUY  → Alerta:{senal_buy_alerta}  Media:{senal_buy_media}  Fuerte:{senal_buy_fuerte}  Máxima:{senal_buy_maxima}")
     if senal_contradictoria_sell:
-        print(f"  ⚠️  ADVERTENCIA: Señal SELL contradice sentimiento alcista")
+        logger.warning(f"  ⚠️  ADVERTENCIA: Señal SELL contradice sentimiento alcista")
     if senal_contradictoria_buy:
-        print(f"  ⚠️  ADVERTENCIA: Señal BUY contradice sentimiento bajista")
+        logger.warning(f"  ⚠️  ADVERTENCIA: Señal BUY contradice sentimiento bajista")
     # Informar cuando se activa por sentimiento dominante
     if senal_sell_alerta and score_sell < 6 and sentimiento_bajista_score >= 6:
-        print(f"  📣 ALERTA SELL activada por SENTIMIENTO BAJISTA FUERTE ({sentimiento_bajista_score}/10) - Score técnico bajo ({score_sell}/21)")
+        logger.info(f"  📣 ALERTA SELL activada por SENTIMIENTO BAJISTA FUERTE ({sentimiento_bajista_score}/10) - Score técnico bajo ({score_sell}/21)")
     if senal_buy_alerta and score_buy < 6 and sentimiento_alcista_score >= 6:
-        print(f"  📣 ALERTA BUY activada por SENTIMIENTO ALCISTA FUERTE ({sentimiento_alcista_score}/10) - Score técnico bajo ({score_buy}/21)")
+        logger.info(f"  📣 ALERTA BUY activada por SENTIMIENTO ALCISTA FUERTE ({sentimiento_alcista_score}/10) - Score técnico bajo ({score_buy}/21)")
 
     # ══════════════════════════════════
     # CONTROL ANTI-SPAM
@@ -707,50 +710,59 @@ def analizar(simbolo, params):
     clave_vela = f"{simbolo}_{fecha}"
 
     def ya_enviada(tipo):
-        return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800  # 48h TTL
+        clave = f"{clave_vela}_{tipo}"
+        ts_mem = alertas_enviadas.get(clave, 0)
+        if ts_mem > time.time() - 172800:
+            return True
+        # DB check para recuperar estado tras reinicio
+        if db:
+            ts_db = db.get_antispam(clave)
+            if ts_db > time.time() - 172800:
+                alertas_enviadas[clave] = ts_db  # restaurar en memoria
+                return True
+        return False
 
     def marcar_enviada(tipo):
-        alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
+        clave = f"{clave_vela}_{tipo}"
+        alertas_enviadas[clave] = time.time()
+        if db:
+            db.set_antispam(clave, alertas_enviadas[clave])
         if len(alertas_enviadas) > 500:
             _c = time.time() - 172800
             for _k in [k for k in list(alertas_enviadas) if alertas_enviadas[k] < _c]:
-                del alertas_enviadas[_k]
-
-    # ══════════════════════════════════
-    # ENVIAR ALERTAS
-    # ═══════════════════════════════���══
+                del alertas_enviadas[_k]���══
 
     # ── FILTRO PROXIMIDAD: solo operar cerca de zona ──
     cerca_resistencia = en_zona_resist or aproximando_resistencia
     cerca_soporte     = en_zona_soporte or aproximando_soporte
     if not cerca_resistencia:
-        if senal_sell_alerta: print(f"  ⏳ SELL ignorada: precio lejos de resistencia")
+        if senal_sell_alerta: logger.info(f"  ⏳ SELL ignorada: precio lejos de resistencia")
         senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
     if not cerca_soporte:
-        if senal_buy_alerta: print(f"  ⏳ BUY ignorada: precio lejos de soporte")
+        if senal_buy_alerta: logger.info(f"  ⏳ BUY ignorada: precio lejos de soporte")
         senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
 
     # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
     if senal_sell_alerta and senal_buy_alerta:
         if score_sell >= score_buy:
             senal_buy_alerta = False
-            print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+            logger.info(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
         else:
             senal_sell_alerta = False
-            print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+            logger.info(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
 
     # ── PUBLICAR SESGO MULTI-TF (GOLD 1D) ──
     _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
     tf_bias.publicar_sesgo(simbolo, '1D', _sesgo_dir, max(score_sell, score_buy))
-    print(f"  📡 Sesgo GOLD 1D publicado: {_sesgo_dir} (sell={score_sell} buy={score_buy})")
+    logger.info(f"  📡 Sesgo GOLD 1D publicado: {_sesgo_dir} (sell={score_sell} buy={score_buy})")
 
     # ── CANAL ROTO 1D — publicar para uso en detectores inferiores ───────────
     _cr_1d_alc, _cr_1d_baj, _ls_1d, _lr_1d = detectar_canal_roto(df, atr, lookback=60)
     tf_bias.publicar_canal_1d(simbolo, _cr_1d_alc, _cr_1d_baj, _ls_1d, _lr_1d)
     if _cr_1d_alc:
-        print(f"  🔻 [1D] Canal alcista ROTO — soporte ${_ls_1d:.2f}")
+        logger.info(f"  🔻 [1D] Canal alcista ROTO — soporte ${_ls_1d:.2f}")
     if _cr_1d_baj:
-        print(f"  🔺 [1D] Canal bajista ROTO — resist ${_lr_1d:.2f}")
+        logger.info(f"  🔺 [1D] Canal bajista ROTO — resist ${_lr_1d:.2f}")
 
     # ── CANAL ROTO 1W — descargar datos semanales y publicar ─────────────────
     try:
@@ -765,11 +777,11 @@ def analizar(simbolo, params):
                 df_1w, _atr_1w, lookback=52)  # ~1 año de velas semanales
             tf_bias.publicar_canal_1w(simbolo, _cr_1w_alc, _cr_1w_baj, _ls_1w, _lr_1w)
             if _cr_1w_alc:
-                print(f"  🔻 [1W] Canal alcista ROTO — soporte ${_ls_1w:.2f}")
+                logger.info(f"  🔻 [1W] Canal alcista ROTO — soporte ${_ls_1w:.2f}")
             if _cr_1w_baj:
-                print(f"  🔺 [1W] Canal bajista ROTO — resist ${_lr_1w:.2f}")
+                logger.info(f"  🔺 [1W] Canal bajista ROTO — resist ${_lr_1w:.2f}")
     except Exception as _e:
-        print(f"  ⚠️ [1D] No se pudo detectar canal 1W: {_e}")
+        logger.warning(f"  ⚠️ [1D] No se pudo detectar canal 1W: {_e}")
 
     # ── APROXIMACIÓN RESISTENCIA — SEÑAL ACCIONABLE (pon la orden limit ahora) ──
     if aproximando_resistencia and not en_zona_resist and not cancelar_sell and not senal_buy_alerta:
@@ -804,7 +816,7 @@ def analizar(simbolo, params):
                         'version_detector': 'GOLD 1D-v2.0'
                     })
                 except Exception as e:
-                    print(f"  ⚠️ Error BD: {e}")
+                    logger.error(f"  ⚠️ Error BD: {e}")
             enviar_telegram(msg)
             marcar_enviada('PREP_SELL')
 
@@ -841,7 +853,7 @@ def analizar(simbolo, params):
                         'version_detector': 'GOLD 1D-v2.0'
                     })
                 except Exception as e:
-                    print(f"  ⚠️ Error BD: {e}")
+                    logger.error(f"  ⚠️ Error BD: {e}")
             enviar_telegram(msg)
             marcar_enviada('PREP_BUY')
 
@@ -849,7 +861,7 @@ def analizar(simbolo, params):
     if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
         # Si ya avisamos antes de zona (PREP_SELL), solo confirmar si es FUERTE o MÁXIMA
         if ya_enviada('PREP_SELL') and not (senal_sell_fuerte or senal_sell_maxima):
-            print(f"  ℹ️  SELL ALERTA/MEDIA ignorada: pre-alerta ya enviada")
+            logger.info(f"  ℹ️  SELL ALERTA/MEDIA ignorada: pre-alerta ya enviada")
         else:
             if senal_sell_maxima:
                 nivel = "🔥 SELL MÁXIMA - CONFLUENCIA CONFIRMADA 🔥"
@@ -872,7 +884,7 @@ def analizar(simbolo, params):
             simbolo_db = f"{simbolo}_1D"
             if not ya_enviada(tipo_clave):
                 if db and db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
-                    print(f"  ℹ️  Señal VENTA duplicada - No se guarda")
+                    logger.info(f"  ℹ️  Señal VENTA duplicada - No se guarda")
                     return
                 # Si ya hay pre-alerta → confirmar brevemente sin guardar otra vez en BD
                 if ya_enviada('PREP_SELL'):
@@ -914,14 +926,14 @@ def analizar(simbolo, params):
                                 'version_detector': 'GOLD 1D-v2.0'
                             })
                         except Exception as e:
-                            print(f"  ⚠️ Error guardando en BD: {e}")
+                            logger.error(f"  ⚠️ Error guardando en BD: {e}")
                 enviar_telegram(msg)
                 marcar_enviada(tipo_clave)
 
     # ── SEÑALES COMPRA (en zona) — confirmación si ya se mandó pre-alerta ──
     if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
         if ya_enviada('PREP_BUY') and not (senal_buy_fuerte or senal_buy_maxima):
-            print(f"  ℹ️  BUY ALERTA/MEDIA ignorada: pre-alerta ya enviada")
+            logger.info(f"  ℹ️  BUY ALERTA/MEDIA ignorada: pre-alerta ya enviada")
         else:
             if senal_buy_maxima:
                 nivel = "🔥 BUY MÁXIMA - CONFLUENCIA CONFIRMADA 🔥"
@@ -944,7 +956,7 @@ def analizar(simbolo, params):
             simbolo_db = f"{simbolo}_1D"
             if not ya_enviada(tipo_clave):
                 if db and db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
-                    print(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
+                    logger.info(f"  ℹ️  Señal COMPRA duplicada - No se guarda")
                     return
                 if ya_enviada('PREP_BUY'):
                     msg = (f"✅ <b>CONFIRMACIÓN BUY — ORO 1D</b>\n"
@@ -985,7 +997,7 @@ def analizar(simbolo, params):
                                 'version_detector': 'GOLD 1D-v2.0'
                             })
                         except Exception as e:
-                            print(f"  ⚠️ Error guardando en BD: {e}")
+                            logger.error(f"  ⚠️ Error guardando en BD: {e}")
                 enviar_telegram(msg)
                 marcar_enviada(tipo_clave)
 
@@ -1052,7 +1064,7 @@ def analizar(simbolo, params):
                         'version_detector': 'GOLD 1D-v2.0'
                     })
                 except Exception as e:
-                    print(f"  ⚠️ Error BD: {e}")
+                    logger.error(f"  ⚠️ Error BD: {e}")
             enviar_telegram(msg); marcar_enviada('BREAK_BUY')
 
     # ── Rotura bajista ──
@@ -1093,7 +1105,7 @@ def analizar(simbolo, params):
                         'version_detector': 'GOLD 1D-v2.0'
                     })
                 except Exception as e:
-                    print(f"  ⚠️ Error BD: {e}")
+                    logger.error(f"  ⚠️ Error BD: {e}")
             enviar_telegram(msg); marcar_enviada('BREAK_SELL')
 
     # ══════════════════════════════════════════════════════════
@@ -1138,7 +1150,7 @@ def analizar(simbolo, params):
                         'version_detector': 'GOLD 1D-v2.0'
                     })
                 except Exception as e:
-                    print(f"  ⚠️ Error BD: {e}")
+                    logger.error(f"  ⚠️ Error BD: {e}")
             enviar_telegram(msg); marcar_enviada('DTECHO')
 
     # ── Doble Suelo ──
@@ -1179,16 +1191,16 @@ def analizar(simbolo, params):
                         'version_detector': 'GOLD 1D-v2.0'
                     })
                 except Exception as e:
-                    print(f"  ⚠️ Error BD: {e}")
+                    logger.error(f"  ⚠️ Error BD: {e}")
             enviar_telegram(msg); marcar_enviada('DSUELO')
 
 # ══════════════════════════════════════
 # BUCLE PRINCIPAL
 # ══════════════════════════════════════
 def main():
-    print("🚀 Detector de señales iniciado")
-    print(f"⏱️  Revisando cada {CHECK_INTERVAL//60} minutos")
-    print(f"📊 Símbolos: {list(SIMBOLOS.keys())}")
+    logger.info("🚀 Detector de señales iniciado")
+    logger.info(f"⏱️  Revisando cada {CHECK_INTERVAL//60} minutos")
+    logger.info(f"📊 Símbolos: {list(SIMBOLOS.keys())}")
 
     # Enviar mensaje de arranque
     enviar_telegram("🚀 <b>Detector de señales iniciado</b>\n"
@@ -1207,13 +1219,13 @@ def main():
             from datetime import timedelta
             proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
             segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
-            print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
+            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
             time.sleep(segundos_espera)
             continue
 
         for simbolo, params in SIMBOLOS.items():
             analizar(simbolo, params)
-        print(f"\n⏳ Esperando {CHECK_INTERVAL//60} minutos...\n")
+        logger.info(f"\n⏳ Esperando {CHECK_INTERVAL//60} minutos...\n")
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == '__main__':

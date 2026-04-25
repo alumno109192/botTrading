@@ -64,8 +64,22 @@ class BaseDetector(ABC):
         self.aviso_macro: str = ""
 
         # Inicializar BD si las variables están configuradas
-        from adapters.database import get_db
-        self.db = get_db()
+        import logging as _logging
+        _logger = _logging.getLogger('bottrading')
+        try:
+            from adapters.database import get_db
+            self.db = get_db()
+        except Exception as _e:
+            _logger.warning(f"⚠️ BaseDetector: no se pudo inicializar BD — {_e}")
+            self.db = None
+
+        # Restaurar estado anti-spam desde BD al arrancar
+        if self.db:
+            try:
+                for clave, ts in self.db.get_antispam_activos(self._TTL_ALERTA):
+                    self.alertas_enviadas[clave] = ts
+            except Exception:
+                pass  # Fallo no crítico; se parte de estado vacío
 
     # ─────────────────────────────────────────────────────────────────────────
     # Método abstracto — debe implementarse en cada subclase
@@ -241,8 +255,10 @@ class BaseDetector(ABC):
         return ts > time.time() - self._TTL_ALERTA
 
     def marcar_enviada(self, clave: str) -> None:
-        """Registra el timestamp de envío de la alerta."""
+        """Registra el timestamp de envío de la alerta en memoria y en BD."""
         self.alertas_enviadas[clave] = time.time()
+        if self.db:
+            self.db.set_antispam(clave, self.alertas_enviadas[clave])
 
     def limpiar_alertas_viejas(self) -> None:
         """Elimina entradas de alertas_enviadas más antiguas que el TTL."""
@@ -250,6 +266,8 @@ class BaseDetector(ABC):
         claves_viejas = [k for k, v in self.alertas_enviadas.items() if v < corte]
         for k in claves_viejas:
             del self.alertas_enviadas[k]
+        if self.db:
+            self.db.limpiar_antispam_viejos(self._TTL_ALERTA)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Guard de análisis duplicado

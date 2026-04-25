@@ -12,6 +12,9 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from dotenv import load_dotenv
 
+import logging
+logger = logging.getLogger('bottrading')
+
 # Cargar variables de entorno
 load_dotenv()
 
@@ -66,7 +69,7 @@ class DatabaseManager:
             'Content-Type': 'application/json'
         }
         
-        print("✅ Conexión a Turso establecida correctamente")
+        logger.info("✅ Conexión a Turso establecida correctamente")
         # Lock para atomicidad INSERT + last_insert_rowid
         self._insert_lock = threading.Lock()
     
@@ -172,9 +175,9 @@ class DatabaseManager:
             return _Result([], [])
             
         except Exception as e:
-            print(f"❌ Error ejecutando query: {e}")
-            print(f"Query: {query}")
-            print(f"Params: {params}")
+            logger.error(f"❌ Error ejecutando query: {e}")
+            logger.info(f"Query: {query}")
+            logger.info(f"Params: {params}")
             raise
     
     def ejecutar_insert(self, query: str, params: tuple = ()) -> int:
@@ -238,7 +241,7 @@ class DatabaseManager:
                     return int(cell) if cell is not None else None
             return None
         except Exception as e:
-            print(f"❌ Error en INSERT: {e}")
+            logger.error(f"❌ Error en INSERT: {e}")
             raise
     
     # ═══════════════════════════════════════════════════════════
@@ -281,7 +284,7 @@ class DatabaseManager:
         )
         
         senal_id = self.ejecutar_insert(query, params)
-        print(f"✅ Señal guardada con ID: {senal_id}")
+        logger.info(f"✅ Señal guardada con ID: {senal_id}")
         # Log automático al guardar señal
         try:
             simbolo = senal_data['simbolo']
@@ -327,7 +330,7 @@ class DatabaseManager:
         result = self.ejecutar_query(query, (simbolo, direccion, cutoff))
 
         if result.rows and int(result.rows[0]['count']) > 0:
-            print(f"⚠️ Ya existe señal ACTIVA/PENDIENTE ({horas}h): {simbolo} {direccion} — no se duplica")
+            logger.warning(f"⚠️ Ya existe señal ACTIVA/PENDIENTE ({horas}h): {simbolo} {direccion} — no se duplica")
             return True
         return False
     
@@ -345,7 +348,7 @@ class DatabaseManager:
         """
         result = self.ejecutar_query(query, (simbolo,))
         if result.rows and int(result.rows[0]['count']) > 0:
-            print(f"⚠️ Ya existe señal ACTIVA/PENDIENTE en {simbolo} (cualquier dirección) — bloqueado")
+            logger.warning(f"⚠️ Ya existe señal ACTIVA/PENDIENTE en {simbolo} (cualquier dirección) — bloqueado")
             return True
         return False
 
@@ -407,14 +410,14 @@ class DatabaseManager:
         """Activa una señal que estaba esperando confirmación de TF inferior."""
         query = "UPDATE senales SET estado = 'ACTIVA' WHERE id = ?"
         self.ejecutar_query(query, (senal_id,))
-        print(f"✅ Señal {senal_id} confirmada — estado → ACTIVA")
+        logger.info(f"✅ Señal {senal_id} confirmada — estado → ACTIVA")
 
     def caducar_senal_pendiente(self, senal_id: int) -> None:
         """Caduca una señal PENDIENTE_CONFIRM que no recibió confirmación a tiempo."""
         now = datetime.now(timezone.utc).isoformat()
         query = "UPDATE senales SET estado = 'CADUCADA', fecha_cierre = ? WHERE id = ?"
         self.ejecutar_query(query, (now, senal_id))
-        print(f"⏰ Señal {senal_id} caducada — sin confirmación 5M/15M en tiempo")
+        logger.info(f"⏰ Señal {senal_id} caducada — sin confirmación 5M/15M en tiempo")
     
     def actualizar_precio_actual(self, senal_id: int, precio: float):
         """Actualiza el precio actual de una señal"""
@@ -480,7 +483,7 @@ class DatabaseManager:
             """
             self.ejecutar_query(query, (now, nuevo_estado, now, beneficio_pct, senal_id))
         
-        print(f"🔄 Señal {senal_id} actualizada a estado: {nuevo_estado}")
+        logger.info(f"🔄 Señal {senal_id} actualizada a estado: {nuevo_estado}")
     
     def cerrar_senal(self, senal_id: int, estado_final: str, beneficio_pct: float = None):
         """Cierra una señal manualmente con un estado final"""
@@ -493,7 +496,7 @@ class DatabaseManager:
         """
         
         self.ejecutar_query(query, (estado_final, now, beneficio_pct, senal_id))
-        print(f"🔒 Señal {senal_id} cerrada con estado: {estado_final}")
+        logger.info(f"🔒 Señal {senal_id} cerrada con estado: {estado_final}")
     
     # ═══════════════════════════════════════════════════════════
     # HISTORIAL DE PRECIOS
@@ -568,7 +571,7 @@ class DatabaseManager:
                 dist_sl
             ))
         except Exception as e:
-            print(f"⚠️ registrar_precio: fallo INSERT historial (no crítico): {e}")
+            logger.warning(f"⚠️ registrar_precio: fallo INSERT historial (no crítico): {e}")
     
     # ═══════════════════════════════════════════════════════════
     # ESTADÍSTICAS Y ANÁLISIS
@@ -710,7 +713,7 @@ class DatabaseManager:
         if result.rows:
             senal_id = result.rows[0]['id']
             self.cerrar_senal(senal_id, 'CANCELADA')
-            print(f"⚠️ Señal {senal_id} cerrada automáticamente (límite alcanzado)")
+            logger.warning(f"⚠️ Señal {senal_id} cerrada automáticamente (límite alcanzado)")
 
     # ═══════════════════════════════════════════════════════════
     # USO DE API KEYS (Twelve Data quota tracking)
@@ -1170,6 +1173,81 @@ class DatabaseManager:
             'todas_a_favor':    bool(r['todas_a_favor']),
         }
 
+    # ═══════════════════════════════════════════════════════════
+    # ANTI-SPAM PERSISTENTE
+    # ═══════════════════════════════════════════════════════════
+
+    def init_antispam_table(self) -> None:
+        """Crea la tabla bot_antispam si no existe.
+
+        Almacena el timestamp Unix de la última alerta enviada por clave,
+        permitiendo que el estado anti-spam sobreviva reinicios del proceso.
+        """
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS bot_antispam (
+            clave TEXT PRIMARY KEY,
+            ts    REAL NOT NULL
+        )
+        """)
+
+    def get_antispam(self, clave: str) -> float:
+        """Retorna el timestamp Unix de la última alerta para la clave dada.
+
+        Returns:
+            Timestamp float, o 0.0 si la clave no existe.
+        """
+        try:
+            result = self.ejecutar_query(
+                "SELECT ts FROM bot_antispam WHERE clave = ?", (clave,)
+            )
+            if result.rows:
+                val = result.rows[0].get('ts', 0)
+                return float(val) if val is not None else 0.0
+        except Exception:
+            pass
+        return 0.0
+
+    def set_antispam(self, clave: str, ts: float) -> None:
+        """Upsert del timestamp anti-spam para una clave."""
+        try:
+            self.ejecutar_query(
+                "INSERT INTO bot_antispam (clave, ts) VALUES (?, ?)"
+                " ON CONFLICT(clave) DO UPDATE SET ts = excluded.ts",
+                (clave, ts),
+            )
+        except Exception:
+            pass  # fallo de persistencia no debe bloquear el envío
+
+    def get_antispam_activos(self, ttl_seconds: float = 172_800) -> list:
+        """Retorna las entradas anti-spam aún dentro del TTL como lista de (clave, ts).
+
+        Args:
+            ttl_seconds: Tiempo de vida en segundos (por defecto 48 h).
+
+        Returns:
+            Lista de tuplas (clave: str, ts: float).
+        """
+        import time
+        cutoff = time.time() - ttl_seconds
+        try:
+            result = self.ejecutar_query(
+                "SELECT clave, ts FROM bot_antispam WHERE ts > ?", (cutoff,)
+            )
+            return [(r['clave'], float(r['ts'])) for r in result.rows]
+        except Exception:
+            return []
+
+    def limpiar_antispam_viejos(self, ttl_seconds: float = 172_800) -> None:
+        """Elimina entradas anti-spam más antiguas que el TTL."""
+        import time
+        cutoff = time.time() - ttl_seconds
+        try:
+            self.ejecutar_query(
+                "DELETE FROM bot_antispam WHERE ts <= ?", (cutoff,)
+            )
+        except Exception:
+            pass
+
 
 _db_warning_printed = False
 
@@ -1187,7 +1265,7 @@ def get_db() -> Optional[DatabaseManager]:
     turso_token = os.environ.get('TURSO_AUTH_TOKEN')
     if not turso_url or not turso_token:
         if not _db_warning_printed:
-            print("⚠️  Variables Turso no configuradas - Sistema funcionará sin tracking de BD")
+            logger.warning("⚠️  Variables Turso no configuradas - Sistema funcionará sin tracking de BD")
             _db_warning_printed = True
         return None
     return DatabaseManager()
@@ -1197,11 +1275,11 @@ if __name__ == '__main__':
     # Test de conexión
     try:
         db = DatabaseManager()
-        print("✅ Test de conexión exitoso")
+        logger.info("✅ Test de conexión exitoso")
         
         # Probar obtener señales activas
         activas = db.obtener_senales_activas()
-        print(f"📊 Señales activas: {len(activas)}")
+        logger.info(f"📊 Señales activas: {len(activas)}")
         
     except Exception as e:
-        print(f"❌ Error en test: {e}")
+        logger.error(f"❌ Error en test: {e}")
