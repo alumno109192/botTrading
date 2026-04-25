@@ -21,18 +21,8 @@ from adapters.telegram import enviar_telegram as _enviar_telegram_base
 def enviar_telegram(mensaje):
     return _enviar_telegram_base(mensaje, TELEGRAM_THREAD_ID)
 
-db = None
-try:
-    turso_url = os.environ.get('TURSO_DATABASE_URL')
-    turso_token = os.environ.get('TURSO_AUTH_TOKEN')
-    if turso_url and turso_token:
-        from adapters.database import DatabaseManager
-        db = DatabaseManager()
-        print("✅ BD activada (EURUSD 15M)")
-    else:
-        print("⚠️  Sin BD - EURUSD 15M funcionará sin tracking")
-except Exception as e:
-    db = None
+from adapters.database import get_db
+db = get_db()
 
 TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID')
