@@ -47,7 +47,9 @@ class BaseDetector(ABC):
       - Wrapper enviar con aviso macro
     """
 
-    _TTL_ALERTA = 172_800  # 48 horas en segundos
+    _TTL_ALERTA = 172_800   # 48 horas en segundos — TTL para el anti-spam
+    _SR_WING = 3            # velas a cada lado para confirmar un swing high/low
+    _SR_MIN_DIST_ATR = 0.3  # distancia mínima (en ATR) entre precio actual y un pivote válido
 
     def __init__(self, simbolo: str, tf_label: str, params: dict,
                  telegram_thread_id):
@@ -102,7 +104,7 @@ class BaseDetector(ABC):
         """
         close = float(df['Close'].iloc[-1])
         zone_width = atr * zone_mult
-        wing = 3  # velas a cada lado para confirmar swing
+        wing = self._SR_WING
 
         highs = df['High'].iloc[-lookback - 1:-1]
         lows = df['Low'].iloc[-lookback - 1:-1]
@@ -126,7 +128,7 @@ class BaseDetector(ABC):
         if not swing_lows:
             swing_lows = [float(lows.min())]
 
-        min_dist = atr * 0.3
+        min_dist = atr * self._SR_MIN_DIST_ATR
         # Resistencia: cualquier pivote encima (incluye soportes rotos)
         candidatos_resist = [v for v in set(swing_highs + swing_lows)
                              if v > close + min_dist]
