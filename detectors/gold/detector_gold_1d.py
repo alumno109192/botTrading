@@ -531,6 +531,15 @@ class GoldDetector1D(BaseDetector):
         dxy_bias = get_dxy_bias()
         score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
 
+        # ── Filtro de volumen: penalizar señales en velas de bajo volumen ──
+        score_sell, score_buy, _vol_bajo = self.ajustar_scores_por_volumen(
+            score_sell, score_buy, vol, vol_avg, params['vol_mult'])
+        if _vol_bajo:
+            logger.info(f"  ⚠️ [1D] Volumen bajo ({vol:.0f} < {vol_avg * params['vol_mult']:.0f}) — scores penalizados -3")
+
+        # ── Umbral adaptativo: elevar umbrales si ATR está en alta volatilidad ──
+        atr_media = float(df['atr'].rolling(20).mean().iloc[-2])
+
         # ══════════════════════════════════
         # ANÁLISIS DE SENTIMIENTO DEL MERCADO
         # (Validación cruzada para señales de alta calidad)
@@ -573,18 +582,22 @@ class GoldDetector1D(BaseDetector):
         # ══════════════════════════════════
     
         # SELL - Solo con confluencia o muy alto score técnico
-        senal_sell_maxima = score_sell >= 10 and sentimiento_bajista_score >= 6
-        senal_sell_fuerte = score_sell >= 8 and sentimiento_bajista_score >= 4
-        senal_sell_media  = score_sell >= 6 and sentimiento_bajista_score >= 3
-        # ALERTA: Score técnico ≥6 normal, O sentimiento FUERTE (≥6) con score mínimo ≥3
-        senal_sell_alerta = (score_sell >= 6 and not senal_contradictoria_sell) or (sentimiento_bajista_score >= 6 and score_sell >= 3)
+        _umbral_max = self.umbral_adaptativo(10, atr, atr_media)
+        _umbral_fue = self.umbral_adaptativo(8,  atr, atr_media)
+        _umbral_med = self.umbral_adaptativo(6,  atr, atr_media)
+        _umbral_ale = self.umbral_adaptativo(6,  atr, atr_media)
+        senal_sell_maxima = score_sell >= _umbral_max and sentimiento_bajista_score >= 6
+        senal_sell_fuerte = score_sell >= _umbral_fue and sentimiento_bajista_score >= 4
+        senal_sell_media  = score_sell >= _umbral_med and sentimiento_bajista_score >= 3
+        # ALERTA: Score técnico ≥umbral normal, O sentimiento FUERTE (≥6) con score mínimo ≥3
+        senal_sell_alerta = (score_sell >= _umbral_ale and not senal_contradictoria_sell) or (sentimiento_bajista_score >= 6 and score_sell >= 3)
     
         # BUY - Solo con confluencia o muy alto score técnico
-        senal_buy_maxima  = score_buy >= 10 and sentimiento_alcista_score >= 6
-        senal_buy_fuerte  = score_buy >= 8 and sentimiento_alcista_score >= 4
-        senal_buy_media   = score_buy >= 6 and sentimiento_alcista_score >= 3
-        # ALERTA: Score técnico ≥6 normal, O sentimiento FUERTE (≥6) con score mínimo ≥3
-        senal_buy_alerta  = (score_buy >= 6 and not senal_contradictoria_buy) or (sentimiento_alcista_score >= 6 and score_buy >= 3)
+        senal_buy_maxima  = score_buy >= _umbral_max and sentimiento_alcista_score >= 6
+        senal_buy_fuerte  = score_buy >= _umbral_fue and sentimiento_alcista_score >= 4
+        senal_buy_media   = score_buy >= _umbral_med and sentimiento_alcista_score >= 3
+        # ALERTA: Score técnico ≥umbral normal, O sentimiento FUERTE (≥6) con score mínimo ≥3
+        senal_buy_alerta  = (score_buy >= _umbral_ale and not senal_contradictoria_buy) or (sentimiento_alcista_score >= 6 and score_buy >= 3)
 
         # ══════════════════════════════════
         # SL Y TP

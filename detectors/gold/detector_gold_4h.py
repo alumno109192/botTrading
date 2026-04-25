@@ -441,15 +441,28 @@ class GoldDetector4H(BaseDetector):
         dxy_bias = get_dxy_bias()
         score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
 
+        # ── Filtro de volumen: penalizar señales en velas de bajo volumen ──
+        score_sell, score_buy, _vol_bajo = self.ajustar_scores_por_volumen(
+            score_sell, score_buy, vol, vol_avg, vm)
+        if _vol_bajo:
+            logger.info(f"  ⚠️ [4H] Volumen bajo ({vol:.0f} < {vol_avg * vm:.0f}) — scores penalizados -3")
+
+        # ── Umbral adaptativo: elevar umbrales si ATR está en alta volatilidad ──
+        atr_media = float(df['atr'].rolling(20).mean().iloc[-2])
+        _umbral_max = self.umbral_adaptativo(14, atr, atr_media)
+        _umbral_fue = self.umbral_adaptativo(12, atr, atr_media)
+        _umbral_med = self.umbral_adaptativo(9,  atr, atr_media)
+        _umbral_ale = self.umbral_adaptativo(5,  atr, atr_media)
+
         # NIVELES DE SEÑAL 4H (MÁS ESTRICTOS)
-        senal_sell_maxima = score_sell >= 14
-        senal_sell_fuerte = score_sell >= 12
-        senal_sell_media  = score_sell >= 9
-        senal_sell_alerta = score_sell >= 5
-        senal_buy_maxima  = score_buy  >= 14
-        senal_buy_fuerte  = score_buy  >= 12
-        senal_buy_media   = score_buy  >= 9
-        senal_buy_alerta  = score_buy  >= 5
+        senal_sell_maxima = score_sell >= _umbral_max
+        senal_sell_fuerte = score_sell >= _umbral_fue
+        senal_sell_media  = score_sell >= _umbral_med
+        senal_sell_alerta = score_sell >= _umbral_ale
+        senal_buy_maxima  = score_buy  >= _umbral_max
+        senal_buy_fuerte  = score_buy  >= _umbral_fue
+        senal_buy_media   = score_buy  >= _umbral_med
+        senal_buy_alerta  = score_buy  >= _umbral_ale
 
         sl_venta  = round(sell_limit + atr * asm, 2)
         sl_compra = round(buy_limit  - atr * asm, 2)

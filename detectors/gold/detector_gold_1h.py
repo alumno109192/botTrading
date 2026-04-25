@@ -130,6 +130,7 @@ class GoldDetector1H(BaseDetector):
         rsi = row['rsi']; rsi_prev = prev['rsi']
         ema_fast = row['ema_fast']; ema_slow = row['ema_slow']; ema_trend = row['ema_trend']
         atr = row['atr']; vol_avg = row['vol_avg']
+        atr_media = float(df['atr'].rolling(20).mean().iloc[-2])
         bb_upper = row['bb_upper']; bb_lower = row['bb_lower']
         macd = row['macd']; macd_signal = row['macd_signal']
         macd_hist = row['macd_hist']; macd_hist_prev = prev['macd_hist']
@@ -490,6 +491,12 @@ class GoldDetector1H(BaseDetector):
             score_sell = min(score_sell + 1, 23)
             score_buy  = max(score_buy  - 1, 0)
 
+        # ── Filtro de volumen: penalizar señales en velas de bajo volumen ──
+        score_sell, score_buy, _vol_bajo = self.ajustar_scores_por_volumen(
+            score_sell, score_buy, vol, vol_avg, vm)
+        if _vol_bajo:
+            logger.info(f"  ⚠️ [1H] Volumen bajo ({vol:.0f} < {vol_avg * vm:.0f}) — scores penalizados -3")
+
         # ── Contexto multi-TF: ¿es el canal roto un PULLBACK dentro de tendencia? ──
         _bias_1d   = tf_bias.obtener_sesgo(simbolo, '1D')
         _bias_1w   = tf_bias.obtener_sesgo(simbolo, '1W')
@@ -576,14 +583,18 @@ class GoldDetector1H(BaseDetector):
         if rechazo_resist_live:
             score_sell = min(score_sell + 3, 23)
 
-        senal_sell_maxima = score_sell >= 12
-        senal_sell_fuerte = score_sell >= 9
-        senal_sell_media  = score_sell >= 6
-        senal_sell_alerta = score_sell >= 5
-        senal_buy_maxima  = score_buy  >= 12
-        senal_buy_fuerte  = score_buy  >= 9
-        senal_buy_media   = score_buy  >= 6
-        senal_buy_alerta  = score_buy  >= 5
+        _umbral_max = self.umbral_adaptativo(12, atr, atr_media)
+        _umbral_fue = self.umbral_adaptativo(9,  atr, atr_media)
+        _umbral_med = self.umbral_adaptativo(6,  atr, atr_media)
+        _umbral_ale = self.umbral_adaptativo(5,  atr, atr_media)
+        senal_sell_maxima = score_sell >= _umbral_max
+        senal_sell_fuerte = score_sell >= _umbral_fue
+        senal_sell_media  = score_sell >= _umbral_med
+        senal_sell_alerta = score_sell >= _umbral_ale
+        senal_buy_maxima  = score_buy  >= _umbral_max
+        senal_buy_fuerte  = score_buy  >= _umbral_fue
+        senal_buy_media   = score_buy  >= _umbral_med
+        senal_buy_alerta  = score_buy  >= _umbral_ale
 
         def rr(limit, sl, tp):
             return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0

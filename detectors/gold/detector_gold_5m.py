@@ -155,7 +155,9 @@ class GoldDetector5M(BaseDetector):
             ema_trend = df['Close'].ewm(span=params['ema_trend_len']).mean()
 
             atr_len = params['atr_length']
-            atr = calcular_atr(df, atr_len).iloc[-1]
+            _atr_series = calcular_atr(df, atr_len)
+            atr = float(_atr_series.iloc[-1])
+            atr_media = float(_atr_series.rolling(20).mean().iloc[-1])
             adx, _, _ = calcular_adx(df)
             adx = adx.iloc[-1]
 
@@ -240,9 +242,17 @@ class GoldDetector5M(BaseDetector):
             # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
             dxy_bias = get_dxy_bias()
             score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
-            # Recalcular umbrales tras ajuste DXY
-            senal_sell_fuerte = score_sell >= 8
-            senal_buy_fuerte  = score_buy  >= 8
+
+            # ── Filtro de volumen: penalizar señales en velas de bajo volumen ──
+            score_sell, score_buy, _vol_bajo = self.ajustar_scores_por_volumen(
+                score_sell, score_buy, vol_actual, vol_medio, params['vol_mult'])
+            if _vol_bajo:
+                logger.info(f"  ⚠️ [5M] Volumen bajo ({vol_actual:.0f} < {vol_medio * params['vol_mult']:.0f}) — scores penalizados -3")
+
+            # Recalcular umbrales tras ajuste DXY y filtro de volumen (con umbral adaptativo)
+            _umbral_fue = self.umbral_adaptativo(8, atr, atr_media)
+            senal_sell_fuerte = score_sell >= _umbral_fue
+            senal_buy_fuerte  = score_buy  >= _umbral_fue
 
             cancelar_sell = (close < zsl) or (rsi < 28)
             cancelar_buy  = (close > zrh) or (rsi > 72)
