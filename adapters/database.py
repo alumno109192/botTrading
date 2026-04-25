@@ -1171,15 +1171,24 @@ class DatabaseManager:
         }
 
 
+_db_warning_printed = False
+
+
 def get_db() -> Optional[DatabaseManager]:
     """Retorna el singleton DatabaseManager, o None si Turso no está configurado.
 
     Centraliza la lógica de inicialización opcional de la BD para que los
     detectores no repitan el mismo bloque try/except en cada módulo.
+    Imprime un aviso una sola vez cuando las variables de entorno no están
+    presentes, equivalente al comportamiento anterior por detector.
     """
+    global _db_warning_printed
     turso_url = os.environ.get('TURSO_DATABASE_URL')
     turso_token = os.environ.get('TURSO_AUTH_TOKEN')
     if not turso_url or not turso_token:
+        if not _db_warning_printed:
+            print("⚠️  Variables Turso no configuradas - Sistema funcionará sin tracking de BD")
+            _db_warning_printed = True
         return None
     return DatabaseManager()
 
