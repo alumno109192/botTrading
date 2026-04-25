@@ -691,7 +691,6 @@ class TestAjustarScoresPorVolumen:
         assert b == 8
 
     def test_sin_penalizacion_cuando_vol_avg_nan(self, det):
-        import math
         s, b, penalizado = det.ajustar_scores_por_volumen(10, 8, float('nan'), 1000, 1.2)
         assert penalizado is False
 
@@ -740,7 +739,6 @@ class TestUmbralAdaptativo:
         assert umbral == 6
 
     def test_atr_media_nan_no_eleva(self, det):
-        import math
         umbral = det.umbral_adaptativo(6, atr=100, atr_media=float('nan'))
         assert umbral == 6
 

@@ -151,7 +151,7 @@ def keep_alive():
 
     fallos_consecutivos = 0
     UMBRAL_ALERTA = 3
-    ultimo_heartbeat = 0   # timestamp del último heartbeat horario enviado
+    ultimo_heartbeat = time.time()   # primera notificación después de 1 hora
 
     while True:
         try:
