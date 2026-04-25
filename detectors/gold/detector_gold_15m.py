@@ -30,6 +30,9 @@ def enviar_telegram(mensaje):
 
 # Inicializar base de datos solo si las variables están configuradas
 from adapters.database import get_db
+import logging
+logger = logging.getLogger('bottrading')
+
 db = get_db()
 
 # ══════════════════════════════════════
@@ -190,10 +193,10 @@ def analizar_simbolo(simbolo, params):
         df_5m, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
         df = df_5m.resample('15min').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
         if is_delayed:
-            print("  ⚠️  [15M] Datos con 15 min de delay (yfinance free). Señales de entrada pueden estar desfasadas.")
+            logger.warning("  ⚠️  [15M] Datos con 15 min de delay (yfinance free). Señales de entrada pueden estar desfasadas.")
         
         if df.empty or len(df) < 100:
-            print(f"⚠️ Datos insuficientes para {simbolo}")
+            logger.warning(f"⚠️ Datos insuficientes para {simbolo}")
             return
         
         # Limpiar columnas
@@ -207,7 +210,7 @@ def analizar_simbolo(simbolo, params):
             elif len(df.columns) == 5:
                 df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
             else:
-                print(f"⚠️ Columnas inesperadas ({len(df.columns)}): {df.columns.tolist()}")
+                logger.warning(f"⚠️ Columnas inesperadas ({len(df.columns)}): {df.columns.tolist()}")
                 return
         
         # Calcular indicadores
@@ -230,7 +233,7 @@ def analizar_simbolo(simbolo, params):
         # Parámetros de zonas (calculados automáticamente)
         zrl, zrh, zsl, zsh = calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
         tol = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
-        print(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
+        logger.info(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
         
         # Detectar zonas
         en_zona_resist = (zrl <= close <= zrh)
@@ -309,10 +312,10 @@ def analizar_simbolo(simbolo, params):
         # 9. Stop Hunt / Falsa Ruptura (patrón de alta fiabilidad en Gold)
         if detectar_stop_hunt_bajista(df):
             score_sell += 3
-            print(f"  🎯 [15M] Stop Hunt BAJISTA detectado — +3 pts SELL")
+            logger.info(f"  🎯 [15M] Stop Hunt BAJISTA detectado — +3 pts SELL")
         if detectar_stop_hunt_alcista(df):
             score_buy += 3
-            print(f"  🎯 [15M] Stop Hunt ALCISTA detectado — +3 pts BUY")
+            logger.info(f"  🎯 [15M] Stop Hunt ALCISTA detectado — +3 pts BUY")
 
         # Score máximo: ~18 puntos
         max_score = 18
@@ -370,7 +373,7 @@ def analizar_simbolo(simbolo, params):
             if (ultima_fecha == fecha and 
                 abs(ultimo_score_sell - score_sell) <= 1 and 
                 abs(ultimo_score_buy - score_buy) <= 1):
-                print(f"  ℹ️  Vela {fecha} ya analizada - Sin cambios")
+                logger.info(f"  ℹ️  Vela {fecha} ya analizada - Sin cambios")
                 return
         
         ultimo_analisis[clave_simbolo] = {
@@ -379,19 +382,19 @@ def analizar_simbolo(simbolo, params):
             'score_buy': score_buy
         }
         
-        print(f"  📅 Vela:  {fecha}")
-        print(f"  💰 Close: {round(close, 2)}")
-        print(f"  📊 Score SELL: {score_sell}/{max_score} | Score BUY: {score_buy}/{max_score}")
-        print(f"  🔴 SELL Fuerte:{senal_sell_fuerte}  🟢 BUY Fuerte:{senal_buy_fuerte}")
-        print(f"  📉 RSI: {round(rsi, 1)} | ADX: {round(adx, 1)} | ATR: {round(atr, 2)}")
+        logger.info(f"  📅 Vela:  {fecha}")
+        logger.info(f"  💰 Close: {round(close, 2)}")
+        logger.info(f"  📊 Score SELL: {score_sell}/{max_score} | Score BUY: {score_buy}/{max_score}")
+        logger.info(f"  🔴 SELL Fuerte:{senal_sell_fuerte}  🟢 BUY Fuerte:{senal_buy_fuerte}")
+        logger.info(f"  📉 RSI: {round(rsi, 1)} | ADX: {round(adx, 1)} | ATR: {round(atr, 2)}")
         
         # ── CONTROL DE PÉRDIDAS CONSECUTIVAS (consultado desde BD) ──
         perdidas_consecutivas = db.contar_perdidas_consecutivas(f"{simbolo}_15M") if db else 0
         if perdidas_consecutivas >= params['max_perdidas_dia']:
             if not (senal_sell_fuerte or senal_buy_fuerte):
-                print(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas — esperando señal fuerte")
+                logger.warning(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas — esperando señal fuerte")
                 return
-            print(f"  ✅ Señal fuerte detectada tras {perdidas_consecutivas} pérdidas — reanudando")
+            logger.info(f"  ✅ Señal fuerte detectada tras {perdidas_consecutivas} pérdidas — reanudando")
         
         # ══════════════════════════════════════
         # ANTI-SPAM
@@ -399,10 +402,22 @@ def analizar_simbolo(simbolo, params):
         clave_vela = f"{simbolo}_{fecha}"
         
         def ya_enviada(tipo):
-            return alertas_enviadas.get(f"{clave_vela}_{tipo}", 0) > time.time() - 172800  # 48h TTL
+            clave = f"{clave_vela}_{tipo}"
+            ts_mem = alertas_enviadas.get(clave, 0)
+            if ts_mem > time.time() - 172800:
+                return True
+            if db:
+                ts_db = db.get_antispam(clave)
+                if ts_db > time.time() - 172800:
+                    alertas_enviadas[clave] = ts_db
+                    return True
+            return False
         
         def marcar_enviada(tipo):
-            alertas_enviadas[f"{clave_vela}_{tipo}"] = time.time()
+            clave = f"{clave_vela}_{tipo}"
+            alertas_enviadas[clave] = time.time()
+            if db:
+                db.set_antispam(clave, alertas_enviadas[clave])
             if len(alertas_enviadas) > 500:
                 _c = time.time() - 172800
                 for _k in [k for k in list(alertas_enviadas) if alertas_enviadas[k] < _c]:
@@ -412,10 +427,10 @@ def analizar_simbolo(simbolo, params):
         if senal_sell_fuerte and senal_buy_fuerte:
             if score_sell >= score_buy:
                 senal_buy_fuerte = False
-                print(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+                logger.info(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
             else:
                 senal_sell_fuerte = False
-                print(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+                logger.info(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
 
         _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
         tf_bias.publicar_sesgo(simbolo, '15M', _sesgo_dir, max(score_sell, score_buy))
@@ -423,14 +438,14 @@ def analizar_simbolo(simbolo, params):
         if senal_sell_fuerte:
             _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BEARISH)
             if not _ok:
-                print(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
+                logger.info(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
                 senal_sell_fuerte = False
             else:
                 _conf_sell = _desc
         if senal_buy_fuerte:
             _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BULLISH)
             if not _ok:
-                print(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
+                logger.info(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
                 senal_buy_fuerte = False
             else:
                 _conf_buy = _desc
@@ -444,10 +459,10 @@ def analizar_simbolo(simbolo, params):
         rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
         rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
         if rr_sell_tp1 < RR_MINIMO:
-            print(f'  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < {RR_MINIMO}')
+            logger.warning(f'  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < {RR_MINIMO}')
             cancelar_sell = True
         if rr_buy_tp1 < RR_MINIMO:
-            print(f'  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < {RR_MINIMO}')
+            logger.warning(f'  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < {RR_MINIMO}')
             cancelar_buy = True
 
         simbolo_db = f"{simbolo}_15M"
@@ -455,7 +470,7 @@ def analizar_simbolo(simbolo, params):
         # ── SEÑALES VENTA — solo FUERTE ──
         if senal_sell_fuerte and not cancelar_sell:
             if db and db.existe_senal_activa_tf(simbolo_db):
-                print(f"  ℹ️  SELL 15M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
+                logger.info(f"  ℹ️  SELL 15M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
             else:
                 msg = (f"🔥 SELL FUERTE — <b>GOLD 15M SCALPING</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -484,13 +499,13 @@ def analizar_simbolo(simbolo, params):
                             'version_detector': '15M-SCALP-v2.0'
                         })
                     except Exception as e:
-                        print(f"  ⚠️ Error guardando señal: {e}")
+                        logger.error(f"  ⚠️ Error guardando señal: {e}")
                 enviar_telegram(msg)
 
         # ── SEÑALES COMPRA — solo FUERTE ──
         if senal_buy_fuerte and not cancelar_buy:
             if db and db.existe_senal_activa_tf(simbolo_db):
-                print(f"  ℹ️  BUY 15M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
+                logger.info(f"  ℹ️  BUY 15M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
             else:
                 msg = (f"🔥 BUY FUERTE — <b>GOLD 15M SCALPING</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -519,11 +534,11 @@ def analizar_simbolo(simbolo, params):
                             'version_detector': '15M-SCALP-v2.0'
                         })
                     except Exception as e:
-                        print(f"  ⚠️ Error guardando señal: {e}")
+                        logger.error(f"  ⚠️ Error guardando señal: {e}")
                 enviar_telegram(msg)
     
     except Exception as e:
-        print(f"❌ Error analizando {simbolo}: {e}")
+        logger.error(f"❌ Error analizando {simbolo}: {e}")
 
 # ══════════════════════════════════════
 # FUNCIÓN MAIN (para importación desde run_detectors)
@@ -547,23 +562,23 @@ def main():
             from datetime import timedelta
             proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
             segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
-            print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
+            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
             time.sleep(segundos_espera)
             continue
 
-        print("\n" + "="*60)
-        print(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 CICLO #{ciclo} - GOLD 15M SCALPING")
-        print("="*60 + "\n")
+        logger.info("\n" + "="*60)
+        logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 CICLO #{ciclo} - GOLD 15M SCALPING")
+        logger.info("="*60 + "\n")
         
         for simbolo, params in SIMBOLOS.items():
-            print(f"📊 Analizando {simbolo} [15M SCALPING]...\n")
-            print(f"🔍 Analizando {simbolo}...")
+            logger.info(f"📊 Analizando {simbolo} [15M SCALPING]...\n")
+            logger.info(f"🔍 Analizando {simbolo}...")
             analizar_simbolo(simbolo, params)
         
-        print("\n" + "="*60)
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ Ciclo #{ciclo} completado")
-        print(f"⏳ Esperando {CHECK_INTERVAL//60} minutos...")
-        print("="*60 + "\n")
+        logger.info("\n" + "="*60)
+        logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ Ciclo #{ciclo} completado")
+        logger.info(f"⏳ Esperando {CHECK_INTERVAL//60} minutos...")
+        logger.info("="*60 + "\n")
         
         time.sleep(CHECK_INTERVAL)
 

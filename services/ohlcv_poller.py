@@ -13,6 +13,9 @@ Flujo:
 import time
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger('bottrading')
+
 # ── Activos y configuración ──────────────────────────────────────────────────
 # interval: intervalo que se almacena en BD (siempre 5m para Gold intraday)
 # poll_secs: frecuencia de polling
@@ -28,15 +31,15 @@ def main():
     from adapters.data_provider import poll_ohlcv
     from adapters.database import DatabaseManager
 
-    print("🔄 [ohlcv_poller] Iniciando servicio de polling OHLCV...")
+    logger.info("🔄 [ohlcv_poller] Iniciando servicio de polling OHLCV...")
 
     # Inicializar tabla al arranque
     try:
         db = DatabaseManager()
         db.init_ohlcv_table()
-        print("✅ [ohlcv_poller] Tabla ohlcv lista")
+        logger.info("✅ [ohlcv_poller] Tabla ohlcv lista")
     except Exception as e:
-        print(f"❌ [ohlcv_poller] Error inicializando tabla ohlcv: {e}")
+        logger.error(f"❌ [ohlcv_poller] Error inicializando tabla ohlcv: {e}")
 
     ciclo = 0
     global _ultimo_purge
@@ -52,10 +55,10 @@ def main():
                 try:
                     ok = poll_ohlcv(target['ticker_yf'], target['interval'])
                     if not ok:
-                        print(f"  ⚠️ [ohlcv_poller] #{ciclo} No se pudo actualizar "
+                        logger.warning(f"  ⚠️ [ohlcv_poller] #{ciclo} No se pudo actualizar "
                               f"{target['ticker_yf']} {target['interval']}")
                 except Exception as e:
-                    print(f"  ❌ [ohlcv_poller] #{ciclo} Excepción: {e}")
+                    logger.error(f"  ❌ [ohlcv_poller] #{ciclo} Excepción: {e}")
 
             # Purge cada 8h (28800 segundos)
             ts_ahora = time.time()
@@ -69,11 +72,11 @@ def main():
                             dias_max=target['max_dias_bd']
                         )
                     _ultimo_purge = ts_ahora
-                    print(f"  🧹 [ohlcv_poller] Purge completado")
+                    logger.info(f"  🧹 [ohlcv_poller] Purge completado")
                 except Exception as e:
-                    print(f"  ⚠️ [ohlcv_poller] Error en purge: {e}")
+                    logger.error(f"  ⚠️ [ohlcv_poller] Error en purge: {e}")
         else:
             if ciclo % 30 == 0:  # Log cada 30 min en off-hours
-                print(f"  ⏸️ [ohlcv_poller] Fuera de sesión ({hora}h UTC)")
+                logger.info(f"  ⏸️ [ohlcv_poller] Fuera de sesión ({hora}h UTC)")
 
         time.sleep(CHECK_INTERVAL)
