@@ -115,12 +115,26 @@ PARAMS_SCALPING = {**PARAMS_1D,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Stub concreto — necesario porque BaseDetector es abstracta (ABC).
+# Los fixtures usan esta subclase mínima para poder instanciar la base.
+# ─────────────────────────────────────────────────────────────────────────────
+
+if _IMPORT_OK:
+    class _StubDetector(BaseDetector):
+        """Subclase concreta mínima para instanciar BaseDetector en tests."""
+        def analizar(self, *args, **kwargs):
+            return None
+else:
+    _StubDetector = None  # se usa solo cuando el módulo existe
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Fixture: instancia del detector base con parámetros 1D
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def detector():
-    return BaseDetector(
+    return _StubDetector(
         simbolo='XAUUSD',
         tf_label='1D',
         params=PARAMS_1D,
@@ -130,7 +144,7 @@ def detector():
 
 @pytest.fixture
 def detector_4h():
-    return BaseDetector(
+    return _StubDetector(
         simbolo='XAUUSD',
         tf_label='4H',
         params=PARAMS_4H,
@@ -227,8 +241,8 @@ class TestCalcularZonasSR:
 
     def test_consistente_entre_instancias(self, df_trending_up):
         """Dos instancias con mismos params deben dar mismo resultado."""
-        d1 = BaseDetector('XAUUSD', '1D', PARAMS_1D, None)
-        d2 = BaseDetector('XAUUSD', '1D', PARAMS_1D, None)
+        d1 = _StubDetector('XAUUSD', '1D', PARAMS_1D, None)
+        d2 = _StubDetector('XAUUSD', '1D', PARAMS_1D, None)
         r1 = d1.calcular_zonas_sr(df_trending_up, 20.0, 30, 0.8)
         r2 = d2.calcular_zonas_sr(df_trending_up, 20.0, 30, 0.8)
         assert r1 == r2
@@ -286,8 +300,8 @@ class TestCalcularIndicadores:
 
     def test_params_distintos_generan_ema_distintas(self, df_trending_up):
         """Params de EMA distintos (1D vs 4H) deben generar EMAs distintas."""
-        d1d = BaseDetector('XAUUSD', '1D', PARAMS_1D, None)
-        d4h = BaseDetector('XAUUSD', '4H', PARAMS_4H, None)
+        d1d = _StubDetector('XAUUSD', '1D', PARAMS_1D, None)
+        d4h = _StubDetector('XAUUSD', '4H', PARAMS_4H, None)
         r1  = d1d.calcular_indicadores(df_trending_up)
         r4  = d4h.calcular_indicadores(df_trending_up)
         # ema_fast_len 9 (1D) vs 18 (4H): el 9 reacciona más rápido → valores distintos
@@ -295,8 +309,8 @@ class TestCalcularIndicadores:
 
     def test_ema_trend_correcto_para_scalping(self, df_trending_up):
         """EMA trend del 5M (ema_trend_len=21) debe ser diferente al del 1D (ema_trend_len=200)."""
-        d_scalp = BaseDetector('XAUUSD', '5M', PARAMS_SCALPING, None)
-        d_1d    = BaseDetector('XAUUSD', '1D', PARAMS_1D,       None)
+        d_scalp = _StubDetector('XAUUSD', '5M', PARAMS_SCALPING, None)
+        d_1d    = _StubDetector('XAUUSD', '1D', PARAMS_1D,       None)
         r_scalp = d_scalp.calcular_indicadores(df_trending_up)
         r_1d    = d_1d.calcular_indicadores(df_trending_up)
         assert not r_scalp['ema_trend'].equals(r_1d['ema_trend'])
