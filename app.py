@@ -123,6 +123,27 @@ def _enviar_alerta_telegram(mensaje: str):
     except Exception:
         pass
 
+
+def _enviar_heartbeat():
+    """Envía resumen de estado de los detectores a Telegram cada hora."""
+    activos = sum(1 for t in threads_detectores.values() if t.is_alive())
+    total   = len(threads_detectores)
+    ahora   = datetime.now().strftime('%Y-%m-%d %H:%M')
+    lineas  = []
+    for nombre, hilo in threads_detectores.items():
+        icono = "🟢" if hilo.is_alive() else "🔴"
+        lineas.append(f"  {icono} {nombre}")
+    estado_txt = "\n".join(lineas) if lineas else "  ℹ️ Sin detectores registrados"
+    msg = (
+        f"💓 <b>Heartbeat Bot Trading</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📅 {ahora} UTC\n"
+        f"🟢 Detectores activos: {activos}/{total}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{estado_txt}"
+    )
+    _enviar_alerta_telegram(msg)
+
 def keep_alive():
     """Mantiene la instancia activa haciendo ping interno cada minuto."""
     logger.info("💚 Keep-alive iniciado")
@@ -130,6 +151,7 @@ def keep_alive():
 
     fallos_consecutivos = 0
     UMBRAL_ALERTA = 3
+    ultimo_heartbeat = time.time()   # primera notificación después de 1 hora
 
     while True:
         try:
@@ -159,6 +181,16 @@ def keep_alive():
                     f"🚨 <b>Bot Trading no responde</b>\n"
                     f"Error de conexión {fallos_consecutivos} veces seguidas: <code>{e}</code>"
                 )
+
+        # ── Heartbeat horario: enviar estado de detectores a Telegram ──
+        ahora_ts = time.time()
+        if ahora_ts - ultimo_heartbeat >= 3600:
+            try:
+                _enviar_heartbeat()
+                ultimo_heartbeat = ahora_ts
+            except Exception as _hb_e:
+                logger.warning(f"⚠️ Heartbeat error: {_hb_e}")
+
         time.sleep(60)
 
 # Crear app Flask con factory pattern

@@ -650,6 +650,100 @@ class TestSubclaseBaseDetector:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# 12. ajustar_scores_por_volumen — filtro de señales en bajo volumen
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestAjustarScoresPorVolumen:
+    """Verifica que el filtro de volumen penalice scores cuando vol < vol_avg × mult."""
+
+    @pytest.fixture
+    def det(self):
+        class _D(BaseDetector):
+            def analizar(self): pass
+        return _D('XAUUSD', '1H', PARAMS_1D, None)
+
+    def test_penaliza_cuando_volumen_bajo(self, det):
+        # vol = 800 < vol_avg(1000) × mult(1.2=1200) → penalización -3
+        s, b, penalizado = det.ajustar_scores_por_volumen(10, 8, 800, 1000, 1.2)
+        assert penalizado is True
+        assert s == 7   # 10 - 3
+        assert b == 5   # 8 - 3
+
+    def test_no_penaliza_cuando_volumen_suficiente(self, det):
+        # vol = 1500 > vol_avg(1000) × mult(1.2=1200) → sin penalización
+        s, b, penalizado = det.ajustar_scores_por_volumen(10, 8, 1500, 1000, 1.2)
+        assert penalizado is False
+        assert s == 10
+        assert b == 8
+
+    def test_score_no_baja_de_cero(self, det):
+        # Score ya en 1 → penalización de 3 no puede dejar en negativo
+        s, b, penalizado = det.ajustar_scores_por_volumen(1, 2, 100, 1000, 1.2)
+        assert penalizado is True
+        assert s == 0
+        assert b == 0
+
+    def test_sin_penalizacion_cuando_vol_avg_cero(self, det):
+        # vol_avg=0 → no penalizar (evitar división por cero / comportamiento errático)
+        s, b, penalizado = det.ajustar_scores_por_volumen(10, 8, 500, 0, 1.2)
+        assert penalizado is False
+        assert s == 10
+        assert b == 8
+
+    def test_sin_penalizacion_cuando_vol_avg_nan(self, det):
+        s, b, penalizado = det.ajustar_scores_por_volumen(10, 8, float('nan'), 1000, 1.2)
+        assert penalizado is False
+
+    def test_exactamente_en_umbral_no_penaliza(self, det):
+        # vol = vol_avg × mult exacto → no se penaliza (condición es <, no <=)
+        s, b, penalizado = det.ajustar_scores_por_volumen(10, 8, 1200.0, 1000.0, 1.2)
+        assert penalizado is False
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 13. umbral_adaptativo — score mínimo según volatilidad ATR
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestUmbralAdaptativo:
+    """Verifica que el umbral adaptativo se eleve cuando ATR > atr_media × 1.5."""
+
+    @pytest.fixture
+    def det(self):
+        class _D(BaseDetector):
+            def analizar(self): pass
+        return _D('XAUUSD', '1D', PARAMS_1D, None)
+
+    def test_eleva_umbral_cuando_atr_alto(self, det):
+        # ATR=75 > media(40) × 1.5(=60) → umbral sube
+        umbral = det.umbral_adaptativo(6, atr=75, atr_media=40)
+        assert umbral == 8   # 6 + 2
+
+    def test_umbral_sin_cambio_cuando_atr_normal(self, det):
+        # ATR=50 < media(40) × 1.5(=60) → umbral sin cambio
+        umbral = det.umbral_adaptativo(6, atr=50, atr_media=40)
+        assert umbral == 6
+
+    def test_umbral_exactamente_en_limite_no_eleva(self, det):
+        # ATR=60 == media(40) × 1.5 → NO se considera "mayor que", no se eleva
+        umbral = det.umbral_adaptativo(6, atr=60.0, atr_media=40.0)
+        assert umbral == 6
+
+    def test_incremento_personalizado(self, det):
+        # incremento=3 cuando ATR alto
+        umbral = det.umbral_adaptativo(5, atr=100, atr_media=40, incremento=3)
+        assert umbral == 8   # 5 + 3
+
+    def test_atr_media_cero_no_eleva(self, det):
+        # atr_media=0 → no calcular ratio (evitar división por cero)
+        umbral = det.umbral_adaptativo(6, atr=100, atr_media=0)
+        assert umbral == 6
+
+    def test_atr_media_nan_no_eleva(self, det):
+        umbral = det.umbral_adaptativo(6, atr=100, atr_media=float('nan'))
+        assert umbral == 6
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # 12. Integración: flujo completo sin red ni BD
 # ═════════════════════════════════════════════════════════════════════════════
 

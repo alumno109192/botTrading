@@ -344,3 +344,48 @@ class BaseDetector(ABC):
                   if self.aviso_macro else "")
         return _telegram_mod.enviar_telegram(mensaje + sufijo,
                                              self.telegram_thread_id)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Filtro de volumen
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def ajustar_scores_por_volumen(self, score_sell: int, score_buy: int,
+                                   vol: float, vol_avg: float,
+                                   vol_mult: float = 1.2) -> tuple:
+        """
+        Penaliza ambos scores cuando el volumen de la vela está por debajo del
+        umbral mínimo (vol_avg × vol_mult).
+
+        Una señal generada en una vela de bajo volumen es menos fiable porque
+        no hay suficiente participación del mercado para confirmar el movimiento.
+
+        Returns: (score_sell, score_buy, volumen_bajo)
+            volumen_bajo — True si se aplicó la penalización.
+        """
+        if (pd.notna(vol_avg) and vol_avg > 0 and
+                pd.notna(vol) and vol < vol_avg * vol_mult):
+            penalizacion = 3
+            score_sell = max(0, score_sell - penalizacion)
+            score_buy  = max(0, score_buy  - penalizacion)
+            return score_sell, score_buy, True
+        return score_sell, score_buy, False
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Score mínimo adaptativo
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def umbral_adaptativo(self, base: int, atr: float, atr_media: float,
+                          incremento: int = 2) -> int:
+        """
+        Eleva el umbral mínimo de señal cuando la volatilidad (ATR) supera
+        1.5× su media reciente.
+
+        En mercados de alta volatilidad se generan muchas señales falsas.
+        Exigir más confirmación (umbral más alto) reduce los falsos positivos.
+
+        Returns: umbral ajustado (base + incremento si ATR es elevado, o base).
+        """
+        if (pd.notna(atr_media) and atr_media > 0 and
+                pd.notna(atr) and atr > atr_media * 1.5):
+            return base + incremento
+        return base

@@ -29,6 +29,7 @@ def enviar_telegram(mensaje):
 
 # Inicializar base de datos solo si las variables están configuradas
 from adapters.database import get_db
+from core.base_detector import BaseDetector
 import logging
 logger = logging.getLogger('bottrading')
 
@@ -87,47 +88,6 @@ ultima_senal_timestamp = None
 # ══════════════════════════════════════
 from core.indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji, detectar_stop_hunt_alcista, detectar_stop_hunt_bajista
 
-def calcular_zonas_sr(df, atr, lookback, zone_mult):
-    """
-    Detecta zonas S/R usando swing highs/lows locales (no solo máx/mín absoluto).
-    Principio: soporte roto = nueva resistencia; resistencia rota = nuevo soporte.
-    Selecciona el pivote más cercano al precio en cada dirección.
-    """
-    close      = float(df['Close'].iloc[-1])
-    zone_width = atr * zone_mult
-    wing       = 3
-    highs = df['High'].iloc[-lookback-1:-1]
-    lows  = df['Low'].iloc[-lookback-1:-1]
-
-    swing_highs = []
-    for i in range(wing, len(highs) - wing):
-        val = float(highs.iloc[i])
-        if all(val >= float(highs.iloc[i-j]) for j in range(1, wing+1)) and \
-           all(val >= float(highs.iloc[i+j]) for j in range(1, wing+1)):
-            swing_highs.append(val)
-
-    swing_lows = []
-    for i in range(wing, len(lows) - wing):
-        val = float(lows.iloc[i])
-        if all(val <= float(lows.iloc[i-j]) for j in range(1, wing+1)) and \
-           all(val <= float(lows.iloc[i+j]) for j in range(1, wing+1)):
-            swing_lows.append(val)
-
-    if not swing_highs: swing_highs = [float(highs.max())]
-    if not swing_lows:  swing_lows  = [float(lows.min())]
-
-    min_dist = atr * 0.3
-    candidatos_resist = [v for v in set(swing_highs + swing_lows) if v > close + min_dist]
-    candidatos_sop    = [v for v in set(swing_lows + swing_highs) if v < close - min_dist]
-
-    resist_pivot  = min(candidatos_resist) if candidatos_resist else float(highs.max())
-    support_pivot = max(candidatos_sop)    if candidatos_sop    else float(lows.min())
-
-    zrh = round(resist_pivot + zone_width * 0.25, 2)
-    zrl = round(resist_pivot - zone_width * 0.75, 2)
-    zsh = round(support_pivot + zone_width * 0.75, 2)
-    zsl = round(support_pivot - zone_width * 0.25, 2)
-    return zrl, zrh, zsl, zsh
 
 
 def analizar_price_action(df):
@@ -155,365 +115,369 @@ def en_sesion_activa():
     hora_utc = datetime.now(tz.utc).hour
     return 7 <= hora_utc < 17
 
-def analizar_simbolo(simbolo, params):
-    global perdidas_consecutivas, ultima_senal_timestamp
 
-    # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
-    global _aviso_macro
-    _aviso_macro = obtener_aviso_macro(30, '5M', simbolo)
+class GoldDetector5M(BaseDetector):
+    def analizar(self, simbolo, params):
+        global perdidas_consecutivas, ultima_senal_timestamp
 
-    try:
-        df, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
-        if is_delayed:
-            logger.warning("  ⚠️  [5M] Datos con 15 min de delay (yfinance free). Entradas de scalping pueden estar desfasadas.")
+        # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
+        self.aviso_macro = obtener_aviso_macro(30, '5M', simbolo)
 
-        if df.empty or len(df) < 50:
-            logger.warning(f"⚠️ Datos insuficientes para {simbolo} 5M")
-            return
+        try:
+            df, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
+            if is_delayed:
+                logger.warning("  ⚠️  [5M] Datos con 15 min de delay (yfinance free). Entradas de scalping pueden estar desfasadas.")
 
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.droplevel(1)
-
-        # Renombrar columnas solo si es necesario (data_provider ya las normaliza)
-        if 'Open' not in df.columns:
-            if len(df.columns) == 6:
-                df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-            elif len(df.columns) == 5:
-                df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-            else:
-                logger.warning(f"⚠️ Columnas inesperadas ({len(df.columns)}): {df.columns.tolist()}")
+            if df.empty or len(df) < 50:
+                logger.warning(f"⚠️ Datos insuficientes para {simbolo} 5M")
                 return
 
-        close = df['Close'].iloc[-1]
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.droplevel(1)
 
-        rsi_len = params['rsi_length']
-        rsi = calcular_rsi(df['Close'], rsi_len).iloc[-1]
+            # Renombrar columnas solo si es necesario (data_provider ya las normaliza)
+            if 'Open' not in df.columns:
+                if len(df.columns) == 6:
+                    df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+                elif len(df.columns) == 5:
+                    df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                else:
+                    logger.warning(f"⚠️ Columnas inesperadas ({len(df.columns)}): {df.columns.tolist()}")
+                    return
 
-        ema_fast  = df['Close'].ewm(span=params['ema_fast_len']).mean()
-        ema_slow  = df['Close'].ewm(span=params['ema_slow_len']).mean()
-        ema_trend = df['Close'].ewm(span=params['ema_trend_len']).mean()
+            close = df['Close'].iloc[-1]
 
-        atr_len = params['atr_length']
-        atr = calcular_atr(df, atr_len).iloc[-1]
-        adx, _, _ = calcular_adx(df)
-        adx = adx.iloc[-1]
+            rsi_len = params['rsi_length']
+            rsi = calcular_rsi(df['Close'], rsi_len).iloc[-1]
 
-        zrl, zrh, zsl, zsh = calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
-        tol = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
-        logger.info(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
+            ema_fast  = df['Close'].ewm(span=params['ema_fast_len']).mean()
+            ema_slow  = df['Close'].ewm(span=params['ema_slow_len']).mean()
+            ema_trend = df['Close'].ewm(span=params['ema_trend_len']).mean()
 
-        en_zona_resist       = (zrl <= close <= zrh)
-        en_zona_soporte      = (zsl <= close <= zsh)
-        aproximando_resist   = (zrl - tol <= close < zrl)
-        aproximando_soporte  = (zsh < close <= zsh + tol)
+            atr_len = params['atr_length']
+            _atr_series = calcular_atr(df, atr_len)
+            atr = float(_atr_series.iloc[-1])
+            atr_media = float(_atr_series.rolling(20).mean().iloc[-1])
+            adx, _, _ = calcular_adx(df)
+            adx = adx.iloc[-1]
 
-        # ── SCORING ──────────────────────────────────────
-        score_sell = 0; score_buy = 0
-        pa = analizar_price_action(df)
-        if df['Close'].iloc[-1] < df['Open'].iloc[-1]:
-            score_sell += pa
-        else:
-            score_buy += pa
+            zrl, zrh, zsl, zsh = self.calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
+            tol = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
+            logger.info(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
 
-        if rsi >= params['rsi_min_sell']:
-            score_sell += 2
-        elif rsi >= 62:
-            score_sell += 1
-        if rsi <= params['rsi_max_buy']:
-            score_buy += 2
-        elif rsi <= 38:
-            score_buy += 1
+            en_zona_resist       = (zrl <= close <= zrh)
+            en_zona_soporte      = (zsl <= close <= zsh)
+            aproximando_resist   = (zrl - tol <= close < zrl)
+            aproximando_soporte  = (zsh < close <= zsh + tol)
 
-        if ema_fast.iloc[-1] < ema_slow.iloc[-1]:
-            score_sell += 2
-            if ema_fast.iloc[-2] >= ema_slow.iloc[-2]:
+            # ── SCORING ──────────────────────────────────────
+            score_sell = 0; score_buy = 0
+            pa = analizar_price_action(df)
+            if df['Close'].iloc[-1] < df['Open'].iloc[-1]:
+                score_sell += pa
+            else:
+                score_buy += pa
+
+            if rsi >= params['rsi_min_sell']:
+                score_sell += 2
+            elif rsi >= 62:
                 score_sell += 1
-        if ema_fast.iloc[-1] > ema_slow.iloc[-1]:
-            score_buy += 2
-            if ema_fast.iloc[-2] <= ema_slow.iloc[-2]:
+            if rsi <= params['rsi_max_buy']:
+                score_buy += 2
+            elif rsi <= 38:
                 score_buy += 1
 
-        if close < ema_trend.iloc[-1]:
-            score_sell += 1
-        else:
-            score_buy += 1
+            if ema_fast.iloc[-1] < ema_slow.iloc[-1]:
+                score_sell += 2
+                if ema_fast.iloc[-2] >= ema_slow.iloc[-2]:
+                    score_sell += 1
+            if ema_fast.iloc[-1] > ema_slow.iloc[-1]:
+                score_buy += 2
+                if ema_fast.iloc[-2] <= ema_slow.iloc[-2]:
+                    score_buy += 1
 
-        if en_zona_resist or aproximando_resist:
-            score_sell += 2
-        if en_zona_soporte or aproximando_soporte:
-            score_buy += 2
-
-        if adx > 25:
-            if score_sell >= score_buy:
+            if close < ema_trend.iloc[-1]:
                 score_sell += 1
             else:
                 score_buy += 1
 
-        vol_medio = df['Volume'].iloc[-20:].mean()
-        vol_actual = df['Volume'].iloc[-6:].mean()
-        if vol_actual > vol_medio * params['vol_mult']:
-            if score_sell >= score_buy:
-                score_sell += 1
-            else:
-                score_buy += 1
+            if en_zona_resist or aproximando_resist:
+                score_sell += 2
+            if en_zona_soporte or aproximando_soporte:
+                score_buy += 2
 
-        if patron_envolvente_bajista(df):
-            score_sell += 2
-        if patron_envolvente_alcista(df):
-            score_buy += 2
+            if adx > 25:
+                if score_sell >= score_buy:
+                    score_sell += 1
+                else:
+                    score_buy += 1
 
-        # Stop Hunt / Falsa Ruptura (patrón de alta fiabilidad en Gold)
-        if detectar_stop_hunt_bajista(df):
-            score_sell += 3
-            logger.info(f"  🎯 [5M] Stop Hunt BAJISTA detectado — +3 pts SELL")
-        if detectar_stop_hunt_alcista(df):
-            score_buy += 3
-            logger.info(f"  🎯 [5M] Stop Hunt ALCISTA detectado — +3 pts BUY")
+            vol_medio = df['Volume'].iloc[-20:].mean()
+            vol_actual = df['Volume'].iloc[-6:].mean()
+            if vol_actual > vol_medio * params['vol_mult']:
+                if score_sell >= score_buy:
+                    score_sell += 1
+                else:
+                    score_buy += 1
 
-        max_score = 18
+            if patron_envolvente_bajista(df):
+                score_sell += 2
+            if patron_envolvente_alcista(df):
+                score_buy += 2
 
-        # Umbrales 5M — solo FUERTE llega a Telegram
-        senal_sell_fuerte = score_sell >= 8
-        senal_buy_fuerte  = score_buy  >= 8
+            # Stop Hunt / Falsa Ruptura (patrón de alta fiabilidad en Gold)
+            if detectar_stop_hunt_bajista(df):
+                score_sell += 3
+                logger.info(f"  🎯 [5M] Stop Hunt BAJISTA detectado — +3 pts SELL")
+            if detectar_stop_hunt_alcista(df):
+                score_buy += 3
+                logger.info(f"  🎯 [5M] Stop Hunt ALCISTA detectado — +3 pts BUY")
 
-        # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
-        dxy_bias = get_dxy_bias()
-        score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
-        # Recalcular umbrales tras ajuste DXY
-        senal_sell_fuerte = score_sell >= 8
-        senal_buy_fuerte  = score_buy  >= 8
+            max_score = 18
 
-        cancelar_sell = (close < zsl) or (rsi < 28)
-        cancelar_buy  = (close > zrh) or (rsi > 72)
+            # Umbrales 5M — solo FUERTE llega a Telegram
+            senal_sell_fuerte = score_sell >= 8
+            senal_buy_fuerte  = score_buy  >= 8
 
-        asm = params['atr_sl_mult']
-        sl_venta  = close + (atr * asm)
-        sl_compra = close - (atr * asm)
+            # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
+            dxy_bias = get_dxy_bias()
+            score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
 
-        offset_pct = params['limit_offset_pct']
-        sell_limit = close * (1 + offset_pct / 100)
-        buy_limit  = close * (1 - offset_pct / 100)
+            # ── Filtro de volumen: penalizar señales en velas de bajo volumen ──
+            score_sell, score_buy, _vol_bajo = self.ajustar_scores_por_volumen(
+                score_sell, score_buy, vol_actual, vol_medio, params['vol_mult'])
+            if _vol_bajo:
+                logger.info(f"  ⚠️ [5M] Volumen bajo ({vol_actual:.0f} < {vol_medio * params['vol_mult']:.0f}) — scores penalizados -3")
 
-        tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
-        tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
-        tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
-        tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
-        tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
-        tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
+            # Recalcular umbrales tras ajuste DXY y filtro de volumen (con umbral adaptativo)
+            _umbral_fue = self.umbral_adaptativo(8, atr, atr_media)
+            senal_sell_fuerte = score_sell >= _umbral_fue
+            senal_buy_fuerte  = score_buy  >= _umbral_fue
 
-        def rr(limit, sl, tp):
-            return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
+            cancelar_sell = (close < zsl) or (rsi < 28)
+            cancelar_buy  = (close > zrh) or (rsi > 72)
 
-        fecha = df.index[-1].strftime('%Y-%m-%d %H:%M')
+            asm = params['atr_sl_mult']
+            sl_venta  = close + (atr * asm)
+            sl_compra = close - (atr * asm)
 
-        # ── LOG CONSOLA ─────────────────────────────────
-        if simbolo in ultimo_analisis:
-            ul = ultimo_analisis[simbolo]
-            if (ul['fecha'] == fecha and
-                    abs(ul['score_sell'] - score_sell) <= 1 and
-                    abs(ul['score_buy'] - score_buy) <= 1):
-                logger.info(f"  ℹ️  Vela {fecha} ya analizada — sin cambios")
-                return
+            offset_pct = params['limit_offset_pct']
+            sell_limit = close * (1 + offset_pct / 100)
+            buy_limit  = close * (1 - offset_pct / 100)
 
-        ultimo_analisis[simbolo] = {'fecha': fecha, 'score_sell': score_sell, 'score_buy': score_buy}
+            tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
+            tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
+            tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
+            tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
+            tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
+            tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
 
-        logger.info(f"  📅 {fecha}  💰 Close: {round(close, 2)}")
-        logger.info(f"  🔴 SELL {score_sell}/{max_score} | 🟢 BUY {score_buy}/{max_score}")
-        logger.info(f"  📉 RSI: {round(rsi, 1)} | ADX: {round(adx, 1)} | ATR: {round(atr, 2)}")
+            def rr(limit, sl, tp):
+                return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
 
-        # ── PÉRDIDAS CONSECUTIVAS ────────────────────────
-        if perdidas_consecutivas >= params['max_perdidas_dia']:
-            logger.warning(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas")
-            if not (senal_sell_fuerte or senal_buy_fuerte):
-                return
-            perdidas_consecutivas = 0
+            fecha = df.index[-1].strftime('%Y-%m-%d %H:%M')
 
-        # ── ANTI-SPAM ────────────────────────────────────
-        clave_vela = f"{simbolo}_{fecha}"
+            # ── LOG CONSOLA ─────────────────────────────────
+            if simbolo in self.ultimo_analisis:
+                ul = self.ultimo_analisis[simbolo]
+                if (ul['fecha'] == fecha and
+                        abs(ul['score_sell'] - score_sell) <= 1 and
+                        abs(ul['score_buy'] - score_buy) <= 1):
+                    logger.info(f"  ℹ️  Vela {fecha} ya analizada — sin cambios")
+                    return
 
-        def ya_enviada(tipo):
-            clave = f"{clave_vela}_{tipo}"
-            ts_mem = alertas_enviadas.get(clave, 0)
-            if ts_mem > time.time() - 172800:
-                return True
-            if db:
-                ts_db = db.get_antispam(clave)
-                if ts_db > time.time() - 172800:
-                    alertas_enviadas[clave] = ts_db
+            self.ultimo_analisis[simbolo] = {'fecha': fecha, 'score_sell': score_sell, 'score_buy': score_buy}
+
+            logger.info(f"  📅 {fecha}  💰 Close: {round(close, 2)}")
+            logger.info(f"  🔴 SELL {score_sell}/{max_score} | 🟢 BUY {score_buy}/{max_score}")
+            logger.info(f"  📉 RSI: {round(rsi, 1)} | ADX: {round(adx, 1)} | ATR: {round(atr, 2)}")
+
+            # ── PÉRDIDAS CONSECUTIVAS ────────────────────────
+            if perdidas_consecutivas >= params['max_perdidas_dia']:
+                logger.warning(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas")
+                if not (senal_sell_fuerte or senal_buy_fuerte):
+                    return
+                perdidas_consecutivas = 0
+
+            # ── ANTI-SPAM ────────────────────────────────────
+            clave_vela = f"{simbolo}_{fecha}"
+
+            def ya_enviada(tipo):
+                clave = f"{clave_vela}_{tipo}"
+                ts_mem = self.alertas_enviadas.get(clave, 0)
+                if ts_mem > time.time() - 172800:
                     return True
-            return False
+                if self.db:
+                    ts_db = self.db.get_antispam(clave)
+                    if ts_db > time.time() - 172800:
+                        self.alertas_enviadas[clave] = ts_db
+                        return True
+                return False
 
-        def marcar_enviada(tipo):
-            clave = f"{clave_vela}_{tipo}"
-            alertas_enviadas[clave] = time.time()
-            if db:
-                db.set_antispam(clave, alertas_enviadas[clave])
-            if len(alertas_enviadas) > 500:
-                _c = time.time() - 172800
-                for _k in [k for k in list(alertas_enviadas) if alertas_enviadas[k] < _c]:
-                    del alertas_enviadas[_k]
+            def marcar_enviada(tipo):
+                clave = f"{clave_vela}_{tipo}"
+                self.alertas_enviadas[clave] = time.time()
+                if self.db:
+                    self.db.set_antispam(clave, self.alertas_enviadas[clave])
+    
+            # ── EXCLUSIÓN MUTUA ──
+            if senal_sell_fuerte and senal_buy_fuerte:
+                if score_sell >= score_buy:
+                    senal_buy_fuerte = False
+                    logger.info(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
+                else:
+                    senal_sell_fuerte = False
+                    logger.info(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
 
-        # ── EXCLUSIÓN MUTUA ──
-        if senal_sell_fuerte and senal_buy_fuerte:
-            if score_sell >= score_buy:
-                senal_buy_fuerte = False
-                logger.info(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
-            else:
-                senal_sell_fuerte = False
-                logger.info(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+            _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
+            tf_bias.publicar_sesgo(simbolo, '5M', _sesgo_dir, max(score_sell, score_buy))
+            _conf_sell = ""; _conf_buy = ""
 
-        _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
-        tf_bias.publicar_sesgo(simbolo, '5M', _sesgo_dir, max(score_sell, score_buy))
-        _conf_sell = ""; _conf_buy = ""
+            if senal_sell_fuerte:
+                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BEARISH)
+                if not _ok:
+                    logger.info(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
+                    senal_sell_fuerte = False
+                else:
+                    _conf_sell = _desc
+            if senal_buy_fuerte:
+                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BULLISH)
+                if not _ok:
+                    logger.info(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
+                    senal_buy_fuerte = False
+                else:
+                    _conf_buy = _desc
 
-        if senal_sell_fuerte:
-            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BEARISH)
-            if not _ok:
-                logger.info(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
-                senal_sell_fuerte = False
-            else:
-                _conf_sell = _desc
-        if senal_buy_fuerte:
-            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BULLISH)
-            if not _ok:
-                logger.info(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
-                senal_buy_fuerte = False
-            else:
-                _conf_buy = _desc
+            # ── FILTRO R:R MÍNIMO 1.5 (Micro-Scalp 5M) ──
+            RR_MINIMO = 1.5
+            rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
+            rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
+            if rr_sell_tp1 < RR_MINIMO:
+                logger.warning(f'  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < {RR_MINIMO}')
+                cancelar_sell = True
+            if rr_buy_tp1 < RR_MINIMO:
+                logger.warning(f'  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < {RR_MINIMO}')
+                cancelar_buy = True
 
-        # ── FILTRO R:R MÍNIMO 1.5 (Micro-Scalp 5M) ──
-        RR_MINIMO = 1.5
-        rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
-        rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
-        if rr_sell_tp1 < RR_MINIMO:
-            logger.warning(f'  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < {RR_MINIMO}')
-            cancelar_sell = True
-        if rr_buy_tp1 < RR_MINIMO:
-            logger.warning(f'  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < {RR_MINIMO}')
-            cancelar_buy = True
+            simbolo_db = f"{simbolo}_5M"
 
-        simbolo_db = f"{simbolo}_5M"
+            # ── SEÑALES VENTA — solo FUERTE ──
+            if senal_sell_fuerte and not cancelar_sell:
+                if self.db and self.db.existe_senal_activa_tf(simbolo_db):
+                    logger.info(f"  ℹ️  SELL 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
+                else:
+                    msg = (f"🔥 SELL FUERTE — <b>GOLD 5M MICRO-SCALP</b>\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
+                           f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 2)}\n"
+                           f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
+                           f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
+                           f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                           f"⏱️ <b>TF:</b> 5M  📅 {fecha}\n"
+                           f"🔒 MICRO-SCALP — Cerrar máx 30 min")
+                    if _conf_sell:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
+                    if self.db:
+                        try:
+                            self.db.guardar_senal({
+                                'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                                'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                                'score': score_sell,
+                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
+                                                           'atr': round(atr, 2)}),
+                                'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
+                                'version_detector': '5M-MICRO-v2.0'
+                            })
+                        except Exception as e:
+                            logger.error(f"  ⚠️ Error guardando señal: {e}")
+                    self.enviar(msg)
 
-        # ── SEÑALES VENTA — solo FUERTE ──
-        if senal_sell_fuerte and not cancelar_sell:
-            if db and db.existe_senal_activa_tf(simbolo_db):
-                logger.info(f"  ℹ️  SELL 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
-            else:
-                msg = (f"🔥 SELL FUERTE — <b>GOLD 5M MICRO-SCALP</b>\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
-                       f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 2)}\n"
-                       f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                       f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                       f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                       f"⏱️ <b>TF:</b> 5M  📅 {fecha}\n"
-                       f"🔒 MICRO-SCALP — Cerrar máx 30 min")
-                if _conf_sell:
-                    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
-                if db:
-                    try:
-                        db.guardar_senal({
-                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                            'direccion': 'VENTA', 'precio_entrada': sell_limit,
-                            'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
-                            'score': score_sell,
-                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
-                                                       'atr': round(atr, 2)}),
-                            'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
-                            'version_detector': '5M-MICRO-v2.0'
-                        })
-                    except Exception as e:
-                        logger.error(f"  ⚠️ Error guardando señal: {e}")
-                enviar_telegram(msg)
+            # ── SEÑALES COMPRA — solo FUERTE ──
+            if senal_buy_fuerte and not cancelar_buy:
+                if self.db and self.db.existe_senal_activa_tf(simbolo_db):
+                    logger.info(f"  ℹ️  BUY 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
+                else:
+                    msg = (f"🔥 BUY FUERTE — <b>GOLD 5M MICRO-SCALP</b>\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
+                           f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 2)}\n"
+                           f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
+                           f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
+                           f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                           f"⏱️ <b>TF:</b> 5M  📅 {fecha}\n"
+                           f"🔒 MICRO-SCALP — Cerrar máx 30 min")
+                    if _conf_buy:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                    if self.db:
+                        try:
+                            self.db.guardar_senal({
+                                'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                                'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                                'score': score_buy,
+                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
+                                                           'atr': round(atr, 2)}),
+                                'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}",
+                                'version_detector': '5M-MICRO-v2.0'
+                            })
+                        except Exception as e:
+                            logger.error(f"  ⚠️ Error guardando señal: {e}")
+                    self.enviar(msg)
 
-        # ── SEÑALES COMPRA — solo FUERTE ──
-        if senal_buy_fuerte and not cancelar_buy:
-            if db and db.existe_senal_activa_tf(simbolo_db):
-                logger.info(f"  ℹ️  BUY 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
-            else:
-                msg = (f"🔥 BUY FUERTE — <b>GOLD 5M MICRO-SCALP</b>\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
-                       f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 2)}\n"
-                       f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                       f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                       f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
-                       f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                       f"⏱️ <b>TF:</b> 5M  📅 {fecha}\n"
-                       f"🔒 MICRO-SCALP — Cerrar máx 30 min")
-                if _conf_buy:
-                    msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
-                if db:
-                    try:
-                        db.guardar_senal({
-                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                            'direccion': 'COMPRA', 'precio_entrada': buy_limit,
-                            'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
-                            'score': score_buy,
-                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
-                                                       'atr': round(atr, 2)}),
-                            'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}",
-                            'version_detector': '5M-MICRO-v2.0'
-                        })
-                    except Exception as e:
-                        logger.error(f"  ⚠️ Error guardando señal: {e}")
-                enviar_telegram(msg)
-
-    except Exception as e:
-        logger.error(f"❌ Error analizando {simbolo} [5M]: {e}")
+        except Exception as e:
+            logger.error(f"❌ Error analizando {simbolo} [5M]: {e}")
 
 
-# ══════════════════════════════════════
-# FUNCIÓN MAIN
-# ══════════════════════════════════════
+
+
+def analizar_simbolo(simbolo, params):
+    return GoldDetector5M(simbolo=simbolo, tf_label='5M', params=params, telegram_thread_id=TELEGRAM_THREAD_ID).analizar(simbolo, params)
+
+
 def main():
-    """Función principal para ejecutar el detector"""
+    """Función principal para ejecutar el detector."""
     global perdidas_consecutivas
     enviar_telegram("🚀 <b>Detector GOLD 5M MICRO-SCALP iniciado</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "⏱️  Análisis cada 1 minuto\n"
                     "⚡ Confluencia 1D + 4H + 1H + 15M\n"
-                    "🎯 TPs: $20 / $35 / $60\n"
                     "🔒 Operaciones máx 30 min")
-
-    # Cargar pérdidas consecutivas desde BD al arrancar (sobrevive reinicios)
-    if db:
-        try:
-            perdidas_consecutivas = db.contar_perdidas_consecutivas('XAUUSD_5M')
+    try:
+        from adapters.database import get_db as _get_db
+        _db = _get_db()
+        if _db:
+            perdidas_consecutivas = _db.contar_perdidas_consecutivas('XAUUSD_5M')
             logger.info(f"📊 [5M] Pérdidas consecutivas cargadas desde BD: {perdidas_consecutivas}")
-        except Exception:
-            pass
-
+    except Exception:
+        pass
     ciclo = 0
     while True:
         ciclo += 1
         ahora_utc = datetime.now(timezone.utc)
-
-        # ── Sábado: futuros Gold cerrados. Domingo 18:00 UTC abre Globex ──
-        if ahora_utc.weekday() == 5:  # 5=Sábado únicamente
+        if ahora_utc.weekday() == 5:
             from datetime import timedelta
-            proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(hour=18, minute=0, second=0, microsecond=0)
+            proximo_domingo_18 = (ahora_utc + timedelta(days=1)).replace(
+                hour=18, minute=0, second=0, microsecond=0)
             segundos_espera = min((proximo_domingo_18 - ahora_utc).total_seconds(), 3600)
-            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado. Próxima apertura Domingo 18:00 UTC. Revisando en {int(segundos_espera//60)} min...")
+            logger.info(f"[{ahora_utc.strftime('%Y-%m-%d %H:%M')} UTC] 💤 Sábado — mercado cerrado.")
             time.sleep(segundos_espera)
             continue
-
         logger.info(f"\n[{ahora_utc.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 CICLO #{ciclo} — GOLD 5M MICRO-SCALP")
-
         for simbolo, params in SIMBOLOS.items():
-            logger.info(f"📊 Analizando {simbolo} [5M MICRO-SCALP]...")
             analizar_simbolo(simbolo, params)
-
         logger.info(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ✅ Ciclo #{ciclo} completado — esperando {CHECK_INTERVAL}s")
         time.sleep(CHECK_INTERVAL)
 
 
 if __name__ == "__main__":
     main()
+
