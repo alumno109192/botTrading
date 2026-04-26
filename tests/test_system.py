@@ -88,7 +88,7 @@ def test_database_connection():
     print_header("TEST 3: Conexión a Base de Datos")
     
     try:
-        from db_manager import DatabaseManager
+        from adapters.database import DatabaseManager
         
         db = DatabaseManager()
         print_success("Conexión a Turso establecida")
@@ -115,7 +115,7 @@ def test_signal_creation():
     print_header("TEST 4: Creación de Señal de Prueba")
     
     try:
-        from db_manager import DatabaseManager
+        from adapters.database import DatabaseManager
         import json
         
         db = DatabaseManager()

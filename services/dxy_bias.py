@@ -8,7 +8,7 @@ y calcula el sesgo de tendencia usando EMA9/EMA21 en 1H.
 El resultado se cachea 30 minutos para evitar llamadas excesivas.
 
 Uso:
-    from dxy_bias import get_dxy_bias, ajustar_score_por_dxy
+    from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
 
     bias = get_dxy_bias()
     score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, bias)

@@ -1,6 +1,6 @@
 """
-telegram_utils — Envío centralizado de mensajes a Telegram.
-Cada detector solo necesita: from telegram_utils import enviar_telegram
+telegram — Envío centralizado de mensajes a Telegram.
+Cada detector solo necesita: from adapters.telegram import enviar_telegram
 """
 
 import os

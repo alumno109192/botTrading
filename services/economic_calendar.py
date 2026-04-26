@@ -9,7 +9,7 @@ MANTENIMIENTO:
     Fuente de referencia: https://www.forexfactory.com/calendar (filtrar: USD, Impact=High)
 
 Uso:
-    from economic_calendar import hay_evento_impacto
+    from services.economic_calendar import hay_evento_impacto
     bloqueado, descripcion = hay_evento_impacto(ventana_minutos=60)
     if bloqueado:
         print(f"⚠️ Señal bloqueada: evento próximo → {descripcion}")

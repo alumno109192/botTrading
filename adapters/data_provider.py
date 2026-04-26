@@ -7,7 +7,7 @@ Prioridad (de mejor a peor):
   3. yfinance fallback (gratuito, 15 min delay en intraday)
 
 Uso:
-    from data_provider import get_ohlcv
+    from adapters.data_provider import get_ohlcv
     df, is_delayed = get_ohlcv('GC=F', period='5d', interval='15m')
     if is_delayed:
         print("⚠️ Datos con 15 min de delay (yfinance free)")
