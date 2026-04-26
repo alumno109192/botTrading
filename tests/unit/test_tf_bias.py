@@ -3,7 +3,7 @@ tests/unit/test_tf_bias.py — Tests unitarios para services/tf_bias.py
 
 Cubre:
   - publicar_sesgo / obtener_sesgo
-  - verificar_confluencia (permite / bloquea según sesgos publicados)
+  - verificar_confluencia (Opción C: siempre permite, descripción con aviso si TFs contrarios)
   - estado_completo
   - publicar_canal_* / obtener_canal_* (solo memoria, sin BD)
 """
@@ -83,7 +83,7 @@ class TestPublicarObtenerSesgo:
         assert 'ts' in sesgo
 
 
-# ── verificar_confluencia ────────────────────────────────────────────────────
+# ── verificar_confluencia (Opción C: nunca bloquea, siempre informa) ─────────
 
 class TestVerificarConfluencia:
     def test_permite_cuando_no_hay_datos_de_tfs_superiores(self):
@@ -101,10 +101,12 @@ class TestVerificarConfluencia:
         assert ok is True
         assert isinstance(desc, str)
 
-    def test_bloquea_cuando_1d_es_contrario(self):
+    def test_permite_con_aviso_cuando_1d_es_contrario(self):
+        """Opción C: el 1D contrario ya no bloquea; la señal se permite con aviso."""
         publicar_sesgo('XAUUSD', '1D', BIAS_BEARISH, score=10)
         ok, desc = verificar_confluencia('XAUUSD', '4H', BIAS_BULLISH)
-        assert ok is False
+        assert ok is True
+        assert "⚠️" in desc
 
     def test_permite_cuando_mayoria_confirma(self):
         publicar_sesgo('XAUUSD', '1D', BIAS_BULLISH,  score=10)
@@ -112,11 +114,13 @@ class TestVerificarConfluencia:
         ok, _ = verificar_confluencia('XAUUSD', '4H', BIAS_BULLISH)
         assert ok is True
 
-    def test_bloquea_cuando_mayoria_es_contraria(self):
+    def test_permite_con_aviso_cuando_mayoria_es_contraria(self):
+        """Opción C: mayoría contraria ya no bloquea; señal permitida con aviso."""
         publicar_sesgo('XAUUSD', '1D', BIAS_BEARISH, score=10)
         publicar_sesgo('XAUUSD', '1W', BIAS_BEARISH, score=9)
-        ok, _ = verificar_confluencia('XAUUSD', '4H', BIAS_BULLISH)
-        assert ok is False
+        ok, desc = verificar_confluencia('XAUUSD', '4H', BIAS_BULLISH)
+        assert ok is True
+        assert "⚠️" in desc
 
     def test_descripcion_es_string(self):
         publicar_sesgo('XAUUSD', '1D', BIAS_BULLISH, score=8)
