@@ -497,7 +497,50 @@ class DatabaseManager:
         
         self.ejecutar_query(query, (estado_final, now, beneficio_pct, senal_id))
         logger.info(f"🔒 Señal {senal_id} cerrada con estado: {estado_final}")
-    
+
+    def cancelar_senales_pendientes(self, simbolo: str, direccion: str) -> List[Dict]:
+        """
+        Cancela todas las señales ACTIVA o PENDIENTE_CONFIRM para el símbolo
+        y dirección dados cuando el precio invalida la entrada.
+
+        Se usa cuando el precio rompe la zona S/R de referencia y la orden
+        limit ya no tiene sentido (no se va a ejecutar en condiciones favorables).
+
+        Args:
+            simbolo:   símbolo en formato 'XAUUSD_1H', 'XAUUSD_4H', etc.
+            direccion: 'VENTA' o 'COMPRA'
+
+        Returns:
+            Lista de registros cancelados (puede estar vacía si no había ninguno).
+        """
+        # Obtener las señales afectadas antes de cancelarlas (para poder loguearlas)
+        select_query = """
+        SELECT id, precio_entrada FROM senales
+        WHERE simbolo = ?
+          AND direccion = ?
+          AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
+        """
+        result = self.ejecutar_query(select_query, (simbolo, direccion))
+        afectadas = [dict(row) for row in result.rows] if result.rows else []
+
+        if afectadas:
+            now = datetime.now(timezone.utc).isoformat()
+            update_query = """
+            UPDATE senales
+            SET estado = 'CANCELADA', fecha_cierre = ?
+            WHERE simbolo = ?
+              AND direccion = ?
+              AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
+            """
+            self.ejecutar_query(update_query, (now, simbolo, direccion))
+            for s in afectadas:
+                logger.info(
+                    f"❌ Señal #{s['id']} {direccion} {simbolo} cancelada "
+                    f"(precio invalidó entrada en ${s['precio_entrada']})"
+                )
+
+        return afectadas
+
     # ═══════════════════════════════════════════════════════════
     # HISTORIAL DE PRECIOS
     # ═══════════════════════════════════════════════════════════
