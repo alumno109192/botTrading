@@ -6,11 +6,14 @@ Los detectores se ejecutan en threads separados
 
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import requests
 import sys
 import logging
+import smtplib
+import ssl
+from email.mime.text import MIMEText
 from logging.handlers import RotatingFileHandler
 import yfinance as yf
 
@@ -113,6 +116,13 @@ threads_detectores = {}
 _TG_TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 _TG_CHAT = os.environ.get('TELEGRAM_CHAT_ID', '')
 
+# Credenciales SMTP (para alertas de fallo de detectores)
+_SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+_SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
+_SMTP_USER = os.environ.get('SMTP_USER', '')
+_SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
+_ALERT_EMAIL = os.environ.get('ALERT_EMAIL', 'yesod3d@gmail.com')
+
 def _enviar_alerta_telegram(mensaje: str):
     """Envía un mensaje de alerta al chat de Telegram (uso interno)."""
     if not _TG_TOKEN or not _TG_CHAT:
@@ -124,25 +134,55 @@ def _enviar_alerta_telegram(mensaje: str):
         pass
 
 
+def _enviar_email_fallo(fallidos: list):
+    """Envía un correo de alerta a _ALERT_EMAIL cuando hay detectores caídos."""
+    if not _SMTP_USER or not _SMTP_PASSWORD:
+        logger.warning("⚠️ SMTP no configurado — no se puede enviar email de fallo de detectores")
+        return
+    ahora = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    cuerpo = (
+        f"Bot Trading — Alerta de detectores caídos\n"
+        f"Fecha: {ahora} UTC\n\n"
+        f"Los siguientes detectores han dejado de estar activos:\n"
+        + "\n".join(f"  - {nombre}" for nombre in fallidos)
+    )
+    try:
+        msg = MIMEText(cuerpo, 'plain', 'utf-8')
+        msg['Subject'] = f"🚨 Bot Trading: {len(fallidos)} detector(es) caído(s)"
+        msg['From'] = _SMTP_USER
+        msg['To'] = _ALERT_EMAIL
+        context = ssl.create_default_context()
+        with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=15) as smtp:
+            smtp.ehlo()
+            smtp.starttls(context=context)
+            smtp.login(_SMTP_USER, _SMTP_PASSWORD)
+            smtp.sendmail(_SMTP_USER, [_ALERT_EMAIL], msg.as_string())
+        logger.info(f"📧 Email de fallo enviado a {_ALERT_EMAIL}: {fallidos}")
+    except Exception as e:
+        logger.error(f"❌ Error enviando email de fallo de detectores: {e}")
+
+
 def _enviar_heartbeat():
-    """Envía resumen de estado de los detectores a Telegram cada hora."""
+    """Registra en log el estado de los detectores cada hora.
+    Si algún detector ha fallado, envía un email de alerta."""
     activos = sum(1 for t in threads_detectores.values() if t.is_alive())
     total   = len(threads_detectores)
-    ahora   = datetime.now().strftime('%Y-%m-%d %H:%M')
-    lineas  = []
+    ahora   = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
+    fallidos = []
+    lineas   = []
     for nombre, hilo in threads_detectores.items():
-        icono = "🟢" if hilo.is_alive() else "🔴"
-        lineas.append(f"  {icono} {nombre}")
+        if hilo.is_alive():
+            lineas.append(f"  🟢 {nombre}")
+        else:
+            lineas.append(f"  🔴 {nombre}")
+            fallidos.append(nombre)
     estado_txt = "\n".join(lineas) if lineas else "  ℹ️ Sin detectores registrados"
-    msg = (
-        f"💓 <b>Heartbeat Bot Trading</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📅 {ahora} UTC\n"
-        f"🟢 Detectores activos: {activos}/{total}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"{estado_txt}"
+    logger.info(
+        f"💓 Heartbeat Bot Trading | {ahora} UTC | "
+        f"Detectores activos: {activos}/{total}\n{estado_txt}"
     )
-    _enviar_alerta_telegram(msg)
+    if fallidos:
+        _enviar_email_fallo(fallidos)
 
 def keep_alive():
     """Mantiene la instancia activa haciendo ping interno cada minuto."""
