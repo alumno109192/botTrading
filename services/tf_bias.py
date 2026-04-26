@@ -6,7 +6,7 @@ Los detectores de TF superior publican su sesgo; los inferiores lo consultan
 antes de enviar una señal.
 
 Uso:
-    import tf_bias
+    from services import tf_bias
     # En detector 1D (al final de analizar):
     tf_bias.publicar_sesgo('SPX500', '1D', tf_bias.BIAS_BEARISH, score=11)
     # En detector 4H (antes de enviar señal):
