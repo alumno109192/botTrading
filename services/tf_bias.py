@@ -1,9 +1,15 @@
 """
-tf_bias.py — Sesgo compartido multi-TF (Opción C Cascada)
+tf_bias.py — Sesgo compartido multi-TF (Opción C — Filtro suave)
 
 Módulo thread-safe para compartir el sesgo de cada timeframe entre detectores.
 Los detectores de TF superior publican su sesgo; los inferiores lo consultan
 antes de enviar una señal.
+
+Comportamiento (Opción C):
+  Las señales en 1H, 15M y 5M NUNCA se bloquean por el sesgo del 1D u otros
+  TFs superiores. En su lugar, `verificar_confluencia` siempre devuelve True
+  e incluye en la descripción el contexto multi-TF (cuántos TFs confirman /
+  contradicen) para que aparezca como información en el mensaje de Telegram.
 
 Uso:
     from services import tf_bias
@@ -69,15 +75,17 @@ def obtener_sesgo(simbolo: str, tf: str):
 
 def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple:
     """
-    Verifica si los TFs superiores confirman la dirección propuesta.
+    Informa sobre la confluencia de TFs superiores para la dirección propuesta.
 
-    Reglas:
-    - Si 1D es contrario a la dirección → bloquear siempre (regla dura)
-    - Si mayoría de TFs con datos son contrarios → bloquear
-    - Si no hay datos de TFs superiores → permitir (sesgo neutro)
+    Opción C — Filtro suave (solo informativo):
+    - Las señales NUNCA se bloquean por los TFs superiores.
+    - La descripción devuelta indica cuántos TFs confirman / contradicen.
+    - Si la mayoría es contraria se añade un aviso ⚠️ en la descripción, pero
+      la señal sigue siendo permitida para que el trader decida.
+    - Si no hay datos de TFs superiores → permitir con aviso.
 
     Returns:
-        (bool confirmado, str descripcion_para_telegram)
+        (True, str descripcion_para_telegram)  — siempre True (nunca bloquea)
     """
     with _lock:
         sesgo_simbolo = _bias_store.get(simbolo, {})
@@ -116,11 +124,12 @@ def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple
         if len(confirmados) == 0 and len(contrarios) == 0:
             return True, f"⏳ TFs superiores sin datos — señal permitida\n{desc}"
 
-        # Mayoría confirma → permitir; empate o mayoría contraria → bloquear
-        if len(confirmados) > len(contrarios):
-            return True, desc
+        # Opción C: nunca bloquear, pero avisar cuando contrarios igualan o superan
+        # a los confirmados (incluye empate, donde la señal no tiene mayoría a favor)
+        if len(contrarios) >= len(confirmados):
+            return True, f"⚠️ Señal CONTRA mayoría de TFs superiores\n{desc}"
 
-        return False, f"⚠️ Bloqueada — mayoría de TFs no confirma\n{desc}"
+        return True, desc
 
 
 def _build_desc(sesgo_simbolo: dict, tfs_superiores: list, tf_actual: str,
