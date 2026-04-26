@@ -1101,17 +1101,37 @@ class GoldDetector1H(BaseDetector):
 
         # ── CANCELACIONES ───────────────────────────────────────────
         if cancelar_sell and not self.ya_enviada(f"{clave_vela}_CANCEL_SELL"):
-            self.enviar(f"❌ <b>CANCELAR SELL — ORO (1H) INTRADÍA</b> ❌\n"
-                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                            f"💰 Precio: ${close:.2f} | Rompió resistencia (${zrh:.2f})\n"
-                            f"⏱️ 1H  📅 {fecha}")
+            msg = (f"❌ <b>CANCELAR SELL LIMIT — ORO (XAUUSD) 1H</b> ❌\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📌 <b>Orden prevista:</b> SELL LIMIT ${sell_limit:.2f}\n"
+                   f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
+                   f"⚠️ <b>Motivo:</b> Precio rompió la resistencia (${zrh:.2f}) hacia arriba\n"
+                   f"🚫 La entrada ya no es válida — cancela la orden limit\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
+            if self.db:
+                try:
+                    self.db.cancelar_senales_pendientes(simbolo_db, "VENTA")
+                except Exception as e:
+                    logger.error(f"  ⚠️ Error BD al cancelar VENTA: {e}")
+            self.enviar(msg)
             self.marcar_enviada(f"{clave_vela}_CANCEL_SELL")
 
         if cancelar_buy and not self.ya_enviada(f"{clave_vela}_CANCEL_BUY"):
-            self.enviar(f"❌ <b>CANCELAR BUY — ORO (1H) INTRADÍA</b> ❌\n"
-                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                            f"💰 Precio: ${close:.2f} | Perforó soporte (${zsl:.2f})\n"
-                            f"⏱️ 1H  📅 {fecha}")
+            msg = (f"❌ <b>CANCELAR BUY LIMIT — ORO (XAUUSD) 1H</b> ❌\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"📌 <b>Orden prevista:</b> BUY LIMIT ${buy_limit:.2f}\n"
+                   f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
+                   f"⚠️ <b>Motivo:</b> Precio perforó el soporte (${zsl:.2f}) hacia abajo\n"
+                   f"🚫 La entrada ya no es válida — cancela la orden limit\n"
+                   f"━━━━━━━━━━━━━━━━━━━━\n"
+                   f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
+            if self.db:
+                try:
+                    self.db.cancelar_senales_pendientes(simbolo_db, "COMPRA")
+                except Exception as e:
+                    logger.error(f"  ⚠️ Error BD al cancelar COMPRA: {e}")
+            self.enviar(msg)
             self.marcar_enviada(f"{clave_vela}_CANCEL_BUY")
 
 
