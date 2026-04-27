@@ -330,6 +330,7 @@ class GoldDetector4H(BaseDetector):
 
 
         score_sell = 0
+        score_buy  = 0  # inicializar aquí para que cuña/ruptura BUY no se pierdan
         score_sell += 2 if en_zona_resist          else 0
         score_sell += 2 if vela_rechazo            else 0
         score_sell += 2 if vol_alto_rechazo        else 0
@@ -388,6 +389,20 @@ class GoldDetector4H(BaseDetector):
             score_sell += 2
             logger.info(f"  📐 [4H] CUÑA ASC en compresión ${_s_asc_4h:.2f}-${_t_asc_4h:.2f} — +2 pts SELL")
 
+        # ── Niveles S/R intermedios wing=2 (captura pivotes en tendencias fuertes) ──
+        _sop_interm_4h, _res_interm_4h = calcular_sr_multiples(
+            df, atr, lookback=params.get('sr_lookback', 80), n_niveles=8, wing=2)
+        _en_resist_sr_mult = any(abs(high - r) <= tol for r in _res_interm_4h)
+        _en_sop_sr_mult    = any(abs(low  - s) <= tol for s in _sop_interm_4h)
+        if _en_resist_sr_mult and not en_zona_resist:
+            _nivel_sr = min(_res_interm_4h, key=lambda r: abs(high - r))
+            score_sell += 2
+            logger.info(f"  📌 [4H] Precio cerca resistencia S/R intermedia ${_nivel_sr:.2f} — +2 pts SELL")
+        if _en_sop_sr_mult and not en_zona_soporte:
+            _nivel_sr2 = min(_sop_interm_4h, key=lambda s: abs(low - s))
+            score_buy += 2
+            logger.info(f"  📌 [4H] Precio cerca soporte S/R intermedio ${_nivel_sr2:.2f} — +2 pts BUY")
+
         if adx_lateral:
             score_sell = max(0, score_sell - 3)
 
@@ -441,7 +456,7 @@ class GoldDetector4H(BaseDetector):
         if fallo_continuacion_alcista:
             logger.warning(f"  ⚠️ [4H] FALLO DE CONTINUACIÓN ALCISTA detectado (ATL={_atl_reciente:.1f})")
 
-        score_buy = 0
+        # score_buy ya inicializado antes del bloque de ruptura/cuña
         score_buy += 2 if en_zona_soporte          else 0
         score_buy += 2 if vela_rebote              else 0
         score_buy += 2 if vol_alto_rebote          else 0
@@ -571,8 +586,12 @@ class GoldDetector4H(BaseDetector):
         clave_vela = f"{simbolo}_4H_{fecha}"
 
 
-        cerca_resistencia = en_zona_resist or aproximando_resistencia or fallo_continuacion_bajista or en_resist_canal_bajista
-        cerca_soporte     = en_zona_soporte or aproximando_soporte     or fallo_continuacion_alcista or en_soporte_canal_alcista
+        cerca_resistencia = (en_zona_resist or aproximando_resistencia or
+                              fallo_continuacion_bajista or en_resist_canal_bajista or
+                              _en_resist_sr_mult)
+        cerca_soporte     = (en_zona_soporte or aproximando_soporte or
+                              fallo_continuacion_alcista or en_soporte_canal_alcista or
+                              _en_sop_sr_mult)
         if not cerca_resistencia:
             if senal_sell_alerta: logger.info(f"  ⏳ SELL ignorada: precio lejos de resistencia")
             senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False

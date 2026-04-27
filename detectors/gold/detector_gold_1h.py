@@ -158,6 +158,9 @@ class GoldDetector1H(BaseDetector):
         soportes_sr, resistencias_sr = calcular_sr_multiples(
             _df_cerrado, atr, params['sr_lookback'], params['sr_zone_mult'], n_niveles=5
         )
+        # Niveles intermedios wing=2: captura pivotes en tendencias sin pullbacks profundos
+        _sop_interm_1h, _res_interm_1h = calcular_sr_multiples(
+            _df_cerrado, atr, lookback=params['sr_lookback'], n_niveles=8, wing=2)
 
         # ── Detección de canal roto ────────────────────────────────────────────────
         canal_alcista_roto, canal_bajista_roto, linea_soporte_canal, linea_resist_canal = \
@@ -318,6 +321,11 @@ class GoldDetector1H(BaseDetector):
         aproximando_soporte = (close - zsh > 0 and close - zsh < avg_candle_range * av and close < float(df['Close'].iloc[-5]))
         en_zona_resist      = (high >= zrl - tol) and (high <= zrh + tol)
         en_zona_soporte     = (low  >= zsl - tol) and (low  <= zsh + tol)
+        # Zonas extendidas: incluye niveles intermedios (wing=2) que la zona principal no cubre
+        _en_resist_sr_1h    = any(abs(high - r) <= tol for r in _res_interm_1h)
+        _en_sop_sr_1h       = any(abs(low  - s) <= tol for s in _sop_interm_1h)
+        en_zona_resist_any  = en_zona_resist or _en_resist_sr_1h
+        en_zona_soporte_any = en_zona_soporte or _en_sop_sr_1h
         cancelar_sell       = close > zrh * (1 + cd / 100)
         cancelar_buy        = close < zsl * (1 - cd / 100)
 
@@ -371,10 +379,10 @@ class GoldDetector1H(BaseDetector):
 
         # ── SCORING VENTA ──────────────────────────────────────────
         intento_rotura_fallido = (high >= zrl) and (close < zrl)
-        shooting_star     = is_bearish and upper_wick > body*2 and lower_wick < body*0.3 and en_zona_resist
-        bearish_engulfing = is_bearish and open_ >= float(prev['High']) and close <= float(prev['Low']) and en_zona_resist
-        bearish_marubozu  = is_bearish and body > total_range*0.8 and en_zona_resist
-        doji_resist       = body < total_range*0.1 and en_zona_resist and upper_wick > body*2
+        shooting_star     = is_bearish and upper_wick > body*2 and lower_wick < body*0.3 and en_zona_resist_any
+        bearish_engulfing = is_bearish and open_ >= float(prev['High']) and close <= float(prev['Low']) and en_zona_resist_any
+        bearish_marubozu  = is_bearish and body > total_range*0.8 and en_zona_resist_any
+        doji_resist       = body < total_range*0.1 and en_zona_resist_any and upper_wick > body*2
         vela_rechazo      = shooting_star or bearish_engulfing or bearish_marubozu or doji_resist
         rsi_alto_girando  = (rsi >= rsms) and (rsi < rsi_prev)
         rsi_sobrecompra   = rsi >= 70
@@ -400,7 +408,7 @@ class GoldDetector1H(BaseDetector):
         evening_star            = detectar_evening_star(df, len(df) - 2)
 
         score_sell = (
-            (2 if en_zona_resist           else 0) +
+            (2 if en_zona_resist_any       else 0) +
             (2 if vela_rechazo             else 0) +
             (2 if vol_alto_rechazo         else 0) +
             (1 if rsi_alto_girando         else 0) +
@@ -423,6 +431,7 @@ class GoldDetector1H(BaseDetector):
             (1 if macd_negativo            else 0) +
             (2 if canal_alcista_roto       else 0)   # canal alcista roto → sesgo bajista fuerte
         )
+        score_buy = 0  # inicializar aquí para que ruptura/cuña BUY no se pierdan al hacer +=
         # ── Ruptura horizontal directa (sin retest) 1H ─────────────────────
         _lkb_1h = params.get('sr_lookback', 100)
         _rup_sop_1h, _niv_sop_1h = detectar_ruptura_soporte_horizontal(
@@ -435,6 +444,15 @@ class GoldDetector1H(BaseDetector):
         if _rup_res_1h:
             score_buy += 4
             logger.info(f"  💥 [1H] RUPTURA RESISTENCIA ${_niv_res_1h:.2f} — +4 pts BUY")
+        # S/R intermedia: proximidad a nivel no detectado por wing=3
+        if _en_resist_sr_1h and not en_zona_resist:
+            _nsr = min(_res_interm_1h, key=lambda r: abs(high - r))
+            score_sell += 2
+            logger.info(f"  📌 [1H] Precio en resistencia S/R intermedia ${_nsr:.2f} — +2 pts SELL")
+        if _en_sop_sr_1h and not en_zona_soporte:
+            _nsr2 = min(_sop_interm_1h, key=lambda s: abs(low - s))
+            score_buy += 2
+            logger.info(f"  📌 [1H] Precio en soporte S/R intermedio ${_nsr2:.2f} — +2 pts BUY")
 
         # ── Cuña descendente / ascendente (1H) ──────────────────────────────
         _lkb_cuña_1h = min(params.get('sr_lookback', 100), 80)
@@ -458,10 +476,10 @@ class GoldDetector1H(BaseDetector):
 
         # ── SCORING COMPRA ─────────────────────────────────────────
         intento_caida_fallido   = (low <= zsh) and (close > zsh)
-        hammer            = is_bullish and lower_wick > body*2 and upper_wick < body*0.3 and en_zona_soporte
-        bullish_engulfing = is_bullish and open_ <= float(prev['Low']) and close >= float(prev['High']) and en_zona_soporte
-        bullish_marubozu  = is_bullish and body > total_range*0.8 and en_zona_soporte
-        doji_soporte      = body < total_range*0.1 and en_zona_soporte and lower_wick > body*2
+        hammer            = is_bullish and lower_wick > body*2 and upper_wick < body*0.3 and en_zona_soporte_any
+        bullish_engulfing = is_bullish and open_ <= float(prev['Low']) and close >= float(prev['High']) and en_zona_soporte_any
+        bullish_marubozu  = is_bullish and body > total_range*0.8 and en_zona_soporte_any
+        doji_soporte      = body < total_range*0.1 and en_zona_soporte_any and lower_wick > body*2
         vela_rebote       = hammer or bullish_engulfing or bullish_marubozu or doji_soporte
         rsi_bajo_girando  = (rsi <= rsmb) and (rsi > rsi_prev)
         rsi_sobreventa    = rsi <= 30
@@ -483,8 +501,8 @@ class GoldDetector1H(BaseDetector):
         obv_creciente           = obv > obv_prev and obv > obv_ema
         morning_star            = detectar_morning_star(df, len(df) - 2)
 
-        score_buy = (
-            (2 if en_zona_soporte            else 0) +
+        score_buy += (
+            (2 if en_zona_soporte_any        else 0) +
             (2 if vela_rebote                else 0) +
             (2 if vol_alto_rebote            else 0) +
             (1 if rsi_bajo_girando           else 0) +
@@ -894,7 +912,7 @@ class GoldDetector1H(BaseDetector):
             self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
 
         # ── SEÑALES SELL (en zona) — confirmación si ya hubo señal accionable ──
-        _tiene_rechazo_confirmado = en_zona_resist and (vela_rechazo or evening_star or intento_rotura_fallido)
+        _tiene_rechazo_confirmado = en_zona_resist_any and (vela_rechazo or evening_star or intento_rotura_fallido)
         # Usar pre-exclusión cuando hay confirmación de acción de precio real en zona
         _sell_activa = senal_sell_alerta or (_prep_sell_alerta and _tiene_rechazo_confirmado)
         if _sell_activa and not cancelar_sell and rr_sell_tp1 >= 1.2:
@@ -957,7 +975,7 @@ class GoldDetector1H(BaseDetector):
 
         # ── SEÑALES BUY (en zona) — confirmación si ya hubo señal accionable ──
         # Si el precio realmente tocó la zona Y hay patrón de rebote → siempre confirmar
-        _tiene_rebote_confirmado = en_zona_soporte and (vela_rebote or morning_star or intento_caida_fallido)
+        _tiene_rebote_confirmado = en_zona_soporte_any and (vela_rebote or morning_star or intento_caida_fallido)
         # Usar pre-exclusión cuando hay confirmación de acción de precio real en zona
         _buy_activa = senal_buy_alerta or (_prep_buy_alerta and _tiene_rebote_confirmado)
         if _buy_activa and not cancelar_buy and rr_buy_tp1 >= 1.2:

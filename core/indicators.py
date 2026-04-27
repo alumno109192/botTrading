@@ -702,16 +702,15 @@ def detectar_ruptura_resistencia_horizontal(
 
 def calcular_sr_multiples(df: pd.DataFrame, atr: float,
                           lookback: int = 60, zone_mult: float = 0.5,
-                          n_niveles: int = 5) -> tuple:
+                          n_niveles: int = 5, wing: int = 3) -> tuple:
     """
     Devuelve hasta n_niveles de soporte y resistencia ordenados por proximidad
-    al precio actual. Âncla los TPs a zonas reales del mercado.
+    al precio actual. Ancla los TPs a zonas reales del mercado.
 
     Returns:
         (soportes, resistencias) — listas de float, más cercano primero.
     """
     close    = float(df['Close'].iloc[-1])
-    wing     = 3
     min_dist = atr * 0.5
     highs    = df['High'].iloc[-lookback-1:-1]
     lows_s   = df['Low'].iloc[-lookback-1:-1]
