@@ -87,6 +87,7 @@ from core.indicators import (
     detectar_canal_roto, calcular_sr_multiples,
     detectar_precio_en_canal,
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
+    detectar_cuña_descendente, detectar_cuña_ascendente,
 )
 
 # ══════════════════════════════════════
@@ -367,6 +368,25 @@ class GoldDetector4H(BaseDetector):
         if _rup_res_4h:
             score_buy += 4
             logger.info(f"  💥 [4H] RUPTURA RESISTENCIA ${_niv_res_4h:.2f} — +4 pts BUY")
+
+        # ── Cuña descendente / ascendente (4H) ──────────────────────────────
+        _lkb_cuña_4h = min(params.get('sr_lookback', 60), 60)
+        _cuña_desc_4h, _t_desc_4h, _s_desc_4h = detectar_cuña_descendente(
+            df, atr, lookback=_lkb_cuña_4h, wing=3, max_amplitud_pct=0.025)
+        _cuña_asc_4h, _t_asc_4h, _s_asc_4h = detectar_cuña_ascendente(
+            df, atr, lookback=_lkb_cuña_4h, wing=3, max_amplitud_pct=0.025)
+        if _cuña_desc_4h == 'ruptura_alcista':
+            score_buy += 6
+            logger.info(f"  📐 [4H] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_4h:.2f}) — +6 pts BUY")
+        elif _cuña_desc_4h == 'compresion':
+            score_buy += 2
+            logger.info(f"  📐 [4H] CUÑA DESC en compresión ${_s_desc_4h:.2f}-${_t_desc_4h:.2f} — +2 pts BUY")
+        if _cuña_asc_4h == 'ruptura_bajista':
+            score_sell += 6
+            logger.info(f"  📐 [4H] CUÑA ASC ROTA A LA BAJA (suelo ${_s_asc_4h:.2f}) — +6 pts SELL")
+        elif _cuña_asc_4h == 'compresion':
+            score_sell += 2
+            logger.info(f"  📐 [4H] CUÑA ASC en compresión ${_s_asc_4h:.2f}-${_t_asc_4h:.2f} — +2 pts SELL")
 
         if adx_lateral:
             score_sell = max(0, score_sell - 3)

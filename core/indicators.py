@@ -995,3 +995,188 @@ def detectar_rechazo_en_directriz(
         mecha_inf      = min(close_actual, open_actual) - low_actual
         rechaza        = (mecha_inf > cuerpo * 0.7) and (close_actual > precio_dir)
         return (toca_directriz and rechaza), precio_dir
+
+
+def detectar_cuña_descendente(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 60,
+        wing: int = 3,
+        min_toques: int = 2,
+        max_amplitud_pct: float = 0.03,
+) -> tuple:
+    """
+    Detecta cuña descendente (Descending Wedge) — patrón de reversión ALCISTA.
+
+    Criterios:
+      1. Directriz bajista SUPERIOR (swing highs) con pendiente m_h < 0
+      2. Directriz bajista INFERIOR (swing lows) con pendiente m_l < 0
+      3. Convergencia real: m_h < m_l < 0  (techo cae más rápido que suelo)
+      4. Amplitud actual < max_amplitud_pct × precio  (compresión activa)
+      5. Precio dentro de la cuña en las últimas 2 velas
+      6. Ruptura: última vela cerrada cierra por encima del techo → señal BUY
+
+    Args:
+        lookback:         Número de velas a analizar
+        wing:             Semiventana para detectar swing pivots
+        min_toques:       Toques mínimos en cada directriz para validarla
+        max_amplitud_pct: Amplitud máxima del canal como % del precio (compresión)
+
+    Returns:
+        (estado: str, precio_techo: float, precio_suelo: float)
+        estado: 'ruptura_alcista' | 'compresion' | 'no_detectada'
+        - 'ruptura_alcista' → señal BUY fuerte
+        - 'compresion'      → precio dentro de la cuña, vigilar ruptura
+        - 'no_detectada'    → patrón no presente
+    """
+    if len(df) < lookback + wing + 3:
+        return 'no_detectada', 0.0, 0.0
+
+    highs  = df['High'].iloc[-(lookback + wing):-1]
+    lows   = df['Low'].iloc[-(lookback + wing):-1]
+    closes = df['Close'].values
+    n      = len(highs)
+
+    # ── 1. Detectar swing highs ──────────────────────────────────────────────
+    sh_idx, sh_val = [], []
+    for i in range(wing, n - wing):
+        v = float(highs.iloc[i])
+        if (all(v >= float(highs.iloc[i - j]) for j in range(1, wing + 1)) and
+                all(v >= float(highs.iloc[i + j]) for j in range(1, wing + 1))):
+            sh_idx.append(i)
+            sh_val.append(v)
+
+    # ── 2. Detectar swing lows ───────────────────────────────────────────────
+    sl_idx, sl_val = [], []
+    for i in range(wing, n - wing):
+        v = float(lows.iloc[i])
+        if (all(v <= float(lows.iloc[i - j]) for j in range(1, wing + 1)) and
+                all(v <= float(lows.iloc[i + j]) for j in range(1, wing + 1))):
+            sl_idx.append(i)
+            sl_val.append(v)
+
+    if len(sh_idx) < min_toques or len(sl_idx) < min_toques:
+        return 'no_detectada', 0.0, 0.0
+
+    # ── 3. Regresión lineal sobre pivots ────────────────────────────────────
+    m_h, b_h = np.polyfit(sh_idx, sh_val, 1)
+    m_l, b_l = np.polyfit(sl_idx, sl_val, 1)
+
+    # Cuña descendente: ambas pendientes negativas, techo cae más rápido
+    if not (m_h < 0 and m_l < 0):
+        return 'no_detectada', 0.0, 0.0
+    if not (m_h < m_l):  # pendiente del techo más negativa = converge hacia el suelo
+        return 'no_detectada', 0.0, 0.0
+
+    # ── 4. Verificar amplitud (compresión activa) ────────────────────────────
+    precio_techo_act = float(m_h * (n - 1) + b_h)
+    precio_suelo_act = float(m_l * (n - 1) + b_l)
+    close_act        = float(closes[-2])
+
+    amplitud     = precio_techo_act - precio_suelo_act
+    amplitud_pct = amplitud / close_act if close_act > 0 else 1.0
+
+    if amplitud_pct > max_amplitud_pct or amplitud <= 0:
+        return 'no_detectada', 0.0, 0.0
+
+    # ── 5. Precio dentro de la cuña ─────────────────────────────────────────
+    precio_techo_prv = float(m_h * (n - 2) + b_h)
+    precio_suelo_prv = float(m_l * (n - 2) + b_l)
+    close_prv        = float(closes[-3])
+
+    en_cuña_act = precio_suelo_act - atr * 0.3 <= close_act <= precio_techo_act + atr * 0.3
+    en_cuña_prv = precio_suelo_prv - atr * 0.3 <= close_prv <= precio_techo_prv + atr * 0.3
+
+    if not (en_cuña_act or en_cuña_prv):
+        return 'no_detectada', 0.0, 0.0
+
+    # ── 6. Ruptura alcista: cierre por encima del techo ─────────────────────
+    if close_act > precio_techo_act + atr * 0.1:
+        return 'ruptura_alcista', round(precio_techo_act, 2), round(precio_suelo_act, 2)
+
+    return 'compresion', round(precio_techo_act, 2), round(precio_suelo_act, 2)
+
+
+def detectar_cuña_ascendente(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 60,
+        wing: int = 3,
+        min_toques: int = 2,
+        max_amplitud_pct: float = 0.03,
+) -> tuple:
+    """
+    Detecta cuña ascendente (Rising Wedge) — patrón de reversión BAJISTA.
+
+    Criterios (espejo de la cuña descendente):
+      1. Directriz alcista SUPERIOR (swing highs) con pendiente m_h > 0
+      2. Directriz alcista INFERIOR (swing lows) con pendiente m_l > 0
+      3. Convergencia: m_l > m_h > 0  (suelo sube más rápido que techo)
+      4. Amplitud actual < max_amplitud_pct × precio
+      5. Precio dentro de la cuña
+      6. Ruptura: cierre por debajo del suelo → señal SELL
+
+    Returns:
+        (estado: str, precio_techo: float, precio_suelo: float)
+        estado: 'ruptura_bajista' | 'compresion' | 'no_detectada'
+    """
+    if len(df) < lookback + wing + 3:
+        return 'no_detectada', 0.0, 0.0
+
+    highs  = df['High'].iloc[-(lookback + wing):-1]
+    lows   = df['Low'].iloc[-(lookback + wing):-1]
+    closes = df['Close'].values
+    n      = len(highs)
+
+    sh_idx, sh_val = [], []
+    for i in range(wing, n - wing):
+        v = float(highs.iloc[i])
+        if (all(v >= float(highs.iloc[i - j]) for j in range(1, wing + 1)) and
+                all(v >= float(highs.iloc[i + j]) for j in range(1, wing + 1))):
+            sh_idx.append(i)
+            sh_val.append(v)
+
+    sl_idx, sl_val = [], []
+    for i in range(wing, n - wing):
+        v = float(lows.iloc[i])
+        if (all(v <= float(lows.iloc[i - j]) for j in range(1, wing + 1)) and
+                all(v <= float(lows.iloc[i + j]) for j in range(1, wing + 1))):
+            sl_idx.append(i)
+            sl_val.append(v)
+
+    if len(sh_idx) < min_toques or len(sl_idx) < min_toques:
+        return 'no_detectada', 0.0, 0.0
+
+    m_h, b_h = np.polyfit(sh_idx, sh_val, 1)
+    m_l, b_l = np.polyfit(sl_idx, sl_val, 1)
+
+    # Cuña ascendente: ambas pendientes positivas, suelo sube más rápido
+    if not (m_h > 0 and m_l > 0):
+        return 'no_detectada', 0.0, 0.0
+    if not (m_l > m_h):
+        return 'no_detectada', 0.0, 0.0
+
+    precio_techo_act = float(m_h * (n - 1) + b_h)
+    precio_suelo_act = float(m_l * (n - 1) + b_l)
+    close_act        = float(closes[-2])
+
+    amplitud     = precio_techo_act - precio_suelo_act
+    amplitud_pct = amplitud / close_act if close_act > 0 else 1.0
+
+    if amplitud_pct > max_amplitud_pct or amplitud <= 0:
+        return 'no_detectada', 0.0, 0.0
+
+    precio_techo_prv = float(m_h * (n - 2) + b_h)
+    precio_suelo_prv = float(m_l * (n - 2) + b_l)
+    close_prv        = float(closes[-3])
+
+    en_cuña_act = precio_suelo_act - atr * 0.3 <= close_act <= precio_techo_act + atr * 0.3
+    en_cuña_prv = precio_suelo_prv - atr * 0.3 <= close_prv <= precio_techo_prv + atr * 0.3
+
+    if not (en_cuña_act or en_cuña_prv):
+        return 'no_detectada', 0.0, 0.0
+
+    if close_act < precio_suelo_act - atr * 0.1:
+        return 'ruptura_bajista', round(precio_techo_act, 2), round(precio_suelo_act, 2)
+
+    return 'compresion', round(precio_techo_act, 2), round(precio_suelo_act, 2)

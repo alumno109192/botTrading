@@ -76,6 +76,7 @@ from core.indicators import (
     detectar_evening_star, detectar_morning_star,
     detectar_canal_roto, calcular_sr_multiples,
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
+    detectar_cuña_descendente, detectar_cuña_ascendente,
 )
 
 
@@ -434,6 +435,25 @@ class GoldDetector1H(BaseDetector):
         if _rup_res_1h:
             score_buy += 4
             logger.info(f"  💥 [1H] RUPTURA RESISTENCIA ${_niv_res_1h:.2f} — +4 pts BUY")
+
+        # ── Cuña descendente / ascendente (1H) ──────────────────────────────
+        _lkb_cuña_1h = min(params.get('sr_lookback', 100), 80)
+        _cuña_desc_1h, _t_desc_1h, _s_desc_1h = detectar_cuña_descendente(
+            df, atr, lookback=_lkb_cuña_1h, wing=3, max_amplitud_pct=0.025)
+        _cuña_asc_1h, _t_asc_1h, _s_asc_1h = detectar_cuña_ascendente(
+            df, atr, lookback=_lkb_cuña_1h, wing=3, max_amplitud_pct=0.025)
+        if _cuña_desc_1h == 'ruptura_alcista':
+            score_buy += 6
+            logger.info(f"  📐 [1H] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_1h:.2f}) — +6 pts BUY")
+        elif _cuña_desc_1h == 'compresion':
+            score_buy += 2
+            logger.info(f"  📐 [1H] CUÑA DESC en compresión ${_s_desc_1h:.2f}-${_t_desc_1h:.2f} — +2 pts BUY")
+        if _cuña_asc_1h == 'ruptura_bajista':
+            score_sell += 6
+            logger.info(f"  📐 [1H] CUÑA ASC ROTA A LA BAJA (suelo ${_s_asc_1h:.2f}) — +6 pts SELL")
+        elif _cuña_asc_1h == 'compresion':
+            score_sell += 2
+            logger.info(f"  📐 [1H] CUÑA ASC en compresión ${_s_asc_1h:.2f}-${_t_asc_1h:.2f} — +2 pts SELL")
         if adx_lateral: score_sell = max(0, score_sell - 3)
 
         # ── SCORING COMPRA ─────────────────────────────────────────
