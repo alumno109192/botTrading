@@ -98,6 +98,7 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
     detectar_retest_resistencia, detectar_retest_soporte,
     detectar_rechazo_en_directriz,
+    detectar_cuña_descendente, detectar_cuña_ascendente,
 )
 
 # ══════════════════════════════════════
@@ -347,6 +348,24 @@ class GoldDetector15M(BaseDetector):
             if _rec_dir_alc_15m:
                 score_buy += 4
                 logger.info(f"  📐 [15M] RECHAZO EN DIRECTRIZ ALCISTA ${_precio_dir_alc_15m:.2f} — +4 pts BUY")
+
+            # ── Cuña descendente / ascendente (15M) ─────────────────────────────
+            _cuña_desc_15m, _t_desc_15m, _s_desc_15m = detectar_cuña_descendente(
+                df, atr, lookback=_lkb15_h, wing=2, max_amplitud_pct=0.035)
+            _cuña_asc_15m, _t_asc_15m, _s_asc_15m = detectar_cuña_ascendente(
+                df, atr, lookback=_lkb15_h, wing=2, max_amplitud_pct=0.035)
+            if _cuña_desc_15m == 'ruptura_alcista':
+                score_buy += 5
+                logger.info(f"  📐 [15M] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_15m:.2f}) — +5 pts BUY")
+            elif _cuña_desc_15m == 'compresion':
+                score_buy += 2
+                logger.info(f"  📐 [15M] CUÑA DESC en compresión ${_s_desc_15m:.2f}-${_t_desc_15m:.2f} — +2 pts BUY")
+            if _cuña_asc_15m == 'ruptura_bajista':
+                score_sell += 5
+                logger.info(f"  📐 [15M] CUÑA ASC ROTA A LA BAJA (suelo ${_s_asc_15m:.2f}) — +5 pts SELL")
+            elif _cuña_asc_15m == 'compresion':
+                score_sell += 2
+                logger.info(f"  📐 [15M] CUÑA ASC en compresión ${_s_asc_15m:.2f}-${_t_asc_15m:.2f} — +2 pts SELL")
 
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo si score está en zona de desempate (4–7), evita llamadas innecesarias

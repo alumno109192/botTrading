@@ -95,6 +95,7 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
     detectar_retest_resistencia, detectar_retest_soporte,
     detectar_rechazo_en_directriz,
+    detectar_cuña_descendente, detectar_cuña_ascendente,
 )
 
 
@@ -301,6 +302,25 @@ class GoldDetector5M(BaseDetector):
             if _rec_dir_alc_5m:
                 score_buy += 4
                 logger.info(f"  📐 [5M] RECHAZO EN DIRECTRIZ ALCISTA ${_precio_dir_alc_5m:.2f} — +4 pts BUY")
+
+            # ── Cuña descendente / ascendente (5M) ──────────────────────────────
+            # wing=2 y amplitud laxa (TF corto tiene más ruido que 4H)
+            _cuña_desc_5m, _t_desc_5m, _s_desc_5m = detectar_cuña_descendente(
+                df, atr, lookback=_lkb5_h, wing=2, max_amplitud_pct=0.035)
+            _cuña_asc_5m, _t_asc_5m, _s_asc_5m = detectar_cuña_ascendente(
+                df, atr, lookback=_lkb5_h, wing=2, max_amplitud_pct=0.035)
+            if _cuña_desc_5m == 'ruptura_alcista':
+                score_buy += 5
+                logger.info(f"  📐 [5M] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_5m:.2f}) — +5 pts BUY")
+            elif _cuña_desc_5m == 'compresion':
+                score_buy += 2
+                logger.info(f"  📐 [5M] CUÑA DESC en compresión ${_s_desc_5m:.2f}-${_t_desc_5m:.2f} — +2 pts BUY")
+            if _cuña_asc_5m == 'ruptura_bajista':
+                score_sell += 5
+                logger.info(f"  📐 [5M] CUÑA ASC ROTA A LA BAJA (suelo ${_s_asc_5m:.2f}) — +5 pts SELL")
+            elif _cuña_asc_5m == 'compresion':
+                score_sell += 2
+                logger.info(f"  📐 [5M] CUÑA ASC en compresión ${_s_asc_5m:.2f}-${_t_asc_5m:.2f} — +2 pts SELL")
 
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo se consulta si estamos en zona de desempate (score cerca del umbral)
