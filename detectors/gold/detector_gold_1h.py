@@ -472,7 +472,7 @@ class GoldDetector1H(BaseDetector):
         elif _cuña_asc_1h == 'compresion':
             score_sell += 2
             logger.info(f"  📐 [1H] CUÑA ASC en compresión ${_s_asc_1h:.2f}-${_t_asc_1h:.2f} — +2 pts SELL")
-        if adx_lateral: score_sell = max(0, score_sell - 3)
+        if adx_lateral and not en_zona_resist_any: score_sell = max(0, score_sell - 3)
 
         # ── SCORING COMPRA ─────────────────────────────────────────
         intento_caida_fallido   = (low <= zsh) and (close > zsh)
@@ -525,7 +525,8 @@ class GoldDetector1H(BaseDetector):
             (1 if macd_positivo              else 0) +
             (2 if canal_bajista_roto         else 0)   # canal bajista roto → sesgo alcista fuerte
         )
-        if adx_lateral: score_buy = max(0, score_buy - 3)
+        # ADX lateral en zona soporte: no penalizar (consolidación = agotamiento bajista)
+        if adx_lateral and not en_zona_soporte_any: score_buy = max(0, score_buy - 3)
 
         # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
         dxy_bias = get_dxy_bias()

@@ -403,8 +403,12 @@ class GoldDetector4H(BaseDetector):
             score_buy += 2
             logger.info(f"  📌 [4H] Precio cerca soporte S/R intermedio ${_nivel_sr2:.2f} — +2 pts BUY")
 
-        if adx_lateral:
+        # ADX lateral: penalizar señales genéricas, pero NO en zona S/R
+        # (consolidación en soporte/resistencia = agotamiento, no debilidad)
+        if adx_lateral and not en_zona_resist:
             score_sell = max(0, score_sell - 3)
+        if adx_lateral and not (_en_sop_sr_mult or en_zona_soporte):
+            score_buy = max(0, score_buy - 3)
 
         # BLOQUE COMPRA
         intento_caida_fallido = (low <= zsh) and (close > zsh)
@@ -484,7 +488,8 @@ class GoldDetector4H(BaseDetector):
         score_buy  += 2 if canal_bajista_roto_4h   else 0  # canal bajista roto → sesgo alcista
         score_buy  += 3 if en_soporte_canal_alcista else 0  # precio tocando directriz alcista
 
-        if adx_lateral:
+        # ADX lateral en zona soporte: no penalizar (consolidación = agotamiento bajista)
+        if adx_lateral and not (_en_sop_sr_mult or en_zona_soporte):
             score_buy = max(0, score_buy - 3)
 
         # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
