@@ -673,6 +673,29 @@ class GoldDetector1H(BaseDetector):
         _prep_sell_alerta = senal_sell_alerta
         _prep_buy_alerta  = senal_buy_alerta
 
+        # ── Publicar / limpiar zona activa para modo caza 15M/5M ──────────────────
+        if _prep_buy_alerta and not cancelar_buy and not cancelar_buy_rr:
+            tf_bias.publicar_zona_activa(simbolo, tf_bias.BIAS_BULLISH, {
+                'zsl': zsl, 'zsh': zsh,
+                'buy_limit': buy_limit, 'sl': sl_compra,
+                'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
+                'atr': atr, 'score_1h': score_buy,
+            })
+            logger.info(f"  🏗️ [1H] Zona BUY activa publicada — zona ${zsl:.2f}-${zsh:.2f}, limit ${buy_limit:.2f}")
+        elif cancelar_buy:
+            tf_bias.limpiar_zona_activa(simbolo, tf_bias.BIAS_BULLISH)
+
+        if _prep_sell_alerta and not cancelar_sell and not cancelar_sell_rr:
+            tf_bias.publicar_zona_activa(simbolo, tf_bias.BIAS_BEARISH, {
+                'zrl': zrl, 'zrh': zrh,
+                'sell_limit': sell_limit, 'sl': sl_venta,
+                'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v,
+                'atr': atr, 'score_1h': score_sell,
+            })
+            logger.info(f"  🏗️ [1H] Zona SELL activa publicada — zona ${zrl:.2f}-${zrh:.2f}, limit ${sell_limit:.2f}")
+        elif cancelar_sell:
+            tf_bias.limpiar_zona_activa(simbolo, tf_bias.BIAS_BEARISH)
+
         # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
         if senal_sell_alerta and senal_buy_alerta:
             if score_sell >= score_buy:

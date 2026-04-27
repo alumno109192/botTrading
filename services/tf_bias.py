@@ -43,7 +43,9 @@ _bias_store     = {}   # {simbolo: {tf: {bias, score, ts}}}
 _canal_store    = {}   # canal 4H en memoria
 _canal_1h_store = {}   # canal 1H en memoria
 _canal_1d_store = {}   # canal 1D en memoria
-_canal_1w_store = {}   # canal 1W en memoria
+_canal_1w_store     = {}   # canal 1W en memoria
+_zona_activa_store  = {}   # {simbolo: {BULLISH/BEARISH: {...}}} — zona 1H activa para modo caza
+TTL_ZONA_ACTIVA_MIN = 120  # zona activa expira a las 2 horas (en minutos)
 # ─────────────────────────────────────
 
 BIAS_BULLISH = 'BULLISH'
@@ -241,3 +243,44 @@ def publicar_canal_1w(simbolo: str, alcista_roto: bool, bajista_roto: bool,
 def obtener_canal_1w(simbolo: str) -> dict:
     """Canal 1W: memoria primero, BD como fallback."""
     return _obtener_canal_gen(_canal_1w_store, simbolo, '1W', TTL_CANAL_1W_HORAS)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ZONA ACTIVA — Modo caza (cascada 1H → 15M/5M)
+# El detector 1H publica la zona cuando score ≥ umbral de alerta.
+# Los detectores 15M/5M la leen y bajan su umbral si el precio entra en zona.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def publicar_zona_activa(simbolo: str, direccion: str, zona: dict) -> None:
+    """Publica (o actualiza) la zona activa del 1H para que 15M/5M puedan cazar entrada.
+
+    Args:
+        simbolo:   ej. 'GC=F'
+        direccion: BIAS_BULLISH o BIAS_BEARISH
+        zona:      dict con claves según dirección:
+                   BUY  → {'zsl', 'zsh', 'buy_limit', 'sl', 'tp1', 'tp2', 'tp3', 'atr', 'score_1h'}
+                   SELL → {'zrl', 'zrh', 'sell_limit', 'sl', 'tp1', 'tp2', 'tp3', 'atr', 'score_1h'}
+    """
+    with _lock:
+        if simbolo not in _zona_activa_store:
+            _zona_activa_store[simbolo] = {}
+        _zona_activa_store[simbolo][direccion] = {**zona, 'ts': datetime.now()}
+
+
+def obtener_zona_activa(simbolo: str, direccion: str) -> dict:
+    """Retorna zona activa si existe y no ha expirado, o None."""
+    with _lock:
+        zona = _zona_activa_store.get(simbolo, {}).get(direccion)
+        if zona is None:
+            return None
+        edad_min = (datetime.now() - zona['ts']).total_seconds() / 60
+        if edad_min > TTL_ZONA_ACTIVA_MIN:
+            return None
+        return dict(zona)
+
+
+def limpiar_zona_activa(simbolo: str, direccion: str) -> None:
+    """Limpia una zona activa (precio perforó soporte/resistencia → setup inválido)."""
+    with _lock:
+        if simbolo in _zona_activa_store:
+            _zona_activa_store[simbolo].pop(direccion, None)

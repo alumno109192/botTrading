@@ -405,6 +405,43 @@ class GoldDetector5M(BaseDetector):
                 else:
                     _conf_buy = _desc
 
+            # ── MODO CAZA: activar si hay zona activa del 1H ───────────────────────────
+            # El 1H publicó zona activa (score≥5). Si el precio está dentro
+            # y score_5M≥4, disparamos con umbral reducido y precio 5M.
+            _zona_1h_buy  = tf_bias.obtener_zona_activa(simbolo, tf_bias.BIAS_BULLISH)
+            _zona_1h_sell = tf_bias.obtener_zona_activa(simbolo, tf_bias.BIAS_BEARISH)
+            _modo_caza_buy  = False
+            _modo_caza_sell = False
+            _UMBRAL_CAZA    = 4   # mitad del umbral normal — el 1H ya confirmó
+
+            if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima():
+                _tol_1h = _zona_1h_buy['atr'] * 0.6
+                _en_zona_1h = (_zona_1h_buy['zsl'] - _tol_1h <= close <= _zona_1h_buy['zsh'] + _tol_1h)
+                if _en_zona_1h and score_buy >= _UMBRAL_CAZA:
+                    senal_buy_fuerte = True
+                    _modo_caza_buy   = True
+                    _conf_buy = (f"⚡ <b>Setup 1H / Entrada 5M</b>\n"
+                                 f"📍 Zona 1H soporte: ${_zona_1h_buy['zsl']:.2f}–${_zona_1h_buy['zsh']:.2f} | Score 1H: {_zona_1h_buy['score_1h']}/21\n"
+                                 f"📌 Limit 1H: ${_zona_1h_buy['buy_limit']:.2f} → ajustado 5M: ${buy_limit:.2f}")
+                    logger.info(f"  🎯 [5M] MODO CAZA BUY — zona 1H activa (score {score_buy}) → señal activada")
+
+            if _zona_1h_sell and not senal_sell_fuerte and self.en_sesion_optima():
+                _tol_1h = _zona_1h_sell['atr'] * 0.6
+                _en_zona_1h = (_zona_1h_sell['zrl'] - _tol_1h <= close <= _zona_1h_sell['zrh'] + _tol_1h)
+                if _en_zona_1h and score_sell >= _UMBRAL_CAZA:
+                    senal_sell_fuerte = True
+                    _modo_caza_sell   = True
+                    _conf_sell = (f"⚡ <b>Setup 1H / Entrada 5M</b>\n"
+                                  f"📍 Zona 1H resistencia: ${_zona_1h_sell['zrl']:.2f}–${_zona_1h_sell['zrh']:.2f} | Score 1H: {_zona_1h_sell['score_1h']}/21\n"
+                                  f"📌 Limit 1H: ${_zona_1h_sell['sell_limit']:.2f} → ajustado 5M: ${sell_limit:.2f}")
+                    logger.info(f"  🎯 [5M] MODO CAZA SELL — zona 1H activa (score {score_sell}) → señal activada")
+
+            # Títulos dinámicos según modo
+            _titulo_sell = ("⚡ ENTRADA PRECISA — <b>Setup 1H / Entrada 5M</b>"
+                            if _modo_caza_sell else "🔥 SELL FUERTE — <b>GOLD 5M MICRO-SCALP</b>")
+            _titulo_buy  = ("⚡ ENTRADA PRECISA — <b>Setup 1H / Entrada 5M</b>"
+                            if _modo_caza_buy  else "🔥 BUY FUERTE — <b>GOLD 5M MICRO-SCALP</b>")
+
             # ── FILTRO R:R MÍNIMO 1.5 (Micro-Scalp 5M) ──
             RR_MINIMO = 1.5
             rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
@@ -423,7 +460,7 @@ class GoldDetector5M(BaseDetector):
                 if self.db and self.db.existe_senal_activa_tf(simbolo_db):
                     logger.info(f"  ℹ️  SELL 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
                 else:
-                    msg = (f"🔥 SELL FUERTE — <b>GOLD 5M MICRO-SCALP</b>\n"
+                    msg = (f"{_titulo_sell}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
                            f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 2)}\n"
@@ -459,7 +496,7 @@ class GoldDetector5M(BaseDetector):
                 if self.db and self.db.existe_senal_activa_tf(simbolo_db):
                     logger.info(f"  ℹ️  BUY 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
                 else:
-                    msg = (f"🔥 BUY FUERTE — <b>GOLD 5M MICRO-SCALP</b>\n"
+                    msg = (f"{_titulo_buy}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
                            f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 2)}\n"
