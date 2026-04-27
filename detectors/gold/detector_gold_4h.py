@@ -49,7 +49,7 @@ SIMBOLOS = {
         'sr_lookback':        80,           # 80 velas 4H ≈ 13 días de historia
         'sr_zone_mult':       0.6,          # ancho de zona = atr × 0.6
         'limit_offset_pct':   0.3,
-        'anticipar_velas':    3,
+        'anticipar_velas':    5,          # aumentado de 3→5 para detectar aproximaciones antes
         'cancelar_dist':      1.0,
         'rsi_length':         28,           # 14D × 2 para 4H
         'rsi_min_sell':       55.0,
@@ -195,7 +195,7 @@ class GoldDetector4H(BaseDetector):
 
         # Parámetros de zona (calculados automáticamente)
         zrl, zrh, zsl, zsh = self.calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
-        tol  = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
+        tol  = round(atr * 0.75, 2)  # tolerancia dinámica: 75% del ATR (aumentado de 0.4 para capturar rebotes en canal)
         lop  = params['limit_offset_pct']
         cd   = params['cancelar_dist']
         av   = params['anticipar_velas']
