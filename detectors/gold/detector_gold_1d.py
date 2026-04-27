@@ -425,8 +425,7 @@ class GoldDetector1D(BaseDetector):
             logger.info(f"  🔺 [1D] DOBLE SUELO detectado — suelo=${ds_nivel_suelo:.1f} cuello=${ds_neckline:.1f}")
 
         score_sell = 0
-        score_sell += 2 if en_zona_resist          else 0
-        score_sell += 2 if vela_rechazo            else 0
+        score_buy  = 0  # inicializar antes de ruptura/cuña para que += funcione
         score_sell += 2 if vol_alto_rechazo        else 0
         score_sell += 1 if rsi_alto_girando        else 0
         score_sell += 1 if rsi_sobrecompra         else 0
@@ -482,9 +481,9 @@ class GoldDetector1D(BaseDetector):
             score_sell += 3
             logger.info(f"  📐 [1D] CUÑA ASC en compresión ${_s_asc_1d:.2f}-${_t_asc_1d:.2f} — +3 pts SELL")
 
-        # Penalización si mercado lateral (ADX bajo)
-        if adx_lateral:
-            score_sell = max(0, score_sell - 3)  # Reducir score en mercados laterales
+        # ADX lateral en zona S/R: no penalizar (consolidación = agotamiento, no debilidad)
+        if adx_lateral and not en_zona_resist:
+            score_sell = max(0, score_sell - 3)
 
         # ══════════════════════════════════
         # BLOQUE COMPRA
@@ -531,7 +530,7 @@ class GoldDetector1D(BaseDetector):
         # Morning Star
         morning_star = detectar_morning_star(df, len(df) - 2)
 
-        score_buy = 0
+        # score_buy ya inicializado antes del bloque SELL
         score_buy += 2 if en_zona_soporte          else 0
         score_buy += 2 if vela_rebote              else 0
         score_buy += 2 if vol_alto_rebote          else 0
@@ -557,12 +556,11 @@ class GoldDetector1D(BaseDetector):
         score_buy += 1 if macd_positivo           else 0  # MACD sobre cero
         score_buy += 4 if rotura_alcista          else 0  # rotura con impulso+volumen
         score_buy += 3 if ds_detectado            else 0  # doble suelo confirmado
-        if _rup_res_1d:  # ruptura resistencia ya calculada arriba → +BUY
-            score_buy = max(score_buy, score_buy)  # ya añadido en bloque sell
-    
-        # Penalización si mercado lateral (ADX bajo)
-        if adx_lateral:
-            score_buy = max(0, score_buy - 3)  # Reducir score en mercados laterales
+        # (ruptura resistencia _rup_res_1d ya sumada antes del bloque COMPRA)
+
+        # ADX lateral en zona S/R: consolidación = agotamiento, no penalizar
+        if adx_lateral and not en_zona_soporte:
+            score_buy = max(0, score_buy - 3)
 
         # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
         dxy_bias = get_dxy_bias()
