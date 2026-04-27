@@ -6,6 +6,8 @@ Confluencia obligatoria con 1D + 4H + 1H + 15M (sesgo multi-TF)
 import os
 from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
+from services.cot_bias import get_cot_bias, ajustar_score_por_cot
+from services.open_interest import get_oi_bias, ajustar_score_por_oi
 from services.economic_calendar import obtener_aviso_macro
 from adapters.data_provider import get_ohlcv
 import yfinance as yf
@@ -283,6 +285,14 @@ class GoldDetector5M(BaseDetector):
             # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
             dxy_bias = get_dxy_bias()
             score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
+
+            # ── Ajuste por COT Report (posiciones institucionales semanales) ──
+            _cot_bias, _cot_ratio = get_cot_bias()
+            score_buy, score_sell = ajustar_score_por_cot(score_buy, score_sell, _cot_bias)
+
+            # ── Ajuste por Open Interest / Volumen (fuerza de tendencia) ──
+            _oi_bias = get_oi_bias()
+            score_buy, score_sell = ajustar_score_por_oi(score_buy, score_sell, _oi_bias)
 
             # ── Filtro de volumen: penalizar señales en velas de bajo volumen ──
             score_sell, score_buy, _vol_bajo = self.ajustar_scores_por_volumen(
