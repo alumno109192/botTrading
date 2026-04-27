@@ -383,6 +383,37 @@ class BaseDetector(ABC):
     # Score mínimo adaptativo
     # ─────────────────────────────────────────────────────────────────────────
 
+    def en_sesion_optima(self) -> bool:
+        """
+        Devuelve True si la hora UTC actual está dentro de la sesión óptima
+        de trading para Gold (Londres + NY): 08:00 - 21:00 UTC.
+        Fuera de ese rango el volumen es bajo y los movimientos son ruido.
+        """
+        from datetime import datetime, timezone
+        hora = datetime.now(timezone.utc).hour
+        return 8 <= hora < 21
+
+    def umbral_activo_por_sesion(self, senal_alerta: bool, senal_media: bool,
+                                  senal_fuerte: bool, senal_maxima: bool,
+                                  tf_corto: bool = False) -> tuple:
+        """
+        Aplica el filtro de sesión sobre los flags de señal.
+
+        TFs cortos (5M, 15M): fuera de sesión solo FUERTE y MÁXIMA.
+        TFs largos (1H, 4H, 1D): fuera de sesión solo MEDIA, FUERTE y MÁXIMA.
+
+        Returns: (alerta, media, fuerte, maxima) posiblemente reducidos.
+        """
+        if self.en_sesion_optima():
+            return senal_alerta, senal_media, senal_fuerte, senal_maxima
+
+        if tf_corto:
+            # 5M / 15M: bloquear ALERTA y MEDIA fuera de sesión
+            return False, False, senal_fuerte, senal_maxima
+        else:
+            # 1H / 4H / 1D: bloquear solo ALERTA fuera de sesión
+            return False, senal_media, senal_fuerte, senal_maxima
+
     def umbral_adaptativo(self, base: int, atr: float, atr_media: float,
                           incremento: int = 2) -> int:
         """

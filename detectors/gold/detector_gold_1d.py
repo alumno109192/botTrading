@@ -614,6 +614,17 @@ class GoldDetector1D(BaseDetector):
         # ALERTA: Score técnico ≥umbral normal, O sentimiento FUERTE (≥6) con score mínimo ≥3
         senal_buy_alerta  = (score_buy >= _umbral_ale and not senal_contradictoria_buy) or (sentimiento_alcista_score >= 6 and score_buy >= 3)
 
+        # ── Filtro de sesión 1D: fuera de 08-21 UTC bloquear ALERTA (MEDIA+ pasa) ──
+        if not self.en_sesion_optima():
+            if senal_sell_alerta and not senal_sell_media:
+                logger.info(f"  🌙 [1D] Fuera sesión óptima — SELL ALERTA suprimida")
+            if senal_buy_alerta and not senal_buy_media:
+                logger.info(f"  🌙 [1D] Fuera sesión óptima — BUY ALERTA suprimida")
+            senal_sell_alerta, senal_sell_media, senal_sell_fuerte, senal_sell_maxima = \
+                self.umbral_activo_por_sesion(senal_sell_alerta, senal_sell_media, senal_sell_fuerte, senal_sell_maxima, tf_corto=False)
+            senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima = \
+                self.umbral_activo_por_sesion(senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima, tf_corto=False)
+
         # ══════════════════════════════════
         # SL Y TP
         # ══════════════════════════════════

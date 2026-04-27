@@ -295,6 +295,12 @@ class GoldDetector5M(BaseDetector):
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
+            # ── Filtro de sesión: fuera de 08-21 UTC bloquear todo (TF corto = ruido nocturno) ──
+            if not self.en_sesion_optima():
+                logger.info(f"  🌙 [5M] Fuera sesión óptima — señales suprimidas (08-21 UTC)")
+                senal_sell_fuerte = False
+                senal_buy_fuerte  = False
+
             cancelar_sell = (close < zsl) or (rsi < 28)
             cancelar_buy  = (close > zrh) or (rsi > 72)
 

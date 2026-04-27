@@ -477,6 +477,17 @@ class GoldDetector4H(BaseDetector):
         senal_buy_media   = score_buy  >= _umbral_med
         senal_buy_alerta  = score_buy  >= _umbral_ale
 
+        # ── Filtro de sesión 4H: fuera de 08-21 UTC bloquear ALERTA (MEDIA+ pasa) ──
+        if not self.en_sesion_optima():
+            if senal_sell_alerta and not senal_sell_media:
+                logger.info(f"  🌙 [4H] Fuera sesión óptima — SELL ALERTA suprimida")
+            if senal_buy_alerta and not senal_buy_media:
+                logger.info(f"  🌙 [4H] Fuera sesión óptima — BUY ALERTA suprimida")
+            senal_sell_alerta, senal_sell_media, senal_sell_fuerte, senal_sell_maxima = \
+                self.umbral_activo_por_sesion(senal_sell_alerta, senal_sell_media, senal_sell_fuerte, senal_sell_maxima, tf_corto=False)
+            senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima = \
+                self.umbral_activo_por_sesion(senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima, tf_corto=False)
+
         sl_venta  = round(sell_limit + atr * asm, 2)
         sl_compra = round(buy_limit  - atr * asm, 2)
 
