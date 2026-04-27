@@ -86,7 +86,11 @@ ultima_senal_timestamp = None
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
 # ══════════════════════════════════════
-from core.indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji, detectar_stop_hunt_alcista, detectar_stop_hunt_bajista
+from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
+    patron_envolvente_alcista, patron_envolvente_bajista, patron_doji,
+    detectar_stop_hunt_alcista, detectar_stop_hunt_bajista,
+    detectar_canal_roto, detectar_precio_en_canal,
+)
 
 
 
@@ -233,7 +237,30 @@ class GoldDetector5M(BaseDetector):
                 score_buy += 3
                 logger.info(f"  🎯 [5M] Stop Hunt ALCISTA detectado — +3 pts BUY")
 
-            max_score = 18
+            # ── Canal roto / directriz (patrón de rotura 5M) ──────────────────
+            _lkb5 = params.get('sr_lookback', 100)
+            _zm5  = params.get('sr_zone_mult', 0.8)
+            canal_alc_roto_5m, canal_baj_roto_5m, \
+                linea_sop_canal_5m, linea_res_canal_5m = detectar_canal_roto(
+                    df, atr, lookback=_lkb5, wing=3)
+            en_resist_canal_baj_5m, en_sop_canal_alc_5m, \
+                linea_res_precio_5m, linea_sop_precio_5m = detectar_precio_en_canal(
+                    df, atr, lookback=_lkb5, wing=3)
+
+            if canal_alc_roto_5m:
+                score_sell += 2
+                logger.info(f"  🔻 [5M] CANAL ALCISTA ROTO — línea soporte ${linea_sop_canal_5m:.2f}")
+            if canal_baj_roto_5m:
+                score_buy += 2
+                logger.info(f"  🔺 [5M] CANAL BAJISTA ROTO — línea resist ${linea_res_canal_5m:.2f}")
+            if en_resist_canal_baj_5m:
+                score_sell += 3
+                logger.info(f"  📐 [5M] PRECIO EN DIRECTRIZ BAJISTA — ${linea_res_precio_5m:.2f}")
+            if en_sop_canal_alc_5m:
+                score_buy += 3
+                logger.info(f"  📐 [5M] PRECIO EN DIRECTRIZ ALCISTA — ${linea_sop_precio_5m:.2f}")
+
+            max_score = 24
 
             # Umbrales 5M — solo FUERTE llega a Telegram
             senal_sell_fuerte = score_sell >= 8

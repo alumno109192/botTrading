@@ -89,7 +89,11 @@ ultima_senal_timestamp = None
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
 # ══════════════════════════════════════
-from core.indicators import calcular_rsi, calcular_atr, calcular_adx, patron_envolvente_alcista, patron_envolvente_bajista, patron_doji, detectar_stop_hunt_alcista, detectar_stop_hunt_bajista
+from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
+    patron_envolvente_alcista, patron_envolvente_bajista, patron_doji,
+    detectar_stop_hunt_alcista, detectar_stop_hunt_bajista,
+    detectar_canal_roto, detectar_precio_en_canal,
+)
 
 # ══════════════════════════════════════
 # ANÁLISIS PRICE ACTION SCALPING
@@ -279,8 +283,31 @@ class GoldDetector15M(BaseDetector):
                 score_buy += 3
                 logger.info(f"  🎯 [15M] Stop Hunt ALCISTA detectado — +3 pts BUY")
 
-            # Score máximo: ~18 puntos
-            max_score = 18
+            # 10. Canal roto / directriz (patrón de rotura 15M) ─────────────
+            _lkb15 = params.get('sr_lookback', 200)
+            _zm15  = params.get('sr_zone_mult', 1.0)
+            canal_alc_roto_15m, canal_baj_roto_15m, \
+                linea_sop_canal_15m, linea_res_canal_15m = detectar_canal_roto(
+                    df, atr, lookback=_lkb15, wing=3)
+            en_resist_canal_baj_15m, en_sop_canal_alc_15m, \
+                linea_res_precio_15m, linea_sop_precio_15m = detectar_precio_en_canal(
+                    df, atr, lookback=_lkb15, wing=3)
+
+            if canal_alc_roto_15m:
+                score_sell += 2
+                logger.info(f"  🔻 [15M] CANAL ALCISTA ROTO — línea soporte ${linea_sop_canal_15m:.2f}")
+            if canal_baj_roto_15m:
+                score_buy += 2
+                logger.info(f"  🔺 [15M] CANAL BAJISTA ROTO — línea resist ${linea_res_canal_15m:.2f}")
+            if en_resist_canal_baj_15m:
+                score_sell += 3
+                logger.info(f"  📐 [15M] PRECIO EN DIRECTRIZ BAJISTA — ${linea_res_precio_15m:.2f}")
+            if en_sop_canal_alc_15m:
+                score_buy += 3
+                logger.info(f"  📐 [15M] PRECIO EN DIRECTRIZ ALCISTA — ${linea_sop_precio_15m:.2f}")
+
+            # Score máximo: ~24 puntos
+            max_score = 24
         
             # ══════════════════════════════════════
             # NIVELES DE SEÑAL 15M — solo FUERTE llega a Telegram
