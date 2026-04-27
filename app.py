@@ -107,6 +107,7 @@ try:
     DatabaseManager().init_nivel_touches_tables()
     DatabaseManager().init_senal_analisis_table()
     DatabaseManager().init_antispam_table()
+    DatabaseManager().migrate_add_telegram_thread_id()
     logger.info("✅ Tablas api_key_usage, ohlcv, canal_roto_state, macro_events_log, bot_logs, nivel_touches, senal_analisis, bot_antispam listas")
 except Exception as _e:
     logger.warning(f"⚠️ No se pudo inicializar tablas BD: {_e}")

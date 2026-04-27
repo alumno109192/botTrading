@@ -82,6 +82,15 @@ class BaseDetector(ABC):
                 pass  # Fallo no crítico; se parte de estado vacío
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Helper BD — inyecta telegram_thread_id automáticamente
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _guardar_senal(self, senal_data: dict) -> int:
+        """Proxy sobre db.guardar_senal que inyecta self.telegram_thread_id."""
+        senal_data.setdefault('telegram_thread_id', self.telegram_thread_id)
+        return self.db.guardar_senal(senal_data)
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Método abstracto — debe implementarse en cada subclase
     # ─────────────────────────────────────────────────────────────────────────
 

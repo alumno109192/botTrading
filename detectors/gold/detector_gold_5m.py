@@ -1,4 +1,4 @@
-"""
+﻿"""
 DETECTOR GOLD 5M - MICRO-SCALPING
 Análisis de XAUUSD en timeframe 5 minutos para operaciones ultra-rápidas
 Confluencia obligatoria con 1D + 4H + 1H + 15M (sesgo multi-TF)
@@ -410,7 +410,7 @@ class GoldDetector5M(BaseDetector):
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                     if self.db:
                         try:
-                            self.db.guardar_senal({
+                            self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                                 'direccion': 'VENTA', 'precio_entrada': sell_limit,
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
@@ -446,7 +446,7 @@ class GoldDetector5M(BaseDetector):
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                     if self.db:
                         try:
-                            self.db.guardar_senal({
+                            self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                                 'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,

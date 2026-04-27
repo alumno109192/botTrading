@@ -248,6 +248,20 @@ class DatabaseManager:
     # OPERACIONES DE SEÑALES
     # ═══════════════════════════════════════════════════════════
     
+    def migrate_add_telegram_thread_id(self) -> None:
+        """Migración idempotente: añade telegram_thread_id a senales si no existe."""
+        try:
+            self.ejecutar_query(
+                "ALTER TABLE senales ADD COLUMN telegram_thread_id INTEGER"
+            )
+            logger.info("✅ Migración: columna telegram_thread_id añadida a senales")
+        except Exception as e:
+            # SQLite lanza error si la columna ya existe — se ignora silenciosamente
+            if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+                logger.debug("  telegram_thread_id ya existía en senales")
+            else:
+                logger.warning(f"⚠️ migrate_add_telegram_thread_id: {e}")
+
     def guardar_senal(self, senal_data: Dict) -> int:
         """
         Guarda una nueva señal en la base de datos
@@ -259,13 +273,14 @@ class DatabaseManager:
             ID de la señal insertada
         """
         estado = senal_data.get('estado', 'ACTIVA')
+        thread_id = senal_data.get('telegram_thread_id')
         query = f"""
         INSERT INTO senales (
             timestamp, simbolo, direccion, precio_entrada,
             tp1, tp2, tp3, sl, score,
             indicadores, patron_velas, version_detector,
-            estado
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}')
+            estado, telegram_thread_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}', ?)
         """
         
         params = (
@@ -280,7 +295,8 @@ class DatabaseManager:
             senal_data['score'],
             json.dumps(senal_data.get('indicadores', {})),
             senal_data.get('patron_velas', ''),
-            senal_data.get('version_detector', '2.0')
+            senal_data.get('version_detector', '2.0'),
+            thread_id,
         )
         
         senal_id = self.ejecutar_insert(query, params)

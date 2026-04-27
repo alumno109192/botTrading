@@ -1,4 +1,4 @@
-"""
+﻿"""
 DETECTOR GOLD 15M - SCALPING
 Análisis de XAUUSD en timeframe 15 minutos para operaciones de corto plazo
 Optimizado para capturar movimientos rápidos con alta frecuencia
@@ -481,7 +481,7 @@ class GoldDetector15M(BaseDetector):
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                     if self.db:
                         try:
-                            self.db.guardar_senal({
+                            self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                                 'direccion': 'VENTA', 'precio_entrada': sell_limit,
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
@@ -516,7 +516,7 @@ class GoldDetector15M(BaseDetector):
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                     if self.db:
                         try:
-                            self.db.guardar_senal({
+                            self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                                 'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
