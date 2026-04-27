@@ -302,7 +302,43 @@ class GoldDetector5M(BaseDetector):
                 score_buy += 4
                 logger.info(f"  📐 [5M] RECHAZO EN DIRECTRIZ ALCISTA ${_precio_dir_alc_5m:.2f} — +4 pts BUY")
 
-            max_score = 28
+            # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
+            # Solo se consulta si estamos en zona de desempate (score cerca del umbral)
+            # Evita llamadas innecesarias a la API y mantiene el intervalo bajo
+            _umbral_conf = 8  # igual que _umbral_fue antes del ajuste DXY/vol
+            _necesita_conf_sell = 4 <= score_sell < _umbral_conf
+            _necesita_conf_buy  = 4 <= score_buy  < _umbral_conf
+            if _necesita_conf_sell or _necesita_conf_buy:
+                try:
+                    df_1m, _ = get_ohlcv(params['ticker_yf'], period='1d', interval='1m')
+                    if df_1m is not None and len(df_1m) >= 10:
+                        atr_1m = float(calcular_atr(df_1m, 7).iloc[-1])
+                        # SELL: envolvente bajista o stop hunt bajista en 1M
+                        if _necesita_conf_sell:
+                            _env_baj_1m  = patron_envolvente_bajista(df_1m)
+                            _sh_baj_1m   = detectar_stop_hunt_bajista(df_1m, atr_1m)
+                            _rej_dir_1m  = detectar_rechazo_en_directriz(
+                                df_1m, atr_1m, lookback=60, wing=2, direccion='bajista')[0]
+                            if _env_baj_1m or _sh_baj_1m or _rej_dir_1m:
+                                score_sell += 2
+                                motivo = ('envolvente' if _env_baj_1m
+                                          else 'stop hunt' if _sh_baj_1m else 'directriz')
+                                logger.info(f"  🎯 [1M] Confirmación SELL ({motivo}) — +2 pts SELL")
+                        # BUY: envolvente alcista o stop hunt alcista en 1M
+                        if _necesita_conf_buy:
+                            _env_alc_1m  = patron_envolvente_alcista(df_1m)
+                            _sh_alc_1m   = detectar_stop_hunt_alcista(df_1m, atr_1m)
+                            _rej_dir_1m_b = detectar_rechazo_en_directriz(
+                                df_1m, atr_1m, lookback=60, wing=2, direccion='alcista')[0]
+                            if _env_alc_1m or _sh_alc_1m or _rej_dir_1m_b:
+                                score_buy += 2
+                                motivo = ('envolvente' if _env_alc_1m
+                                          else 'stop hunt' if _sh_alc_1m else 'directriz')
+                                logger.info(f"  🎯 [1M] Confirmación BUY ({motivo}) — +2 pts BUY")
+                except Exception as _e_1m:
+                    logger.debug(f"  [1M] No se pudo obtener confirmación: {_e_1m}")
+
+            max_score = 30  # +2 posibles del confirmador 1M
 
             # Umbrales 5M — solo FUERTE llega a Telegram
             senal_sell_fuerte = score_sell >= 8

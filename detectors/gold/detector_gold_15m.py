@@ -348,8 +348,41 @@ class GoldDetector15M(BaseDetector):
                 score_buy += 4
                 logger.info(f"  📐 [15M] RECHAZO EN DIRECTRIZ ALCISTA ${_precio_dir_alc_15m:.2f} — +4 pts BUY")
 
-            # Score máximo: ~28 puntos
-            max_score = 28
+            # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
+            # Solo si score está en zona de desempate (4–7), evita llamadas innecesarias
+            _umbral_conf_15 = 8
+            _necesita_conf_sell = 4 <= score_sell < _umbral_conf_15
+            _necesita_conf_buy  = 4 <= score_buy  < _umbral_conf_15
+            if _necesita_conf_sell or _necesita_conf_buy:
+                try:
+                    df_1m, _ = get_ohlcv(params['ticker_yf'], period='1d', interval='1m')
+                    if df_1m is not None and len(df_1m) >= 10:
+                        atr_1m = float(calcular_atr(df_1m, 7).iloc[-1])
+                        if _necesita_conf_sell:
+                            _env_baj_1m   = patron_envolvente_bajista(df_1m)
+                            _sh_baj_1m    = detectar_stop_hunt_bajista(df_1m, atr_1m)
+                            _rej_dir_1m_s = detectar_rechazo_en_directriz(
+                                df_1m, atr_1m, lookback=60, wing=2, direccion='bajista')[0]
+                            if _env_baj_1m or _sh_baj_1m or _rej_dir_1m_s:
+                                score_sell += 2
+                                motivo = ('envolvente' if _env_baj_1m
+                                          else 'stop hunt' if _sh_baj_1m else 'directriz')
+                                logger.info(f"  🎯 [1M] Confirmación SELL ({motivo}) — +2 pts SELL")
+                        if _necesita_conf_buy:
+                            _env_alc_1m   = patron_envolvente_alcista(df_1m)
+                            _sh_alc_1m    = detectar_stop_hunt_alcista(df_1m, atr_1m)
+                            _rej_dir_1m_b = detectar_rechazo_en_directriz(
+                                df_1m, atr_1m, lookback=60, wing=2, direccion='alcista')[0]
+                            if _env_alc_1m or _sh_alc_1m or _rej_dir_1m_b:
+                                score_buy += 2
+                                motivo = ('envolvente' if _env_alc_1m
+                                          else 'stop hunt' if _sh_alc_1m else 'directriz')
+                                logger.info(f"  🎯 [1M] Confirmación BUY ({motivo}) — +2 pts BUY")
+                except Exception as _e_1m:
+                    logger.debug(f"  [1M] No se pudo obtener confirmación: {_e_1m}")
+
+            # Score máximo: ~30 puntos (+2 del confirmador 1M)
+            max_score = 30
         
             # ══════════════════════════════════════
             # NIVELES DE SEÑAL 15M — solo FUERTE llega a Telegram

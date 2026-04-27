@@ -63,6 +63,7 @@ _INTRADAY_TTL = timedelta(seconds=65)
 
 # ── Tiempo máximo desde la última vela en BD para considerar datos “frescos” ──
 _DB_STALE = {
+    '1m':  timedelta(minutes=2),
     '5m':  timedelta(minutes=10),
     '15m': timedelta(minutes=30),
     '1h':  timedelta(hours=2),
