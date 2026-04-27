@@ -93,6 +93,8 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_stop_hunt_alcista, detectar_stop_hunt_bajista,
     detectar_canal_roto, detectar_precio_en_canal,
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
+    detectar_retest_resistencia, detectar_retest_soporte,
+    detectar_rechazo_en_directriz,
 )
 
 
@@ -275,6 +277,30 @@ class GoldDetector5M(BaseDetector):
             if _rup_res_5m:
                 score_buy += 4
                 logger.info(f"  💥 [5M] RUPTURA RESISTENCIA ${_niv_res_5m:.2f} — +4 pts BUY")
+
+            # ── Retest soporte→resistencia / resistencia→soporte (5M) ───────────
+            _retest_res_5m, _niv_retest_res_5m = detectar_retest_resistencia(
+                df, atr, lookback=_lkb5_h, wing=3)
+            _retest_sop_5m, _niv_retest_sop_5m = detectar_retest_soporte(
+                df, atr, lookback=_lkb5_h, wing=3)
+            if _retest_res_5m:
+                score_sell += 5
+                logger.info(f"  🔁 [5M] RETEST RESISTENCIA ${_niv_retest_res_5m:.2f} — +5 pts SELL")
+            if _retest_sop_5m:
+                score_buy += 5
+                logger.info(f"  🔁 [5M] RETEST SOPORTE ${_niv_retest_sop_5m:.2f} — +5 pts BUY")
+
+            # ── Rechazo en directriz (5M) ────────────────────────────────────────
+            _rec_dir_baj_5m, _precio_dir_baj_5m = detectar_rechazo_en_directriz(
+                df, atr, lookback=_lkb5_h, wing=3, direccion='bajista')
+            _rec_dir_alc_5m, _precio_dir_alc_5m = detectar_rechazo_en_directriz(
+                df, atr, lookback=_lkb5_h, wing=3, direccion='alcista')
+            if _rec_dir_baj_5m:
+                score_sell += 4
+                logger.info(f"  📐 [5M] RECHAZO EN DIRECTRIZ BAJISTA ${_precio_dir_baj_5m:.2f} — +4 pts SELL")
+            if _rec_dir_alc_5m:
+                score_buy += 4
+                logger.info(f"  📐 [5M] RECHAZO EN DIRECTRIZ ALCISTA ${_precio_dir_alc_5m:.2f} — +4 pts BUY")
 
             max_score = 28
 

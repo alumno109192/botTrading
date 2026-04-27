@@ -736,3 +736,262 @@ def calcular_sr_multiples(df: pd.DataFrame, atr: float,
     soportes     = sorted([v for v in filtrados if v < close - atr * 0.2], reverse=True)[:n_niveles]
     resistencias = sorted([v for v in filtrados if v > close + atr * 0.2])[:n_niveles]
     return soportes, resistencias
+
+
+def detectar_retest_resistencia(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 80,
+        wing: int = 3,
+        n_toques_min: int = 2,
+        velas_desde_ruptura_min: int = 2,
+        velas_desde_ruptura_max: int = 40,
+) -> tuple:
+    """
+    Detecta patrón SELL de alta fiabilidad:
+    Soporte horizontal roto → precio sube a retestarlo como resistencia → rechazo.
+
+    Condiciones:
+      1. Existe un soporte horizontal (swing lows) validado por ≥ n_toques_min
+      2. Dicho soporte fue roto a la baja hace entre velas_desde_ruptura_min y _max velas
+      3. El precio actual ha subido de vuelta al nivel (retest desde abajo)
+      4. La última vela cerrada muestra rechazo: mecha superior > cuerpo y cierra por debajo del nivel
+
+    Returns:
+        (detectado: bool, nivel: float)
+        detectado=True → soporte roto retestado, entrada SELL
+    """
+    if len(df) < lookback + wing + 5:
+        return False, 0.0
+
+    tol  = atr * 0.4
+    lows = df['Low'].iloc[-(lookback + wing):-1]
+    n    = len(lows)
+
+    # 1. Detectar swing lows y agruparlos en niveles
+    swing_lows = []
+    for i in range(wing, n - wing):
+        val = float(lows.iloc[i])
+        if all(val <= float(lows.iloc[i - j]) for j in range(1, wing + 1)) and \
+           all(val <= float(lows.iloc[i + j]) for j in range(1, wing + 1)):
+            swing_lows.append(val)
+
+    if not swing_lows:
+        return False, 0.0
+
+    agrupados: list[tuple[float, int]] = []
+    for sl in swing_lows:
+        for idx, (nivel, count) in enumerate(agrupados):
+            if abs(sl - nivel) <= tol:
+                agrupados[idx] = ((nivel * count + sl) / (count + 1), count + 1)
+                break
+        else:
+            agrupados.append((sl, 1))
+
+    candidatos = [niv for niv, cnt in agrupados if cnt >= n_toques_min]
+    if not candidatos:
+        return False, 0.0
+
+    close_actual  = float(df['Close'].iloc[-2])
+    open_actual   = float(df['Open'].iloc[-2])
+    high_actual   = float(df['High'].iloc[-2])
+    low_actual    = float(df['Low'].iloc[-2])
+    closes        = df['Close'].values
+
+    for nivel in candidatos:
+        # 2. Verificar que el nivel fue roto recientemente (precio cerró bajo el nivel)
+        ruptura_idx = None
+        for k in range(3, min(velas_desde_ruptura_max + 3, len(closes))):
+            c = float(closes[-(k + 1)])
+            if c < nivel - tol * 0.3:
+                ruptura_idx = k
+                break
+
+        if ruptura_idx is None or ruptura_idx < velas_desde_ruptura_min:
+            continue
+
+        # 3. Precio actual está retestando el nivel (vuelve desde abajo)
+        en_retest = (nivel - tol <= close_actual <= nivel + tol * 0.8)
+        if not en_retest:
+            continue
+
+        # 4. Vela de rechazo: mecha superior > cuerpo, cierra por debajo del nivel
+        cuerpo       = abs(close_actual - open_actual)
+        mecha_sup    = high_actual - max(close_actual, open_actual)
+        es_rechazo   = (mecha_sup > cuerpo * 0.8) and (close_actual < nivel + tol * 0.3)
+
+        if es_rechazo:
+            return True, round(nivel, 2)
+
+    return False, 0.0
+
+
+def detectar_retest_soporte(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 80,
+        wing: int = 3,
+        n_toques_min: int = 2,
+        velas_desde_ruptura_min: int = 2,
+        velas_desde_ruptura_max: int = 40,
+) -> tuple:
+    """
+    Detecta patrón BUY de alta fiabilidad:
+    Resistencia horizontal rota → precio baja a retestearla como soporte → rebote.
+
+    Condiciones espejo de detectar_retest_resistencia.
+
+    Returns:
+        (detectado: bool, nivel: float)
+        detectado=True → resistencia rota retestada, entrada BUY
+    """
+    if len(df) < lookback + wing + 5:
+        return False, 0.0
+
+    tol   = atr * 0.4
+    highs = df['High'].iloc[-(lookback + wing):-1]
+    n     = len(highs)
+
+    # 1. Swing highs → niveles de resistencia
+    swing_highs = []
+    for i in range(wing, n - wing):
+        val = float(highs.iloc[i])
+        if all(val >= float(highs.iloc[i - j]) for j in range(1, wing + 1)) and \
+           all(val >= float(highs.iloc[i + j]) for j in range(1, wing + 1)):
+            swing_highs.append(val)
+
+    if not swing_highs:
+        return False, 0.0
+
+    agrupados: list[tuple[float, int]] = []
+    for sh in swing_highs:
+        for idx, (nivel, count) in enumerate(agrupados):
+            if abs(sh - nivel) <= tol:
+                agrupados[idx] = ((nivel * count + sh) / (count + 1), count + 1)
+                break
+        else:
+            agrupados.append((sh, 1))
+
+    candidatos = [niv for niv, cnt in agrupados if cnt >= n_toques_min]
+    if not candidatos:
+        return False, 0.0
+
+    close_actual = float(df['Close'].iloc[-2])
+    open_actual  = float(df['Open'].iloc[-2])
+    high_actual  = float(df['High'].iloc[-2])
+    low_actual   = float(df['Low'].iloc[-2])
+    closes       = df['Close'].values
+
+    for nivel in candidatos:
+        # 2. El nivel fue roto al alza recientemente
+        ruptura_idx = None
+        for k in range(3, min(velas_desde_ruptura_max + 3, len(closes))):
+            c = float(closes[-(k + 1)])
+            if c > nivel + tol * 0.3:
+                ruptura_idx = k
+                break
+
+        if ruptura_idx is None or ruptura_idx < velas_desde_ruptura_min:
+            continue
+
+        # 3. Precio retestea el nivel desde arriba
+        en_retest = (nivel - tol * 0.8 <= close_actual <= nivel + tol)
+        if not en_retest:
+            continue
+
+        # 4. Vela de rebote: mecha inferior > cuerpo, cierra por encima del nivel
+        cuerpo      = abs(close_actual - open_actual)
+        mecha_inf   = min(close_actual, open_actual) - low_actual
+        es_rebote   = (mecha_inf > cuerpo * 0.8) and (close_actual > nivel - tol * 0.3)
+
+        if es_rebote:
+            return True, round(nivel, 2)
+
+    return False, 0.0
+
+
+def detectar_rechazo_en_directriz(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 80,
+        wing: int = 3,
+        min_toques: int = 2,
+        direccion: str = 'bajista',
+) -> tuple:
+    """
+    Detecta rechazo del precio en la directriz bajista (para SELL) o alcista (para BUY).
+
+    La directriz se construye uniendo los swing highs (bajista) o swing lows (alcista)
+    más relevantes con una regresión lineal. Si el precio toca la línea y cierra
+    rechazado (mecha en contra), se activa la señal.
+
+    Args:
+        direccion: 'bajista' → SELL | 'alcista' → BUY
+
+    Returns:
+        (detectado: bool, precio_directriz: float)
+    """
+    if len(df) < lookback + wing + 3:
+        return False, 0.0
+
+    tol = atr * 0.5
+
+    if direccion == 'bajista':
+        series = df['High'].iloc[-(lookback + wing):-1]
+    else:
+        series = df['Low'].iloc[-(lookback + wing):-1]
+
+    n = len(series)
+
+    # 1. Detectar swing highs/lows
+    pivots = []
+    for i in range(wing, n - wing):
+        val = float(series.iloc[i])
+        if direccion == 'bajista':
+            if all(val >= float(series.iloc[i - j]) for j in range(1, wing + 1)) and \
+               all(val >= float(series.iloc[i + j]) for j in range(1, wing + 1)):
+                pivots.append((i, val))
+        else:
+            if all(val <= float(series.iloc[i - j]) for j in range(1, wing + 1)) and \
+               all(val <= float(series.iloc[i + j]) for j in range(1, wing + 1)):
+                pivots.append((i, val))
+
+    if len(pivots) < min_toques:
+        return False, 0.0
+
+    # 2. Regresión lineal sobre los pivots → directriz
+    xs = np.array([p[0] for p in pivots], dtype=float)
+    ys = np.array([p[1] for p in pivots], dtype=float)
+    if len(xs) < 2:
+        return False, 0.0
+
+    m, b = np.polyfit(xs, ys, 1)
+
+    # Validar pendiente: bajista debe bajar, alcista debe subir
+    if direccion == 'bajista' and m >= 0:
+        return False, 0.0
+    if direccion == 'alcista' and m <= 0:
+        return False, 0.0
+
+    # 3. Valor de la directriz en la última vela cerrada
+    idx_actual   = n - 1  # índice relativo de la última vela cerrada
+    precio_dir   = round(float(m * idx_actual + b), 2)
+
+    high_actual  = float(df['High'].iloc[-2])
+    low_actual   = float(df['Low'].iloc[-2])
+    close_actual = float(df['Close'].iloc[-2])
+    open_actual  = float(df['Open'].iloc[-2])
+
+    # 4. Verificar toque y rechazo
+    if direccion == 'bajista':
+        toca_directriz = abs(high_actual - precio_dir) <= tol
+        cuerpo         = abs(close_actual - open_actual)
+        mecha_sup      = high_actual - max(close_actual, open_actual)
+        rechaza        = (mecha_sup > cuerpo * 0.7) and (close_actual < precio_dir)
+        return (toca_directriz and rechaza), precio_dir
+    else:
+        toca_directriz = abs(low_actual - precio_dir) <= tol
+        cuerpo         = abs(close_actual - open_actual)
+        mecha_inf      = min(close_actual, open_actual) - low_actual
+        rechaza        = (mecha_inf > cuerpo * 0.7) and (close_actual > precio_dir)
+        return (toca_directriz and rechaza), precio_dir

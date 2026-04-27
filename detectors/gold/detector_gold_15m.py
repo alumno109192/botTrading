@@ -96,6 +96,8 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_stop_hunt_alcista, detectar_stop_hunt_bajista,
     detectar_canal_roto, detectar_precio_en_canal,
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
+    detectar_retest_resistencia, detectar_retest_soporte,
+    detectar_rechazo_en_directriz,
 )
 
 # ══════════════════════════════════════
@@ -321,6 +323,30 @@ class GoldDetector15M(BaseDetector):
             if _rup_res_15m:
                 score_buy += 4
                 logger.info(f"  💥 [15M] RUPTURA RESISTENCIA ${_niv_res_15m:.2f} — +4 pts BUY")
+
+            # ── Retest soporte→resistencia / resistencia→soporte (15M) ──────────
+            _retest_res_15m, _niv_retest_res_15m = detectar_retest_resistencia(
+                df, atr, lookback=_lkb15_h, wing=3)
+            _retest_sop_15m, _niv_retest_sop_15m = detectar_retest_soporte(
+                df, atr, lookback=_lkb15_h, wing=3)
+            if _retest_res_15m:
+                score_sell += 5
+                logger.info(f"  🔁 [15M] RETEST RESISTENCIA ${_niv_retest_res_15m:.2f} — +5 pts SELL")
+            if _retest_sop_15m:
+                score_buy += 5
+                logger.info(f"  🔁 [15M] RETEST SOPORTE ${_niv_retest_sop_15m:.2f} — +5 pts BUY")
+
+            # ── Rechazo en directriz (15M) ───────────────────────────────────────
+            _rec_dir_baj_15m, _precio_dir_baj_15m = detectar_rechazo_en_directriz(
+                df, atr, lookback=_lkb15_h, wing=3, direccion='bajista')
+            _rec_dir_alc_15m, _precio_dir_alc_15m = detectar_rechazo_en_directriz(
+                df, atr, lookback=_lkb15_h, wing=3, direccion='alcista')
+            if _rec_dir_baj_15m:
+                score_sell += 4
+                logger.info(f"  📐 [15M] RECHAZO EN DIRECTRIZ BAJISTA ${_precio_dir_baj_15m:.2f} — +4 pts SELL")
+            if _rec_dir_alc_15m:
+                score_buy += 4
+                logger.info(f"  📐 [15M] RECHAZO EN DIRECTRIZ ALCISTA ${_precio_dir_alc_15m:.2f} — +4 pts BUY")
 
             # Score máximo: ~28 puntos
             max_score = 28
