@@ -556,6 +556,150 @@ def detectar_precio_en_canal(df: pd.DataFrame, atr: float,
     return en_resist_canal_bajista, en_soporte_canal_alcista, linea_resist_val, linea_soporte_val
 
 
+def detectar_ruptura_soporte_horizontal(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 60,
+        wing: int = 3,
+        cuerpo_min_mult: float = 0.25,
+        n_toques_min: int = 2,
+) -> tuple:
+    """
+    Detecta ruptura BAJISTA de soporte horizontal (sin retest previo).
+
+    Busca niveles horizontales validados por múltiples toques (swing lows)
+    y verifica si la última vela cerrada acaba de romperlo con cuerpo real.
+
+    Condiciones:
+      1. Existe un swing low horizontal con ≥ n_toques_min toques en ±tol
+      2. La vela cerrada (iloc[-2]) cierra POR DEBAJO del nivel - tol
+      3. Es vela bajista con cuerpo > atr * cuerpo_min_mult
+      4. El precio estaba por encima del nivel en la vela anterior (iloc[-3])
+
+    Returns:
+        (roto: bool, nivel_soporte: float)
+        roto=True → soporte horizontal rompido hacia abajo
+    """
+    if len(df) < lookback + wing + 3:
+        return False, 0.0
+
+    tol   = atr * 0.4
+    lows  = df['Low'].iloc[-(lookback + wing):-1]
+    n     = len(lows)
+
+    # 1. Detectar swing lows candidatos
+    swing_lows = []
+    for i in range(wing, n - wing):
+        val = float(lows.iloc[i])
+        if all(val <= float(lows.iloc[i - j]) for j in range(1, wing + 1)) and \
+           all(val <= float(lows.iloc[i + j]) for j in range(1, wing + 1)):
+            swing_lows.append(val)
+
+    if not swing_lows:
+        return False, 0.0
+
+    # 2. Agrupar niveles similares y quedarnos con los más tocados
+    agrupados: list[tuple[float, int]] = []
+    for sl in swing_lows:
+        for idx, (nivel, count) in enumerate(agrupados):
+            if abs(sl - nivel) <= tol:
+                agrupados[idx] = ((nivel * count + sl) / (count + 1), count + 1)
+                break
+        else:
+            agrupados.append((sl, 1))
+
+    # Filtrar por mínimo de toques y ordenar por proximidad al precio actual
+    close_actual  = float(df['Close'].iloc[-2])
+    close_previo  = float(df['Close'].iloc[-3])
+    open_actual   = float(df['Open'].iloc[-2])
+
+    candidatos = [(niv, cnt) for niv, cnt in agrupados
+                  if cnt >= n_toques_min and niv < close_previo]  # precio venía de arriba
+    if not candidatos:
+        return False, 0.0
+
+    # Ordenar por cercanía — el soporte más recientemente roto
+    candidatos.sort(key=lambda x: abs(close_actual - x[0]))
+    nivel_soporte, _ = candidatos[0]
+
+    # 3. Verificar ruptura en la vela cerrada
+    cuerpo     = abs(close_actual - open_actual)
+    es_bajista = close_actual < open_actual
+    cierra_bajo_soporte = close_actual < nivel_soporte - tol * 0.5
+    venia_encima        = close_previo > nivel_soporte - tol * 0.2
+    cuerpo_real         = cuerpo > atr * cuerpo_min_mult
+
+    roto = es_bajista and cierra_bajo_soporte and venia_encima and cuerpo_real
+    return roto, round(nivel_soporte, 2)
+
+
+def detectar_ruptura_resistencia_horizontal(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 60,
+        wing: int = 3,
+        cuerpo_min_mult: float = 0.25,
+        n_toques_min: int = 2,
+) -> tuple:
+    """
+    Detecta ruptura ALCISTA de resistencia horizontal (sin retest previo).
+
+    Condiciones espejo de detectar_ruptura_soporte_horizontal.
+
+    Returns:
+        (roto: bool, nivel_resistencia: float)
+    """
+    if len(df) < lookback + wing + 3:
+        return False, 0.0
+
+    tol    = atr * 0.4
+    highs  = df['High'].iloc[-(lookback + wing):-1]
+    n      = len(highs)
+
+    # 1. Detectar swing highs candidatos
+    swing_highs = []
+    for i in range(wing, n - wing):
+        val = float(highs.iloc[i])
+        if all(val >= float(highs.iloc[i - j]) for j in range(1, wing + 1)) and \
+           all(val >= float(highs.iloc[i + j]) for j in range(1, wing + 1)):
+            swing_highs.append(val)
+
+    if not swing_highs:
+        return False, 0.0
+
+    # 2. Agrupar y filtrar
+    agrupados: list[tuple[float, int]] = []
+    for sh in swing_highs:
+        for idx, (nivel, count) in enumerate(agrupados):
+            if abs(sh - nivel) <= tol:
+                agrupados[idx] = ((nivel * count + sh) / (count + 1), count + 1)
+                break
+        else:
+            agrupados.append((sh, 1))
+
+    close_actual = float(df['Close'].iloc[-2])
+    close_previo = float(df['Close'].iloc[-3])
+    open_actual  = float(df['Open'].iloc[-2])
+
+    candidatos = [(niv, cnt) for niv, cnt in agrupados
+                  if cnt >= n_toques_min and niv > close_previo]
+    if not candidatos:
+        return False, 0.0
+
+    candidatos.sort(key=lambda x: abs(close_actual - x[0]))
+    nivel_resistencia, _ = candidatos[0]
+
+    # 3. Verificar ruptura alcista
+    cuerpo      = abs(close_actual - open_actual)
+    es_alcista  = close_actual > open_actual
+    cierra_sobre = close_actual > nivel_resistencia + tol * 0.5
+    venia_debajo = close_previo < nivel_resistencia + tol * 0.2
+    cuerpo_real  = cuerpo > atr * cuerpo_min_mult
+
+    roto = es_alcista and cierra_sobre and venia_debajo and cuerpo_real
+    return roto, round(nivel_resistencia, 2)
+
+
 def calcular_sr_multiples(df: pd.DataFrame, atr: float,
                           lookback: int = 60, zone_mult: float = 0.5,
                           n_niveles: int = 5) -> tuple:

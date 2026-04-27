@@ -73,6 +73,7 @@ from core.indicators import (
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
     detectar_evening_star, detectar_morning_star,
     detectar_canal_roto, calcular_sr_multiples,
+    detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
 )
 
 
@@ -419,6 +420,18 @@ class GoldDetector1H(BaseDetector):
             (1 if macd_negativo            else 0) +
             (2 if canal_alcista_roto       else 0)   # canal alcista roto → sesgo bajista fuerte
         )
+        # ── Ruptura horizontal directa (sin retest) 1H ─────────────────────
+        _lkb_1h = params.get('sr_lookback', 100)
+        _rup_sop_1h, _niv_sop_1h = detectar_ruptura_soporte_horizontal(
+            df, atr, lookback=_lkb_1h, wing=3)
+        _rup_res_1h, _niv_res_1h = detectar_ruptura_resistencia_horizontal(
+            df, atr, lookback=_lkb_1h, wing=3)
+        if _rup_sop_1h:
+            score_sell += 4
+            logger.info(f"  💥 [1H] RUPTURA SOPORTE ${_niv_sop_1h:.2f} — +4 pts SELL")
+        if _rup_res_1h:
+            score_buy += 4
+            logger.info(f"  💥 [1H] RUPTURA RESISTENCIA ${_niv_res_1h:.2f} — +4 pts BUY")
         if adx_lateral: score_sell = max(0, score_sell - 3)
 
         # ── SCORING COMPRA ─────────────────────────────────────────

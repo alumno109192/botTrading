@@ -90,6 +90,7 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     patron_envolvente_alcista, patron_envolvente_bajista, patron_doji,
     detectar_stop_hunt_alcista, detectar_stop_hunt_bajista,
     detectar_canal_roto, detectar_precio_en_canal,
+    detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
 )
 
 
@@ -260,7 +261,20 @@ class GoldDetector5M(BaseDetector):
                 score_buy += 3
                 logger.info(f"  📐 [5M] PRECIO EN DIRECTRIZ ALCISTA — ${linea_sop_precio_5m:.2f}")
 
-            max_score = 24
+            # ── Ruptura horizontal directa (sin retest) 5M ─────────────────
+            _lkb5_h = params.get('sr_lookback', 100)
+            _rup_sop_5m, _niv_sop_5m = detectar_ruptura_soporte_horizontal(
+                df, atr, lookback=_lkb5_h, wing=3)
+            _rup_res_5m, _niv_res_5m = detectar_ruptura_resistencia_horizontal(
+                df, atr, lookback=_lkb5_h, wing=3)
+            if _rup_sop_5m:
+                score_sell += 4
+                logger.info(f"  💥 [5M] RUPTURA SOPORTE ${_niv_sop_5m:.2f} — +4 pts SELL")
+            if _rup_res_5m:
+                score_buy += 4
+                logger.info(f"  💥 [5M] RUPTURA RESISTENCIA ${_niv_res_5m:.2f} — +4 pts BUY")
+
+            max_score = 28
 
             # Umbrales 5M — solo FUERTE llega a Telegram
             senal_sell_fuerte = score_sell >= 8

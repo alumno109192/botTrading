@@ -18,32 +18,12 @@ logger = logging.getLogger('bottrading')
 # enabled: True → se arranca | False → pausado
 # ═══════════════════════════════════════════════════════════
 DETECTOR_REGISTRY = {
-    # ── GOLD (activos) ──────────────────────────────────────
+    # ── GOLD ───────────────────────────────────────────────
     'gold_1d':  {'module': 'detectors.gold.detector_gold_1d',  'label': 'DETECTOR GOLD 1D',  'enabled': True},
     'gold_4h':  {'module': 'detectors.gold.detector_gold_4h',  'label': 'DETECTOR GOLD 4H',  'enabled': True},
     'gold_1h':  {'module': 'detectors.gold.detector_gold_1h',  'label': 'DETECTOR GOLD 1H',  'enabled': True},
     'gold_15m': {'module': 'detectors.gold.detector_gold_15m', 'label': 'DETECTOR GOLD 15M', 'enabled': True},
     'gold_5m':  {'module': 'detectors.gold.detector_gold_5m',  'label': 'DETECTOR GOLD 5M',  'enabled': True},
-    # ── BITCOIN (pausados) ──────────────────────────────────
-    'bitcoin_1d': {'module': 'detectors.bitcoin.detector_bitcoin_1d', 'label': 'DETECTOR BITCOIN 1D', 'enabled': False},
-    'bitcoin_4h': {'module': 'detectors.bitcoin.detector_bitcoin_4h', 'label': 'DETECTOR BITCOIN 4H', 'enabled': False},
-    # ── SPX (pausados) ──────────────────────────────────────
-    'spx_1d':  {'module': 'detectors.spx.detector_spx_1d',  'label': 'DETECTOR SPX 1D',  'enabled': False},
-    'spx_4h':  {'module': 'detectors.spx.detector_spx_4h',  'label': 'DETECTOR SPX 4H',  'enabled': False},
-    'spx_15m': {'module': 'detectors.spx.detector_spx_15m', 'label': 'DETECTOR SPX 15M', 'enabled': False},
-    # ── EURUSD (pausados) ───────────────────────────────────
-    'eurusd_1d':  {'module': 'detectors.eurusd.detector_eurusd_1d',  'label': 'DETECTOR EURUSD 1D',  'enabled': False},
-    'eurusd_4h':  {'module': 'detectors.eurusd.detector_eurusd_4h',  'label': 'DETECTOR EURUSD 4H',  'enabled': False},
-    'eurusd_15m': {'module': 'detectors.eurusd.detector_eurusd_15m', 'label': 'DETECTOR EURUSD 15M', 'enabled': False},
-    # ── NASDAQ (pausados) ───────────────────────────────────
-    'nasdaq_1d': {'module': 'detectors.nasdaq.detector_nasdaq_1d', 'label': 'DETECTOR NAS100 1D', 'enabled': False},
-    'nasdaq_4h': {'module': 'detectors.nasdaq.detector_nasdaq_4h', 'label': 'DETECTOR NAS100 4H', 'enabled': False},
-    # ── WTI (pausados) ──────────────────────────────────────
-    'wti_1d': {'module': 'detectors.wti.detector_wti_1d', 'label': 'DETECTOR WTI 1D', 'enabled': False},
-    'wti_4h': {'module': 'detectors.wti.detector_wti_4h', 'label': 'DETECTOR WTI 4H', 'enabled': False},
-    # ── SILVER (pausados) ───────────────────────────────────
-    'silver_1d': {'module': 'detectors.silver.detector_silver_1d', 'label': 'DETECTOR SILVER 1D', 'enabled': False},
-    'silver_4h': {'module': 'detectors.silver.detector_silver_4h', 'label': 'DETECTOR SILVER 4H', 'enabled': False},
 }
 
 # Servicios auxiliares (siempre activos)

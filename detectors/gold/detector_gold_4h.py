@@ -84,6 +84,7 @@ from core.indicators import (
     detectar_doble_techo, detectar_doble_suelo,
     detectar_canal_roto, calcular_sr_multiples,
     detectar_precio_en_canal,
+    detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
 )
 
 # ══════════════════════════════════════
@@ -352,6 +353,18 @@ class GoldDetector4H(BaseDetector):
         score_sell += 3 if dt_detectado            else 0  # doble techo confirmado
         score_sell += 2 if canal_alcista_roto_4h   else 0  # canal alcista roto → sesgo bajista
         score_sell += 3 if en_resist_canal_bajista  else 0  # precio tocando directriz bajista
+
+        # ── Ruptura horizontal directa (sin retest) 4H ─────────────────────
+        _rup_sop_4h, _niv_sop_4h = detectar_ruptura_soporte_horizontal(
+            df, atr, lookback=params.get('sr_lookback', 60), wing=3)
+        _rup_res_4h, _niv_res_4h = detectar_ruptura_resistencia_horizontal(
+            df, atr, lookback=params.get('sr_lookback', 60), wing=3)
+        if _rup_sop_4h:
+            score_sell += 4
+            logger.info(f"  💥 [4H] RUPTURA SOPORTE ${_niv_sop_4h:.2f} — +4 pts SELL")
+        if _rup_res_4h:
+            score_buy += 4
+            logger.info(f"  💥 [4H] RUPTURA RESISTENCIA ${_niv_res_4h:.2f} — +4 pts BUY")
 
         if adx_lateral:
             score_sell = max(0, score_sell - 3)

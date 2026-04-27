@@ -83,6 +83,7 @@ from core.indicators import (
     detectar_rotura_alcista, detectar_rotura_bajista,
     detectar_doble_techo, detectar_doble_suelo,
     detectar_canal_roto,
+    detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
 )
 
 # ══════════════════════════════════════
@@ -446,7 +447,19 @@ class GoldDetector1D(BaseDetector):
         score_sell += 1 if macd_negativo           else 0  # MACD bajo cero
         score_sell += 4 if rotura_bajista          else 0  # rotura con impulso+volumen
         score_sell += 3 if dt_detectado            else 0  # doble techo confirmado
-    
+
+        # ── Ruptura horizontal directa (sin retest) 1D ─────────────────────
+        _rup_sop_1d, _niv_sop_1d = detectar_ruptura_soporte_horizontal(
+            df, atr, lookback=params.get('sr_lookback', 60), wing=3)
+        _rup_res_1d, _niv_res_1d = detectar_ruptura_resistencia_horizontal(
+            df, atr, lookback=params.get('sr_lookback', 60), wing=3)
+        if _rup_sop_1d:
+            score_sell += 4
+            logger.info(f"  💥 [1D] RUPTURA SOPORTE ${_niv_sop_1d:.2f} — +4 pts SELL")
+        if _rup_res_1d:
+            score_buy += 4
+            logger.info(f"  💥 [1D] RUPTURA RESISTENCIA ${_niv_res_1d:.2f} — +4 pts BUY")
+
         # Penalización si mercado lateral (ADX bajo)
         if adx_lateral:
             score_sell = max(0, score_sell - 3)  # Reducir score en mercados laterales
@@ -522,6 +535,8 @@ class GoldDetector1D(BaseDetector):
         score_buy += 1 if macd_positivo           else 0  # MACD sobre cero
         score_buy += 4 if rotura_alcista          else 0  # rotura con impulso+volumen
         score_buy += 3 if ds_detectado            else 0  # doble suelo confirmado
+        if _rup_res_1d:  # ruptura resistencia ya calculada arriba → +BUY
+            score_buy = max(score_buy, score_buy)  # ya añadido en bloque sell
     
         # Penalización si mercado lateral (ADX bajo)
         if adx_lateral:
