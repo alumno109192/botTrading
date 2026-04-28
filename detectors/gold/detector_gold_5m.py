@@ -477,41 +477,77 @@ class GoldDetector5M(BaseDetector):
 
             # ── AVISO SETUP TEMPRANO (score ≥ 5, independiente de filtros) ───────
             # Se envía aunque confluencia/R:R/señal-activa lo bloqueen después.
-            # Anti-spam: 15 min por dirección (clave incluye fecha-vela, no hora exacta).
+            # Guarda señal en BD para que el monitor de P&L haga seguimiento TP/SL.
+            # Anti-spam: una vez por vela (5 min) por dirección.
             _UMBRAL_AVISO = 5
+            _simbolo_db_5m = f"{simbolo}_5M"
             if self.en_sesion_optima():
                 if score_sell >= _UMBRAL_AVISO and not ya_enviada('aviso_sell'):
-                    _dir_aviso = "📛 SETUP SELL detectado"
                     _msg_aviso = (
-                        f"⚡ <b>{_dir_aviso} — GOLD 5M</b>\n"
+                        f"⚡ <b>📛 SETUP SELL detectado — GOLD 5M</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"💰 Precio:  ${round(close, 2)}\n"
                         f"🛑 SL ref:  ${round(sl_venta, 2)}  ({round(sl_venta - close, 1):+.1f} pts)\n"
                         f"🎯 TP1 ref: ${tp1_v}  ({round(close - tp1_v, 1):+.1f} pts)\n"
+                        f"🎯 TP2 ref: ${tp2_v}  ({round(close - tp2_v, 1):+.1f} pts)\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"📊 Score: {score_sell}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
-                        f"⏱️ 5M  📅 {fecha}\n"
-                        f"ℹ️ <i>Pre-aviso — señal formal pendiente de filtros</i>"
+                        f"⏱️ 5M  📅 {fecha}"
                     )
                     self.enviar(_msg_aviso)
                     marcar_enviada('aviso_sell')
-                    logger.info(f"  ⚡ [5M] AVISO SETUP SELL enviado (score {score_sell})")
+                    if self.db and not self.db.existe_senal_activa_tf(_simbolo_db_5m):
+                        try:
+                            self._guardar_senal({
+                                'timestamp': datetime.now(timezone.utc),
+                                'simbolo': _simbolo_db_5m,
+                                'direccion': 'VENTA',
+                                'precio_entrada': round(close, 2),
+                                'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v,
+                                'sl': round(sl_venta, 2),
+                                'score': score_sell,
+                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1), 'atr': round(atr, 2)}),
+                                'patron_velas': 'aviso_setup_temprano',
+                                'version_detector': '5M-AVISO-v1'
+                            })
+                            logger.info(f"  ⚡ [5M] AVISO SETUP SELL — señal guardada en BD (score {score_sell})")
+                        except Exception as _e_av:
+                            logger.error(f"  ⚠️ Error guardando aviso SELL BD: {_e_av}")
+                    else:
+                        logger.info(f"  ⚡ [5M] AVISO SETUP SELL enviado (score {score_sell}) — BD ya tiene señal activa")
                 if score_buy >= _UMBRAL_AVISO and not ya_enviada('aviso_buy'):
-                    _dir_aviso = "📗 SETUP BUY detectado"
                     _msg_aviso = (
-                        f"⚡ <b>{_dir_aviso} — GOLD 5M</b>\n"
+                        f"⚡ <b>📗 SETUP BUY detectado — GOLD 5M</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"💰 Precio:  ${round(close, 2)}\n"
                         f"🛑 SL ref:  ${round(sl_compra, 2)}  ({round(sl_compra - close, 1):+.1f} pts)\n"
                         f"🎯 TP1 ref: ${tp1_c}  ({round(tp1_c - close, 1):+.1f} pts)\n"
+                        f"🎯 TP2 ref: ${tp2_c}  ({round(tp2_c - close, 1):+.1f} pts)\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"📊 Score: {score_buy}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
-                        f"⏱️ 5M  📅 {fecha}\n"
-                        f"ℹ️ <i>Pre-aviso — señal formal pendiente de filtros</i>"
+                        f"⏱️ 5M  📅 {fecha}"
                     )
                     self.enviar(_msg_aviso)
                     marcar_enviada('aviso_buy')
-                    logger.info(f"  ⚡ [5M] AVISO SETUP BUY enviado (score {score_buy})")
+                    if self.db and not self.db.existe_senal_activa_tf(_simbolo_db_5m):
+                        try:
+                            self._guardar_senal({
+                                'timestamp': datetime.now(timezone.utc),
+                                'simbolo': _simbolo_db_5m,
+                                'direccion': 'COMPRA',
+                                'precio_entrada': round(close, 2),
+                                'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
+                                'sl': round(sl_compra, 2),
+                                'score': score_buy,
+                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1), 'atr': round(atr, 2)}),
+                                'patron_velas': 'aviso_setup_temprano',
+                                'version_detector': '5M-AVISO-v1'
+                            })
+                            logger.info(f"  ⚡ [5M] AVISO SETUP BUY — señal guardada en BD (score {score_buy})")
+                        except Exception as _e_av:
+                            logger.error(f"  ⚠️ Error guardando aviso BUY BD: {_e_av}")
+                    else:
+                        logger.info(f"  ⚡ [5M] AVISO SETUP BUY enviado (score {score_buy}) — BD ya tiene señal activa")
 
             if senal_sell_fuerte:
                 _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BEARISH)
