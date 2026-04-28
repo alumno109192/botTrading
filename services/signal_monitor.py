@@ -11,6 +11,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from adapters.database import DatabaseManager
+from adapters.data_provider import get_ohlcv as _get_ohlcv
 
 # Lock compartido con app.py para serializar TODAS las llamadas a yfinance
 # (tanto yf.download() como yf.Ticker().history())
@@ -75,17 +76,10 @@ def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
         except Exception as e:
             logger.error(f"⚠️ [{ticker}] Error leyendo precio de BD: {e}")
 
-    # ── Paso 2: yfinance (fallback) con timeout en el lock ───────────────────
+    # ── Paso 2: Twelve Data vía get_ohlcv (fallback cuando BD > 10 min) ───────
     try:
-        acquired = _yf_lock.acquire(timeout=8)
-        if not acquired:
-            logger.warning(f"⚠️ [{ticker}] Lock yfinance ocupado >8s — skip este tick")
-            return None
-        try:
-            hist = yf.Ticker(ticker).history(period='1d', interval='1m')
-        finally:
-            _yf_lock.release()
-        if hist.empty:
+        hist, _ = _get_ohlcv(ticker, period='1d', interval='5m')
+        if hist is None or hist.empty:
             return None
         precio_actual = float(hist['Close'].iloc[-1])
         ventana       = hist.tail(5)
@@ -93,7 +87,7 @@ def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
         precio_min    = float(ventana['Low'].min())
         return (precio_actual, precio_max, precio_min)
     except Exception as e:
-        logger.error(f"❌ Error descargando {ticker}: {e}")
+        logger.error(f"❌ Error descargando {ticker} via get_ohlcv: {e}")
         return None
 
 
@@ -474,9 +468,8 @@ def _confirmar_con_velas_1m(ticker: str, direccion: str, precio_entrada: float) 
         (confirmado: bool, descripcion: str)
     """
     try:
-        with _yf_lock:
-            hist = yf.Ticker(ticker).history(period='1d', interval='1m')
-        if hist.empty or len(hist) < 22:
+        hist, _ = _get_ohlcv(ticker, period='1d', interval='1m')
+        if hist is None or hist.empty or len(hist) < 22:
             return False, "Sin datos 1M suficientes"
 
         close = hist['Close']
