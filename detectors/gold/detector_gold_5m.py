@@ -475,6 +475,44 @@ class GoldDetector5M(BaseDetector):
             tf_bias.publicar_sesgo(simbolo, '5M', _sesgo_dir, max(score_sell, score_buy))
             _conf_sell = ""; _conf_buy = ""
 
+            # ── AVISO SETUP TEMPRANO (score ≥ 5, independiente de filtros) ───────
+            # Se envía aunque confluencia/R:R/señal-activa lo bloqueen después.
+            # Anti-spam: 15 min por dirección (clave incluye fecha-vela, no hora exacta).
+            _UMBRAL_AVISO = 5
+            if self.en_sesion_optima():
+                if score_sell >= _UMBRAL_AVISO and not ya_enviada('aviso_sell'):
+                    _dir_aviso = "📛 SETUP SELL detectado"
+                    _msg_aviso = (
+                        f"⚡ <b>{_dir_aviso} — GOLD 5M</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"💰 Precio:  ${round(close, 2)}\n"
+                        f"🛑 SL ref:  ${round(sl_venta, 2)}  ({round(sl_venta - close, 1):+.1f} pts)\n"
+                        f"🎯 TP1 ref: ${tp1_v}  ({round(close - tp1_v, 1):+.1f} pts)\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"📊 Score: {score_sell}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
+                        f"⏱️ 5M  📅 {fecha}\n"
+                        f"ℹ️ <i>Pre-aviso — señal formal pendiente de filtros</i>"
+                    )
+                    self.enviar(_msg_aviso)
+                    marcar_enviada('aviso_sell')
+                    logger.info(f"  ⚡ [5M] AVISO SETUP SELL enviado (score {score_sell})")
+                if score_buy >= _UMBRAL_AVISO and not ya_enviada('aviso_buy'):
+                    _dir_aviso = "📗 SETUP BUY detectado"
+                    _msg_aviso = (
+                        f"⚡ <b>{_dir_aviso} — GOLD 5M</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"💰 Precio:  ${round(close, 2)}\n"
+                        f"🛑 SL ref:  ${round(sl_compra, 2)}  ({round(sl_compra - close, 1):+.1f} pts)\n"
+                        f"🎯 TP1 ref: ${tp1_c}  ({round(tp1_c - close, 1):+.1f} pts)\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"📊 Score: {score_buy}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
+                        f"⏱️ 5M  📅 {fecha}\n"
+                        f"ℹ️ <i>Pre-aviso — señal formal pendiente de filtros</i>"
+                    )
+                    self.enviar(_msg_aviso)
+                    marcar_enviada('aviso_buy')
+                    logger.info(f"  ⚡ [5M] AVISO SETUP BUY enviado (score {score_buy})")
+
             if senal_sell_fuerte:
                 _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BEARISH)
                 if not _ok:
