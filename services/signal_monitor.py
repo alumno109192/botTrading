@@ -473,6 +473,130 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 _TIMEOUT_PENDIENTE_CONFIRM_HORAS = 2  # señal 1H caduca si no hay confirmación en 2h
 
 
+def _verificar_trampa_patron(senal: dict, db: DatabaseManager, trampa_avisada: set):
+    """
+    Detecta si el precio está atrapado en un patrón de indecisión mientras
+    hay una señal activa sin TP1 alcanzado. Envía alerta para cerrar preventivamente.
+
+    Patrones de trampa:
+      - Cuña en compresión (cualquier dirección) → indecisión total
+      - Cuña adversa a la dirección del trade (ruptura en contra)
+      - Doble techo con señal de COMPRA activa → riesgo de giro bajista
+      - Doble suelo con señal de VENTA activa  → riesgo de giro alcista
+
+    Solo avisa una vez por señal (trampa_avisada evita spam).
+    """
+    from core.indicators import (calcular_atr, detectar_cuña_descendente,
+                                  detectar_cuña_ascendente, detectar_doble_techo,
+                                  detectar_doble_suelo)
+
+    senal_id  = senal['id']
+    simbolo   = senal['simbolo']
+    direccion = senal['direccion']
+
+    # Solo si TP1 NO ha sido alcanzado (trade aún en riesgo)
+    tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
+    if tp1_alcanzado:
+        return
+
+    # Avisar solo una vez por señal
+    if senal_id in trampa_avisada:
+        return
+
+    simbolo_base = simbolo.split('_')[0]
+    ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
+    if not ticker:
+        return
+
+    try:
+        precio_entrada = float(senal['precio_entrada'])
+        sl  = float(senal['sl'])
+        tp1 = float(senal['tp1'])
+    except (TypeError, ValueError):
+        return
+
+    # Parámetros según TF del símbolo
+    sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
+    if sufijo == '5M':
+        interval, period, lookback, wing = '5m',  '2d', 60, 2
+    elif sufijo == '15M':
+        interval, period, lookback, wing = '15m', '3d', 80, 2
+    elif sufijo == '1H':
+        interval, period, lookback, wing = '1h',  '5d', 50, 3
+    else:  # 4H, 1D
+        interval, period, lookback, wing = '4h',  '60d', 40, 3
+
+    try:
+        df, _ = _get_ohlcv(ticker, period=period, interval=interval)
+        if df is None or len(df) < 20:
+            return
+
+        atr = float(calcular_atr(df, 7).iloc[-1])
+
+        cuña_desc, t_desc, s_desc = detectar_cuña_descendente(
+            df, atr, lookback=lookback, wing=wing, max_amplitud_pct=0.04)
+        cuña_asc,  t_asc,  s_asc  = detectar_cuña_ascendente(
+            df, atr, lookback=lookback, wing=wing, max_amplitud_pct=0.04)
+        dt, dt_nivel, dt_neck = detectar_doble_techo(df, atr, lookback=lookback, tol_mult=0.7)
+        ds, ds_nivel, ds_neck = detectar_doble_suelo(df, atr, lookback=lookback, tol_mult=0.7)
+
+        motivos = []
+
+        # ── Compresión (cuña sin romper → indecisión total) ──────────────────
+        if cuña_desc == 'compresion':
+            motivos.append(f"📐 Cuña descendente en compresión (${s_desc:.1f}–${t_desc:.1f})")
+        if cuña_asc == 'compresion':
+            motivos.append(f"📐 Cuña ascendente en compresión (${s_asc:.1f}–${t_asc:.1f})")
+
+        # ── Patrón adverso según dirección del trade ──────────────────────────
+        if direccion == 'COMPRA':
+            if cuña_asc == 'ruptura_bajista':
+                motivos.append(f"📐 Cuña ASC rota a la BAJA → posible caída hacia ${s_asc:.1f}")
+            if dt:
+                motivos.append(f"🔻 Doble techo (techo=${dt_nivel:.1f}, cuello=${dt_neck:.1f}) — resistencia doble")
+        else:  # VENTA
+            if cuña_desc == 'ruptura_alcista':
+                motivos.append(f"📐 Cuña DESC rota al ALZA → posible subida hacia ${t_desc:.1f}")
+            if ds:
+                motivos.append(f"🔺 Doble suelo (suelo=${ds_nivel:.1f}, cuello=${ds_neck:.1f}) — soporte doble")
+
+        if not motivos:
+            return
+
+        precio_actual = float(df['Close'].iloc[-1])
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, direccion)
+        icono = '🟢' if direccion == 'COMPRA' else '🔴'
+
+        msg = (
+            f"⚠️ <b>ALERTA: PRECIO ATRAPADO EN PATRÓN</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{icono} {simbolo} | {direccion}\n"
+            f"💰 Entrada: ${precio_entrada:.2f}\n"
+            f"📍 Actual:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔍 <b>Patrón(es) detectado(s):</b>\n"
+            + "\n".join(f"  • {m}" for m in motivos) + "\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚡ <b>Acción sugerida:</b> considera cerrar en breakeven\n"
+            f"   o ajustar SL a ${precio_actual:.2f} para limitar riesgo\n"
+            f"🛑 SL actual: ${sl:.2f}  |  TP1: ${tp1:.2f}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔖 <code>#{senal_id}</code>"
+        )
+        enviar_notificacion_telegram(msg, simbolo)
+        trampa_avisada.add(senal_id)
+        logger.info(
+            f"  ⚠️ [{simbolo}] TRAMPA detectada señal #{senal_id} ({direccion}): "
+            + " | ".join(motivos)
+        )
+
+    except Exception as e:
+        logger.debug(f"  [trampa] Error analizando {simbolo}: {e}")
+
+
+
+
+
 def _confirmar_con_velas_1m(ticker: str, direccion: str, precio_entrada: float) -> tuple:
     """
     Analiza las últimas velas de 1M para verificar que el momentum actual
@@ -722,6 +846,10 @@ def monitor_senales():
     ultimo_check: dict = {}
     # Set de IDs de señales para las que ya se envió el aviso del 50% recorrido
     _progreso_50_enviado: set = set()
+    # Set de IDs de señales para las que ya se envió la alerta de trampa de patrón
+    _trampa_avisada: set = set()
+    # Último tick en que se verificó la trampa por señal (evita llamadas API excesivas)
+    _ultimo_check_trampa: dict = {}
     ciclo = 0
     # ISO week numbers de la última apertura/cierre notificados (evita mensajes duplicados)
     _semana_apertura_enviada: int = -1
@@ -883,12 +1011,24 @@ def monitor_senales():
                     else:
                         verificar_niveles_venta(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
 
+                    # ── Verificar trampa de patrón (cada 10 ticks ≈ 5 min, sin TP1) ──
+                    _ultimo_trampa = _ultimo_check_trampa.get(senal_id)
+                    _intervalo_trampa = 10  # ticks (~5 min)
+                    if (_ultimo_trampa is None or
+                            ciclo - _ultimo_trampa >= _intervalo_trampa):
+                        _verificar_trampa_patron(senal, db, _trampa_avisada)
+                        _ultimo_check_trampa[senal_id] = ciclo
+
             # Limpiar del diccionario señales que ya no están activas
             ids_activos = {s['id'] for s in senales_activas} if senales_activas else set()
             for sid in list(ultimo_check):
                 if sid not in ids_activos:
                     del ultimo_check[sid]
             _progreso_50_enviado.intersection_update(ids_activos)
+            _trampa_avisada.intersection_update(ids_activos)
+            for sid in list(_ultimo_check_trampa):
+                if sid not in ids_activos:
+                    del _ultimo_check_trampa[sid]
 
             # Cada 2 ticks (60s) verificar confirmaciones pendientes de señales 1H
             if ciclo % 2 == 0:
