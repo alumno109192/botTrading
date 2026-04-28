@@ -22,6 +22,7 @@ Uso:
 
 import threading
 import logging
+import concurrent.futures
 from datetime import datetime, timezone, timedelta
 
 import yfinance as yf
@@ -47,8 +48,20 @@ def _calcular_oi_bias() -> tuple:
         (bias: str, detalle: dict)
     """
     try:
-        with _yf_lock:
-            df = yf.download("GC=F", period="10d", interval="1d", progress=False)
+        acquired = _yf_lock.acquire(timeout=10)
+        if not acquired:
+            return None, None
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    yf.download, "GC=F", period="10d", interval="1d", progress=False
+                )
+                try:
+                    df = future.result(timeout=15)
+                except concurrent.futures.TimeoutError:
+                    return None, None
+        finally:
+            _yf_lock.release()
 
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)

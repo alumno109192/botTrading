@@ -16,6 +16,7 @@ Uso:
 import yfinance as yf
 import pandas as pd
 import threading
+import concurrent.futures
 from datetime import datetime, timezone, timedelta
 from adapters.yf_lock import _yf_lock
 
@@ -47,14 +48,31 @@ def get_dxy_bias() -> str | None:
             return _cache['bias']
 
     try:
-        with _yf_lock:
-            # Double-check cache después de adquirir lock (otros threads pueden haber actualizado)
+        # Adquirir lock con timeout para no bloquear indefinidamente
+        acquired = _yf_lock.acquire(timeout=10)
+        if not acquired:
+            print("  ⚠️ [DXY] yf_lock ocupado — sesgo no calculado")
+            return None
+        try:
+            # Double-check cache después de adquirir lock
             with _cache_lock:
                 if (_cache['bias'] is not None
                         and _cache['timestamp'] is not None
                         and (datetime.now(timezone.utc) - _cache['timestamp']) < timedelta(minutes=_CACHE_TTL_MINUTES)):
                     return _cache['bias']
-            dxy = yf.download("DX-Y.NYB", period="10d", interval="1h", progress=False)
+            # Download con timeout explícito para evitar colgarse
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    yf.download, "DX-Y.NYB",
+                    period="10d", interval="1h", progress=False
+                )
+                try:
+                    dxy = future.result(timeout=15)
+                except concurrent.futures.TimeoutError:
+                    print("  ⚠️ [DXY] Timeout descargando DX-Y.NYB — sesgo no calculado")
+                    return None
+        finally:
+            _yf_lock.release()
 
         if isinstance(dxy.columns, pd.MultiIndex):
             dxy.columns = dxy.columns.get_level_values(0)
