@@ -78,6 +78,7 @@ from core.indicators import (
     detectar_cuña_descendente, detectar_cuña_ascendente,
     detectar_precio_en_fibonacci, detectar_rebote_alcista, detectar_rebote_bajista,
     calcular_fibonacci,
+    detectar_doble_techo, detectar_doble_suelo,
 )
 
 
@@ -476,6 +477,19 @@ class GoldDetector1H(BaseDetector):
         elif _cuña_asc_1h == 'compresion':
             score_sell += 2
             logger.info(f"  📐 [1H] CUÑA ASC en compresión ${_s_asc_1h:.2f}-${_t_asc_1h:.2f} — +2 pts SELL")
+
+        # ── Doble Techo / Doble Suelo (1H) ──────────────────────────────────────
+        _dt_1h, _dt_nivel_1h, _dt_neck_1h = detectar_doble_techo(
+            df, atr, lookback=_lkb_1h, tol_mult=0.6)
+        _ds_1h, _ds_nivel_1h, _ds_neck_1h = detectar_doble_suelo(
+            df, atr, lookback=_lkb_1h, tol_mult=0.6)
+        if _dt_1h:
+            score_sell += 4
+            logger.info(f"  🔻 [1H] DOBLE TECHO (M) detectado — techo=${_dt_nivel_1h:.1f} cuello=${_dt_neck_1h:.1f} — +4 pts SELL")
+        if _ds_1h:
+            score_buy += 4
+            logger.info(f"  🔺 [1H] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_1h:.1f} cuello=${_ds_neck_1h:.1f} — +4 pts BUY")
+
         if adx_lateral and not en_zona_resist_any: score_sell = max(0, score_sell - 3)
 
         # ── SCORING COMPRA ─────────────────────────────────────────

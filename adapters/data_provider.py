@@ -27,11 +27,21 @@ import requests
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
-TWELVE_DATA_API_KEY   = os.environ.get('TWELVE_DATA_API_KEY')
-TWELVE_DATA_API_KEY_2 = os.environ.get('TWELVE_DATA_API_KEY_2')
-TWELVE_DATA_API_KEY_3 = os.environ.get('TWELVE_DATA_API_KEY_3')
+def _build_key_list():
+    """Construye lista de (alias, key) con las keys configuradas."""
+    keys = []
+    for alias, key in [
+        ('key1', os.environ.get('TWELVE_DATA_API_KEY')),
+        ('key2', os.environ.get('TWELVE_DATA_API_KEY_2')),
+        ('key3', os.environ.get('TWELVE_DATA_API_KEY_3')),
+        ('key4', os.environ.get('TWELVE_DATA_API_KEY_4')),
+        ('key5', os.environ.get('TWELVE_DATA_API_KEY_5')),
+    ]:
+        if key:
+            keys.append((alias, key))
+    return keys
 POLYGON_API_KEY       = os.environ.get('POLYGON_API_KEY')
 
 # Mapa de tickers yfinance → símbolo Twelve Data
@@ -67,18 +77,6 @@ _DB_STALE = {
 # ── Round-Robin de API Keys ──────────────────────────────────────────────────
 # Se construye la lista al arranque con las keys disponibles.
 # El ciclo se comparte entre todos los threads (protegido con lock).
-
-def _build_key_list():
-    """Construye lista de (alias, key) con las keys configuradas."""
-    keys = []
-    for alias, key in [
-        ('key1', TWELVE_DATA_API_KEY),
-        ('key2', TWELVE_DATA_API_KEY_2),
-        ('key3', TWELVE_DATA_API_KEY_3),
-    ]:
-        if key:
-            keys.append((alias, key))
-    return keys
 
 _td_keys = _build_key_list()
 _td_cycle = itertools.cycle(_td_keys) if _td_keys else iter([])

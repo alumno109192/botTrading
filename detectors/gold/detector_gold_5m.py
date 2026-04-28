@@ -95,6 +95,7 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_retest_resistencia, detectar_retest_soporte,
     detectar_rechazo_en_directriz,
     detectar_cuña_descendente, detectar_cuña_ascendente,
+    detectar_doble_techo, detectar_doble_suelo,
 )
 
 
@@ -323,6 +324,19 @@ class GoldDetector5M(BaseDetector):
             elif _cuña_asc_5m == 'compresion':
                 score_sell += 2
                 logger.info(f"  📐 [5M] CUÑA ASC en compresión ${_s_asc_5m:.2f}-${_t_asc_5m:.2f} — +2 pts SELL")
+
+            # ── Doble Techo / Doble Suelo (5M) ──────────────────────────────────
+            # lookback=60 ≈ 5h de historia en 5M (suficiente para un W/M en intraday)
+            _dt_5m, _dt_nivel_5m, _dt_neck_5m = detectar_doble_techo(
+                df, atr, lookback=60, tol_mult=0.6)
+            _ds_5m, _ds_nivel_5m, _ds_neck_5m = detectar_doble_suelo(
+                df, atr, lookback=60, tol_mult=0.6)
+            if _dt_5m:
+                score_sell += 4
+                logger.info(f"  🔻 [5M] DOBLE TECHO (M) detectado — techo=${_dt_nivel_5m:.1f} cuello=${_dt_neck_5m:.1f} — +4 pts SELL")
+            if _ds_5m:
+                score_buy += 4
+                logger.info(f"  🔺 [5M] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_5m:.1f} cuello=${_ds_neck_5m:.1f} — +4 pts BUY")
 
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo se consulta si estamos en zona de desempate (score cerca del umbral)
@@ -678,7 +692,7 @@ class GoldDetector5M(BaseDetector):
                                 'score': score_buy,
                                 'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
                                                            'atr': round(atr, 2)}),
-                                'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}",
+                                'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}, DobleSuelo:{_ds_5m}",
                                 'version_detector': '5M-MICRO-v2.0'
                             })
                         except Exception as e:

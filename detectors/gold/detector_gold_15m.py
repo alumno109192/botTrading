@@ -98,6 +98,7 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_retest_resistencia, detectar_retest_soporte,
     detectar_rechazo_en_directriz,
     detectar_cuña_descendente, detectar_cuña_ascendente,
+    detectar_doble_techo, detectar_doble_suelo,
 )
 
 # ══════════════════════════════════════
@@ -368,6 +369,18 @@ class GoldDetector15M(BaseDetector):
             elif _cuña_asc_15m == 'compresion':
                 score_sell += 2
                 logger.info(f"  📐 [15M] CUÑA ASC en compresión ${_s_asc_15m:.2f}-${_t_asc_15m:.2f} — +2 pts SELL")
+
+            # ── Doble Techo / Doble Suelo (15M) ─────────────────────────────────
+            _dt_15m, _dt_nivel_15m, _dt_neck_15m = detectar_doble_techo(
+                df, atr, lookback=_lkb15_h, tol_mult=0.6)
+            _ds_15m, _ds_nivel_15m, _ds_neck_15m = detectar_doble_suelo(
+                df, atr, lookback=_lkb15_h, tol_mult=0.6)
+            if _dt_15m:
+                score_sell += 4
+                logger.info(f"  🔻 [15M] DOBLE TECHO (M) detectado — techo=${_dt_nivel_15m:.1f} cuello=${_dt_neck_15m:.1f} — +4 pts SELL")
+            if _ds_15m:
+                score_buy += 4
+                logger.info(f"  🔺 [15M] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_15m:.1f} cuello=${_ds_neck_15m:.1f} — +4 pts BUY")
 
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo si score está en zona de desempate (4–7), evita llamadas innecesarias
