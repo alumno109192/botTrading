@@ -88,6 +88,8 @@ from core.indicators import (
     detectar_precio_en_canal,
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
     detectar_cuña_descendente, detectar_cuña_ascendente,
+    detectar_precio_en_fibonacci, detectar_rebote_alcista, detectar_rebote_bajista,
+    calcular_fibonacci,
 )
 
 # ══════════════════════════════════════
@@ -494,6 +496,49 @@ class GoldDetector4H(BaseDetector):
         # ADX lateral en zona soporte: no penalizar (consolidación = agotamiento bajista)
         if adx_lateral and not (_en_sop_sr_mult or en_zona_soporte):
             score_buy = max(0, score_buy - 3)
+
+        # ── FIBONACCI RETRACEMENT DINÁMICO (4H) ─────────────────────────────────
+        _fib_nivel, _fib_precio, _fib_tendencia = detectar_precio_en_fibonacci(
+            df, atr, lookback=params.get('sr_lookback', 80), tol_mult=0.5)
+        if _fib_nivel is not None:
+            # En tendencia bajista: niveles 0.382/0.5 son resistencia → +SELL
+            # En tendencia alcista: niveles 0.5/0.618/0.786 son soporte → +BUY
+            if _fib_tendencia == 'bajista':
+                _pts_fib = 5 if _fib_nivel in (0.382, 0.5) else 3
+                score_sell += _pts_fib
+                logger.info(f"  🔢 [4H] Fib {_fib_nivel} BAJISTA en ${_fib_precio:.2f} — +{_pts_fib} pts SELL")
+            else:
+                _pts_fib = 5 if _fib_nivel in (0.5, 0.618) else 3
+                score_buy += _pts_fib
+                logger.info(f"  🔢 [4H] Fib {_fib_nivel} ALCISTA en ${_fib_precio:.2f} — +{_pts_fib} pts BUY")
+
+        # Mostrar todos los niveles Fib para contexto en logs
+        _fib_data = calcular_fibonacci(df, lookback=params.get('sr_lookback', 80))
+        if _fib_data:
+            _n = _fib_data['niveles']
+            logger.info(
+                f"  📐 [4H] Fib ({_fib_data['tendencia']}) "
+                f"0.236=${_n[0.236]:.0f} 0.382=${_n[0.382]:.0f} "
+                f"0.5=${_n[0.5]:.0f} 0.618=${_n[0.618]:.0f} 0.786=${_n[0.786]:.0f}"
+            )
+
+        # ── REBOTE EN S/R O FIBONACCI (4H) ──────────────────────────────────────
+        # Combina todos los niveles relevantes (S/R intermedios + Fib) para detectar rebotes
+        _todos_soportes   = list(_sop_interm_4h) + ([_fib_precio] if _fib_tendencia == 'alcista' and _fib_nivel else [])
+        _todas_resist     = list(_res_interm_4h) + ([_fib_precio] if _fib_tendencia == 'bajista' and _fib_nivel else [])
+        _rsi_serie_4h     = df['rsi']
+
+        _rebote_baj, _desc_rebote_baj = detectar_rebote_bajista(
+            df, atr, _rsi_serie_4h, _todas_resist, tol_mult=0.6)
+        _rebote_alc, _desc_rebote_alc = detectar_rebote_alcista(
+            df, atr, _rsi_serie_4h, _todos_soportes, tol_mult=0.6)
+
+        if _rebote_baj:
+            score_sell += 4
+            logger.info(f"  🔄 [4H] REBOTE BAJISTA detectado ({_desc_rebote_baj}) — +4 pts SELL")
+        if _rebote_alc:
+            score_buy += 4
+            logger.info(f"  🔄 [4H] REBOTE ALCISTA detectado ({_desc_rebote_alc}) — +4 pts BUY")
 
         # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
         dxy_bias = get_dxy_bias()

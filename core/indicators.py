@@ -1184,3 +1184,199 @@ def detectar_cuña_ascendente(
         return 'ruptura_bajista', round(precio_techo_act, 2), round(precio_suelo_act, 2)
 
     return 'compresion', round(precio_techo_act, 2), round(precio_suelo_act, 2)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIBONACCI RETRACEMENT DINÁMICO
+# ══════════════════════════════════════════════════════════════════════════════
+
+_FIB_NIVELES = [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0]
+
+def calcular_fibonacci(df: pd.DataFrame, lookback: int = 100) -> dict:
+    """
+    Calcula niveles de Fibonacci Retracement dinámicos a partir del swing
+    alto y bajo de las últimas `lookback` velas.
+
+    Retorna dict con:
+        'swing_high': precio del máximo
+        'swing_low':  precio del mínimo
+        'tendencia':  'bajista' | 'alcista'  (según cuál fue más reciente)
+        'niveles':    dict {0.236: precio, 0.382: precio, ...}
+    """
+    ventana = df.iloc[-lookback:]
+    idx_high = ventana['High'].idxmax()
+    idx_low  = ventana['Low'].idxmin()
+    swing_high = float(ventana['High'].max())
+    swing_low  = float(ventana['Low'].min())
+    rango = swing_high - swing_low
+    if rango < 1e-6:
+        return {}
+
+    pos_high = ventana.index.get_loc(idx_high)
+    pos_low  = ventana.index.get_loc(idx_low)
+    tendencia = 'bajista' if pos_high > pos_low else 'alcista'
+
+    niveles = {}
+    for fib in _FIB_NIVELES:
+        if tendencia == 'bajista':
+            # En bajista: 0.0 = swing_low, 1.0 = swing_high (retracement hacia arriba)
+            niveles[fib] = round(swing_low + rango * fib, 2)
+        else:
+            # En alcista: 0.0 = swing_high, 1.0 = swing_low (retracement hacia abajo)
+            niveles[fib] = round(swing_high - rango * fib, 2)
+
+    return {
+        'swing_high': round(swing_high, 2),
+        'swing_low':  round(swing_low, 2),
+        'tendencia':  tendencia,
+        'niveles':    niveles,
+    }
+
+
+def detectar_precio_en_fibonacci(
+    df: pd.DataFrame,
+    atr: float,
+    lookback: int = 100,
+    tol_mult: float = 0.4,
+) -> tuple:
+    """
+    Detecta si el precio actual está en un nivel Fibonacci clave.
+
+    Retorna:
+        (nivel_fib: float | None, precio_nivel: float, tendencia: str)
+        nivel_fib = 0.236 / 0.382 / 0.5 / 0.618 / 0.786  o None si no toca ninguno
+        precio_nivel = precio exacto del nivel Fib
+        tendencia = 'bajista' | 'alcista' | ''
+
+    Niveles monitorizados:
+        - Tendencia bajista: 0.236, 0.382, 0.5, 0.618 (rebotes dentro de caída)
+        - Tendencia alcista: 0.382, 0.5, 0.618, 0.786 (pullbacks en subida)
+    """
+    fib = calcular_fibonacci(df, lookback)
+    if not fib:
+        return None, 0.0, ''
+
+    close  = float(df['Close'].iloc[-2])
+    high   = float(df['High'].iloc[-2])
+    low    = float(df['Low'].iloc[-2])
+    tol    = atr * tol_mult
+    tendencia = fib['tendencia']
+
+    niveles_clave = (
+        [0.236, 0.382, 0.5, 0.618] if tendencia == 'bajista'
+        else [0.382, 0.5, 0.618, 0.786]
+    )
+
+    mejor_nivel = None
+    mejor_precio = 0.0
+    mejor_dist = float('inf')
+
+    for nfib in niveles_clave:
+        precio_fib = fib['niveles'][nfib]
+        dist = min(abs(high - precio_fib), abs(low - precio_fib), abs(close - precio_fib))
+        if dist <= tol and dist < mejor_dist:
+            mejor_dist = dist
+            mejor_nivel = nfib
+            mejor_precio = precio_fib
+
+    return mejor_nivel, mejor_precio, tendencia
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DETECCIÓN DE REBOTE (RSI + VELA + ZONA)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def detectar_rebote_alcista(df: pd.DataFrame, atr: float,
+                             rsi_series: pd.Series,
+                             niveles_soporte: list,
+                             tol_mult: float = 0.5) -> tuple:
+    """
+    Detecta rebote alcista en soporte (S/R o Fibonacci):
+      - Vela de reversión (hammer, envolvente alcista o mecha inferior larga)
+      - RSI saliendo de sobreventa (<40 y girando al alza)
+      - Precio en zona de soporte
+
+    Retorna (detectado: bool, descripcion: str)
+    """
+    if len(df) < 4 or not niveles_soporte:
+        return False, ''
+
+    row  = df.iloc[-2]
+    prev = df.iloc[-3]
+    close = float(row['Close'])
+    open_ = float(row['Open'])
+    high  = float(row['High'])
+    low   = float(row['Low'])
+    body  = abs(close - open_)
+    total = high - low
+    if total < 1e-6:
+        return False, ''
+    lower_wick = min(close, open_) - low
+    tol = atr * tol_mult
+
+    rsi_act  = float(rsi_series.iloc[-2])
+    rsi_prev = float(rsi_series.iloc[-3])
+    rsi_ok   = rsi_act < 40 and rsi_act > rsi_prev
+
+    hammer         = (close > open_) and lower_wick > body * 1.5 and total > atr * 0.3
+    engulf_alcista = (close > open_) and close > float(prev['Close']) and open_ < float(prev['Open'])
+    mecha_larga    = lower_wick > total * 0.5 and total > atr * 0.3
+    vela_ok = hammer or engulf_alcista or mecha_larga
+
+    en_soporte = any(abs(low - s) <= tol or abs(close - s) <= tol for s in niveles_soporte)
+
+    detectado = rsi_ok and vela_ok and en_soporte
+    if detectado:
+        nivel_cercano = min(niveles_soporte, key=lambda s: abs(close - s))
+        tipo = 'hammer' if hammer else 'engulf' if engulf_alcista else 'mecha_inf'
+        desc = f"RSI={rsi_act:.1f}↑ | {tipo} | soporte ${nivel_cercano:.2f}"
+        return True, desc
+    return False, ''
+
+
+def detectar_rebote_bajista(df: pd.DataFrame, atr: float,
+                             rsi_series: pd.Series,
+                             niveles_resistencia: list,
+                             tol_mult: float = 0.5) -> tuple:
+    """
+    Detecta rebote bajista en resistencia (S/R o Fibonacci):
+      - Vela de reversión (shooting star, envolvente bajista o mecha superior larga)
+      - RSI saliendo de sobrecompra (>55 y girando a la baja)
+      - Precio en zona de resistencia
+
+    Retorna (detectado: bool, descripcion: str)
+    """
+    if len(df) < 4 or not niveles_resistencia:
+        return False, ''
+
+    row  = df.iloc[-2]
+    prev = df.iloc[-3]
+    close = float(row['Close'])
+    open_ = float(row['Open'])
+    high  = float(row['High'])
+    low   = float(row['Low'])
+    body  = abs(close - open_)
+    total = high - low
+    if total < 1e-6:
+        return False, ''
+    upper_wick = high - max(close, open_)
+    tol = atr * tol_mult
+
+    rsi_act  = float(rsi_series.iloc[-2])
+    rsi_prev = float(rsi_series.iloc[-3])
+    rsi_ok   = rsi_act > 55 and rsi_act < rsi_prev
+
+    shooting_star  = (close < open_) and upper_wick > body * 1.5 and total > atr * 0.3
+    engulf_bajista = (close < open_) and close < float(prev['Close']) and open_ > float(prev['Open'])
+    mecha_larga    = upper_wick > total * 0.5 and total > atr * 0.3
+    vela_ok = shooting_star or engulf_bajista or mecha_larga
+
+    en_resist = any(abs(high - r) <= tol or abs(close - r) <= tol for r in niveles_resistencia)
+
+    detectado = rsi_ok and vela_ok and en_resist
+    if detectado:
+        nivel_cercano = min(niveles_resistencia, key=lambda r: abs(close - r))
+        tipo = 'shooting' if shooting_star else 'engulf' if engulf_bajista else 'mecha_sup'
+        desc = f"RSI={rsi_act:.1f}↓ | {tipo} | resist ${nivel_cercano:.2f}"
+        return True, desc
+    return False, ''

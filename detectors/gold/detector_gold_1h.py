@@ -77,6 +77,8 @@ from core.indicators import (
     detectar_canal_roto, calcular_sr_multiples,
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
     detectar_cuña_descendente, detectar_cuña_ascendente,
+    detectar_precio_en_fibonacci, detectar_rebote_alcista, detectar_rebote_bajista,
+    calcular_fibonacci,
 )
 
 
@@ -530,6 +532,45 @@ class GoldDetector1H(BaseDetector):
         )
         # ADX lateral en zona soporte: no penalizar (consolidación = agotamiento bajista)
         if adx_lateral and not en_zona_soporte_any: score_buy = max(0, score_buy - 3)
+
+        # ── FIBONACCI RETRACEMENT DINÁMICO (1H) ─────────────────────────────────
+        _fib_nivel_1h, _fib_precio_1h, _fib_tend_1h = detectar_precio_en_fibonacci(
+            df, atr, lookback=params.get('sr_lookback', 80), tol_mult=0.5)
+        if _fib_nivel_1h is not None:
+            if _fib_tend_1h == 'bajista':
+                _pts_fib_1h = 5 if _fib_nivel_1h in (0.382, 0.5) else 3
+                score_sell += _pts_fib_1h
+                logger.info(f"  🔢 [1H] Fib {_fib_nivel_1h} BAJISTA en ${_fib_precio_1h:.2f} — +{_pts_fib_1h} pts SELL")
+            else:
+                _pts_fib_1h = 5 if _fib_nivel_1h in (0.5, 0.618) else 3
+                score_buy += _pts_fib_1h
+                logger.info(f"  🔢 [1H] Fib {_fib_nivel_1h} ALCISTA en ${_fib_precio_1h:.2f} — +{_pts_fib_1h} pts BUY")
+
+        _fib_data_1h = calcular_fibonacci(df, lookback=params.get('sr_lookback', 80))
+        if _fib_data_1h:
+            _n1 = _fib_data_1h['niveles']
+            logger.info(
+                f"  📐 [1H] Fib ({_fib_data_1h['tendencia']}) "
+                f"0.382=${_n1[0.382]:.0f} 0.5=${_n1[0.5]:.0f} "
+                f"0.618=${_n1[0.618]:.0f} 0.786=${_n1[0.786]:.0f}"
+            )
+
+        # ── REBOTE EN S/R O FIBONACCI (1H) ──────────────────────────────────────
+        _todos_sop_1h  = list(_sop_interm_1h) + ([_fib_precio_1h] if _fib_tend_1h == 'alcista' and _fib_nivel_1h else [])
+        _todas_res_1h  = list(_res_interm_1h) + ([_fib_precio_1h] if _fib_tend_1h == 'bajista' and _fib_nivel_1h else [])
+        _rsi_serie_1h  = df['rsi']
+
+        _rebote_baj_1h, _desc_baj_1h = detectar_rebote_bajista(
+            df, atr, _rsi_serie_1h, _todas_res_1h, tol_mult=0.6)
+        _rebote_alc_1h, _desc_alc_1h = detectar_rebote_alcista(
+            df, atr, _rsi_serie_1h, _todos_sop_1h, tol_mult=0.6)
+
+        if _rebote_baj_1h:
+            score_sell += 4
+            logger.info(f"  🔄 [1H] REBOTE BAJISTA detectado ({_desc_baj_1h}) — +4 pts SELL")
+        if _rebote_alc_1h:
+            score_buy += 4
+            logger.info(f"  🔄 [1H] REBOTE ALCISTA detectado ({_desc_alc_1h}) — +4 pts BUY")
 
         # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
         dxy_bias = get_dxy_bias()
