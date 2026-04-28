@@ -1,7 +1,6 @@
 ﻿import os
 from adapters.data_provider import get_ohlcv
 
-import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests

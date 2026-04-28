@@ -10,7 +10,6 @@ from services.cot_bias import get_cot_bias, ajustar_score_por_cot
 from services.open_interest import get_oi_bias, ajustar_score_por_oi
 from services.economic_calendar import obtener_aviso_macro
 from adapters.data_provider import get_ohlcv
-import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests

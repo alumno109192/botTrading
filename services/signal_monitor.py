@@ -5,17 +5,12 @@ Revisa cada 5 minutos todas las señales activas y verifica si alcanzaron TP o S
 
 import time
 import threading
-import yfinance as yf
 import requests
 import os
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from adapters.database import DatabaseManager
 from adapters.data_provider import get_ohlcv as _get_ohlcv
-
-# Lock compartido con app.py para serializar TODAS las llamadas a yfinance
-# (tanto yf.download() como yf.Ticker().history())
-from adapters.yf_lock import _yf_lock
 
 import logging
 logger = logging.getLogger('bottrading')
@@ -65,7 +60,7 @@ def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
     Estrategia sin contención de lock:
       1. Lee de la tabla ohlcv de BD (datos frescos del ohlcv_poller, sin lock).
          Si la vela más reciente tiene <= 10 min → devuelve directamente.
-      2. Fallback a yfinance (con _yf_lock) solo si la BD no tiene datos recientes.
+      2. Fallback a Twelve Data (get_ohlcv) si la BD no tiene datos recientes.
     """
     # ── Paso 1: BD (rápido, sin lock) ────────────────────────────────────────
     if db is not None:

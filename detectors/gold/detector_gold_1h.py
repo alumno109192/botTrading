@@ -7,7 +7,6 @@ from services.economic_calendar import obtener_aviso_macro
 from services.news_monitor import obtener_sesgo_actual
 from adapters.data_provider import get_ohlcv
 
-import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests

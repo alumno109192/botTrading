@@ -22,7 +22,6 @@ Obtener claves Twelve Data gratuitas (3 cuentas = 2400 req/día):
 import os
 import itertools
 import threading
-import yfinance as yf
 import pandas as pd
 import requests
 from datetime import datetime, timezone, timedelta
@@ -47,16 +46,10 @@ _TICKER_MAP_POLYGON = {
     'SI=F':  'C:XAGUSD',   # Silver Spot
 }
 
-# Intervalos soportados por fuentes externas (incluye 4h para Twelve Data)
-_INTRADAY_INTERVALS = {'1m', '5m', '15m', '30m', '1h', '4h'}
+# Intervalos soportados por fuentes externas (incluye 4h y 1d para Twelve Data)
+_INTRADAY_INTERVALS = {'1m', '5m', '15m', '30m', '1h', '4h', '1d'}
 
-# ── Cache para datos diarios (1d) — evita re-descargar 730 filas cada 10 min ──
-_daily_cache: dict = {}   # key = (ticker, period) → {'df': DataFrame, 'ts': datetime}
-_daily_cache_lock = threading.Lock()
-_DAILY_TTL = timedelta(hours=4)  # Re-descargar cada 4h (suficiente para velas diarias)
-
-# ── Cache intraday (TTL 65s) — comparte datos entre detectores del mismo activo ──
-# Los detectores 5M, 15M y 1H usan el mismo (ticker, period, interval) → una sola llamada a la API
+# ── Cache intraday y diario (TTL 65s intraday / 4h para 1d) ──
 _intraday_cache: dict = {}
 _intraday_cache_lock = threading.Lock()
 _INTRADAY_TTL = timedelta(seconds=65)
@@ -266,7 +259,7 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
                 }
         return df_db, delayed_db
 
-    # 3️⃣ Twelve Data (tiempo real)
+    # 3️⃣ Twelve Data (tiempo real) — soporta intraday y 1d
     if interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
         for _ in range(len(_td_keys)):
             alias, key = _next_td_key()
@@ -291,39 +284,11 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             with _intraday_cache_lock:
                 _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
             return df, False
-        print(f"  ⚠️ [data_provider] Polygon.io falló — usando yfinance (delay 15m)")
+        print(f"  ⚠️ [data_provider] Polygon.io falló — intentando Twelve Data")
 
-    # 5️⃣ Fallback: yfinance
-    if interval == '1d':
-        cache_key = (ticker_yf, period)
-        with _daily_cache_lock:
-            cached = _daily_cache.get(cache_key)
-            if cached and (datetime.now(timezone.utc) - cached['ts']) < _DAILY_TTL:
-                print(f"  💾 [data_provider] Cache 1d hit — {ticker_yf} ({len(cached['df'])} velas)")
-                return cached['df'].copy(), True
-
-    df = yf.download(ticker_yf, period=period, interval=interval, progress=False)
-
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    if not df.empty:
-        expected = {'Open', 'High', 'Low', 'Close', 'Volume'}
-        if not expected.issubset(set(df.columns)):
-            if len(df.columns) == 5:
-                df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-            elif len(df.columns) == 6:
-                df.columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-
-        _guardar_en_db(ticker_yf, interval, df)
-        if interval == '1d':
-            with _daily_cache_lock:
-                _daily_cache[(ticker_yf, period)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc)}
-        elif interval in _INTRADAY_INTERVALS:
-            with _intraday_cache_lock:
-                _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': True}
-
-    return df, True
+    # 5️⃣ Sin más fuentes disponibles — devolver DataFrame vacío
+    print(f"  ❌ [data_provider] No hay fuente disponible para {ticker_yf} {interval} {period}")
+    return pd.DataFrame(), True
 
 
 def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str) -> tuple:
@@ -339,15 +304,16 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str) -
         # Twelve Data usa outputsize (número de velas), no period
         dias_map     = {'1d': 1, '2d': 2, '5d': 5, '7d': 7, '1mo': 30, '60d': 60, '3mo': 90}
         velas_por_dia = {
-            '1m': 960, '5m': 192, '15m': 64, '30m': 32, '1h': 16, '4h': 6,
+            '1m': 960, '5m': 192, '15m': 64, '30m': 32, '1h': 16, '4h': 6, '1d': 1,
         }
         dias      = dias_map.get(period, 5)
         por_dia   = velas_por_dia.get(interval, 64)
         outputsize = min(dias * por_dia, 5000)
 
-        # Twelve Data usa "1min", "5min", "15min", "1h", "4h"
+        # Twelve Data intervalos: 1min, 5min, 15min, 1h, 4h, 1day
         interval_td_map = {
-            '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '1h', '4h': '4h',
+            '1m': '1min', '5m': '5min', '15m': '15min', '30m': '30min',
+            '1h': '1h', '4h': '4h', '1d': '1day',
         }
         interval_td = interval_td_map.get(interval, '15min')
 

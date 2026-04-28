@@ -1,16 +1,14 @@
 """
-open_interest.py — Open Interest de futuros Gold (GC=F) via yfinance
+open_interest.py — Sesgo de Volumen/OI de Gold via Twelve Data
 
-El Open Interest (OI) mide el número total de contratos abiertos en el mercado.
-Junto con el precio, permite identificar la fuerza real de una tendencia.
+Usa precio y volumen de GC=F (XAU/USD) en 1d para inferir la fuerza de la tendencia.
+Ya no depende de yfinance.
 
 Interpretación clásica:
-    Precio ↑ + OI ↑  → tendencia ALCISTA FUERTE (dinero entrando en largos)
-    Precio ↑ + OI ↓  → subida DÉBIL (short covering, no convicción)
-    Precio ↓ + OI ↑  → tendencia BAJISTA FUERTE (dinero entrando en cortos)
-    Precio ↓ + OI ↓  → caída DÉBIL (liquidación de largos, posible suelo)
-
-El sesgo resultante refuerza o debilita señales según la confluencia con el precio.
+    Precio ↑ + Vol ↑  → tendencia ALCISTA FUERTE
+    Precio ↑ + Vol ↓  → subida DÉBIL (short covering, no convicción)
+    Precio ↓ + Vol ↑  → tendencia BAJISTA FUERTE
+    Precio ↓ + Vol ↓  → caída DÉBIL (liquidación, posible suelo)
 
 Cache: 30 minutos.
 
@@ -22,12 +20,9 @@ Uso:
 
 import threading
 import logging
-import concurrent.futures
 from datetime import datetime, timezone, timedelta
 
-import yfinance as yf
-import pandas as pd
-from adapters.yf_lock import _yf_lock
+from adapters.data_provider import get_ohlcv
 
 logger = logging.getLogger(__name__)
 
@@ -35,51 +30,20 @@ _CACHE_TTL_MINUTES = 30
 _cache: dict = {'bias': None, 'detalle': None, 'timestamp': None}
 _cache_lock = threading.Lock()
 
-# Umbrales para considerar variación significativa de OI
-_OI_CAMBIO_MIN_PCT = 0.5   # cambio mínimo del 0.5% para ser relevante
+_OI_CAMBIO_MIN_PCT = 0.5
 
 
 def _calcular_oi_bias() -> tuple:
     """
-    Descarga datos diarios de GC=F y analiza la tendencia del Open Interest
-    en las últimas 5 velas.
-
-    Returns:
-        (bias: str, detalle: dict)
+    Descarga datos diarios de GC=F via Twelve Data y analiza precio/volumen.
+    Returns: (bias: str, detalle: dict)
     """
     try:
-        acquired = _yf_lock.acquire(timeout=10)
-        if not acquired:
-            return None, None
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    yf.download, "GC=F", period="10d", interval="1d", progress=False
-                )
-                try:
-                    df = future.result(timeout=15)
-                except concurrent.futures.TimeoutError:
-                    return None, None
-        finally:
-            _yf_lock.release()
+        df, _ = get_ohlcv('GC=F', period='10d', interval='1d')
 
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        if df.empty or len(df) < 3:
+        if df is None or df.empty or len(df) < 3:
             return None, None
 
-        # yfinance devuelve Open Interest en la columna 'Volume' para futuros
-        # El OI real requiere acceso a datos premium; usamos el proxy de volumen
-        # acumulado como aproximación (disponible de forma gratuita)
-        # Para OI real, intentamos con el ticker de opciones o campo específico
-        ticker = yf.Ticker("GC=F")
-        info = ticker.info
-
-        # Intentar obtener OI del campo info (no siempre disponible en yf gratuito)
-        oi_actual = info.get('openInterest', None)
-
-        # Calcular cambio de precio en las últimas 2 velas cerradas
         close_actual = float(df['Close'].iloc[-2])
         close_prev   = float(df['Close'].iloc[-3])
         vol_actual   = float(df['Volume'].iloc[-2])
@@ -90,43 +54,35 @@ def _calcular_oi_bias() -> tuple:
         vol_sube    = vol_actual > vol_prev * (1 + _OI_CAMBIO_MIN_PCT / 100)
         vol_baja    = vol_actual < vol_prev * (1 - _OI_CAMBIO_MIN_PCT / 100)
 
-        # Tendencia de volumen en 5 días como proxy de OI
-        vols = df['Volume'].iloc[-6:-1].values
-        vol_trend_alcista = vols[-1] > vols[0]  # último > primero
-
-        # Determinar bias según reglas clásicas de OI/Volumen
         if precio_sube and vol_sube:
-            bias = 'BULLISH_FUERTE'   # tendencia alcista confirmada
+            bias = 'BULLISH_FUERTE'
         elif precio_baja and vol_sube:
-            bias = 'BEARISH_FUERTE'   # tendencia bajista confirmada
+            bias = 'BEARISH_FUERTE'
         elif precio_sube and vol_baja:
-            bias = 'BULLISH_DEBIL'    # subida con falta de convicción
+            bias = 'BULLISH_DEBIL'
         elif precio_baja and vol_baja:
-            bias = 'BEARISH_DEBIL'    # caída con falta de convicción (posible suelo)
+            bias = 'BEARISH_DEBIL'
         else:
             bias = 'NEUTRAL'
 
         detalle = {
             'close_actual': round(close_actual, 2),
-            'close_prev': round(close_prev, 2),
-            'vol_actual': int(vol_actual),
-            'vol_prev': int(vol_prev),
-            'oi_disponible': oi_actual,
-            'bias': bias,
+            'close_prev':   round(close_prev, 2),
+            'vol_actual':   int(vol_actual),
+            'vol_prev':     int(vol_prev),
+            'bias':         bias,
         }
 
         cambio_pct = (close_actual - close_prev) / close_prev * 100
         logger.info(
             f"  📊 [OI/Vol] Precio: ${close_actual:.2f} ({cambio_pct:+.2f}%) | "
-            f"Volumen: {int(vol_actual):,} vs {int(vol_prev):,} | Sesgo: {bias}"
+            f"Volumen: {int(vol_actual)} vs {int(vol_prev)} | Sesgo: {bias}"
         )
-        if oi_actual:
-            logger.info(f"  📊 [OI] Open Interest: {oi_actual:,}")
 
         return bias, detalle
 
     except Exception as e:
-        logger.warning(f"  ⚠️ [OI] Error calculando Open Interest: {e}")
+        logger.warning(f"  ⚠️ [OI] Error calculando sesgo volumen: {e}")
         return None, None
 
 

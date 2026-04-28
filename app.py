@@ -15,7 +15,6 @@ import smtplib
 import ssl
 from email.mime.text import MIMEText
 from logging.handlers import RotatingFileHandler
-import yfinance as yf
 
 # Forzar flush inmediato de logs (crítico para Render)
 sys.stdout.reconfigure(line_buffering=True)
@@ -72,17 +71,6 @@ class _TeeStream:
 sys.stdout = _TeeStream(sys.stdout, _LOG_FILE)
 sys.stderr = _TeeStream(sys.stderr, _LOG_FILE)
 # ── fin Tee ───────────────────────────────────────────────────────────────
-
-# ── PARCHE: serializar yf.download para evitar contaminación entre threads ──
-_yf_original_download = yf.download
-from adapters.yf_lock import _yf_lock
-
-def _safe_yf_download(*args, **kwargs):
-    with _yf_lock:
-        return _yf_original_download(*args, **kwargs)
-
-yf.download = _safe_yf_download
-# ── fin parche ──
 
 from api.routes import create_app
 from services.orchestrator import iniciar_detectores

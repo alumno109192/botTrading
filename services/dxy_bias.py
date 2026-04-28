@@ -1,9 +1,9 @@
 """
-dxy_bias.py — Sesgo del USD Index (DX-Y.NYB) para correlación con Gold
+dxy_bias.py — Sesgo del USD Index para correlación con Gold
 
 Gold (XAUUSD) tiene correlación inversa estructural con el dólar americano.
-Este módulo descarga DXY (disponible en yfinance sin delay intraday)
-y calcula el sesgo de tendencia usando EMA9/EMA21 en 1H.
+Este módulo descarga DXY via Twelve Data (sin yfinance) y calcula el sesgo
+de tendencia usando EMA9/EMA21 en 1H.
 
 El resultado se cachea 30 minutos para evitar llamadas excesivas.
 
@@ -13,28 +13,76 @@ Uso:
     bias = get_dxy_bias()
     score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, bias)
 """
-import yfinance as yf
+import os
+import requests
 import pandas as pd
 import threading
-import concurrent.futures
 from datetime import datetime, timezone, timedelta
-from adapters.yf_lock import _yf_lock
 
-# ── Cache en memoria (se reinicia al reiniciar el proceso) ──
-_cache: dict = {'bias': None, 'timestamp': None}
+# Twelve Data: DXY disponible con símbolo "USD/CAD" no, pero sí como índice:
+# En plan gratuito, el DXY (US Dollar Index) se obtiene con el símbolo "DX-Y.NYB"
+# en Twelve Data como "USD" o bien como índice forex "USD".
+# Usamos EUR/USD como proxy invertido si DXY no está disponible en plan free:
+# DXY sube ≈ EURUSD baja (correlación ~-0.96). Un proxy fiable y siempre disponible.
+_TWELVE_DATA_KEYS = [
+    k for k in [
+        os.environ.get('TWELVE_DATA_API_KEY'),
+        os.environ.get('TWELVE_DATA_API_KEY_2'),
+        os.environ.get('TWELVE_DATA_API_KEY_3'),
+    ] if k
+]
+
+_cache: dict = {'bias': None, 'timestamp': None, 'precio': None, 'ema9': None, 'ema21': None}
 _cache_lock = threading.Lock()
 _CACHE_TTL_MINUTES = 30
 
 
+def _fetch_dxy_twelve() -> pd.DataFrame:
+    """
+    Descarga DXY via Twelve Data usando el símbolo EUR/USD como proxy inverso.
+    DXY ≈ inverso de EUR/USD (correlación ~-0.96).
+    Cuando EUR/USD sube → DXY baja (bearish DXY = bullish Gold).
+    Cuando EUR/USD baja → DXY sube (bullish DXY = bearish Gold).
+    Retorna DataFrame con columna 'Close' (precio EUR/USD) o vacío si falla.
+    """
+    for key in _TWELVE_DATA_KEYS:
+        try:
+            url = (
+                "https://api.twelvedata.com/time_series"
+                "?symbol=EUR/USD"
+                "&interval=1h"
+                "&outputsize=50"
+                "&timezone=UTC"
+                f"&apikey={key}"
+            )
+            r = requests.get(url, timeout=15)
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            if data.get('status') == 'error' or 'values' not in data:
+                continue
+            df = pd.DataFrame(data['values'])
+            df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
+            df = df.set_index('datetime').sort_index()
+            df['Close'] = df['close'].astype(float)
+            return df[['Close']]
+        except Exception:
+            continue
+    return pd.DataFrame()
+
+
 def get_dxy_bias() -> str | None:
     """
-    Descarga DXY (DX-Y.NYB) en 1H y calcula el sesgo de tendencia.
+    Calcula el sesgo del dólar usando EUR/USD (proxy inverso de DXY) via Twelve Data.
+
+    Lógica: EUR/USD sube → DXY baja → Gold sube (BEARISH DXY)
+             EUR/USD baja → DXY sube → Gold baja (BULLISH DXY)
 
     Retorna:
         'BULLISH'  → DXY alcista (penaliza BUY Gold, refuerza SELL Gold)
         'BEARISH'  → DXY bajista (favorece BUY Gold, penaliza SELL Gold)
         'NEUTRAL'  → Sin dirección clara
-        None       → Error al descargar (no penalizar ni favorecer nada)
+        None       → Error al descargar
 
     Cacheado 30 minutos.
     """
@@ -48,51 +96,27 @@ def get_dxy_bias() -> str | None:
             return _cache['bias']
 
     try:
-        # Adquirir lock con timeout para no bloquear indefinidamente
-        acquired = _yf_lock.acquire(timeout=10)
-        if not acquired:
-            print("  ⚠️ [DXY] yf_lock ocupado — sesgo no calculado")
-            return None
-        try:
-            # Double-check cache después de adquirir lock
-            with _cache_lock:
-                if (_cache['bias'] is not None
-                        and _cache['timestamp'] is not None
-                        and (datetime.now(timezone.utc) - _cache['timestamp']) < timedelta(minutes=_CACHE_TTL_MINUTES)):
-                    return _cache['bias']
-            # Download con timeout explícito para evitar colgarse
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    yf.download, "DX-Y.NYB",
-                    period="10d", interval="1h", progress=False
-                )
-                try:
-                    dxy = future.result(timeout=15)
-                except concurrent.futures.TimeoutError:
-                    print("  ⚠️ [DXY] Timeout descargando DX-Y.NYB — sesgo no calculado")
-                    return None
-        finally:
-            _yf_lock.release()
-
-        if isinstance(dxy.columns, pd.MultiIndex):
-            dxy.columns = dxy.columns.get_level_values(0)
-
-        if dxy.empty or len(dxy) < 20:
-            print("  ⚠️ [DXY] Datos insuficientes — sesgo no calculado")
+        df = _fetch_dxy_twelve()
+        if df.empty or len(df) < 20:
+            print("  ⚠️ [DXY] Datos EUR/USD insuficientes — sesgo no calculado")
             return None
 
-        close     = dxy['Close']
-        ema9      = close.ewm(span=9,  adjust=False).mean()
-        ema21     = close.ewm(span=21, adjust=False).mean()
+        close = df['Close']
+        ema9  = close.ewm(span=9,  adjust=False).mean()
+        ema21 = close.ewm(span=21, adjust=False).mean()
 
         precio_actual = float(close.iloc[-1])
         ema9_actual   = float(ema9.iloc[-1])
         ema21_actual  = float(ema21.iloc[-1])
 
-        if precio_actual > ema9_actual > ema21_actual:
+        # EUR/USD sube (ema9 > ema21) → DXY baja → BEARISH DXY
+        # EUR/USD baja (ema9 < ema21) → DXY sube → BULLISH DXY
+        if precio_actual < ema9_actual < ema21_actual:
+            # EURUSD cayendo → DXY subiendo
             bias = "BULLISH"
             emoji = "📈"
-        elif precio_actual < ema9_actual < ema21_actual:
+        elif precio_actual > ema9_actual > ema21_actual:
+            # EURUSD subiendo → DXY bajando
             bias = "BEARISH"
             emoji = "📉"
         else:
@@ -100,15 +124,18 @@ def get_dxy_bias() -> str | None:
             emoji = "➡️"
 
         print(f"  💵 DXY: {emoji} {bias}  "
-              f"(precio={precio_actual:.3f}, EMA9={ema9_actual:.3f}, EMA21={ema21_actual:.3f})")
+              f"(EUR/USD={precio_actual:.5f}, EMA9={ema9_actual:.5f}, EMA21={ema21_actual:.5f})")
 
         with _cache_lock:
             _cache['bias']      = bias
             _cache['timestamp'] = ahora
+            _cache['precio']    = precio_actual
+            _cache['ema9']      = ema9_actual
+            _cache['ema21']     = ema21_actual
         return bias
 
     except Exception as e:
-        print(f"  ⚠️ [DXY] Error al descargar DX-Y.NYB: {e}")
+        print(f"  ⚠️ [DXY] Error calculando sesgo DXY: {e}")
         return None
 
 
