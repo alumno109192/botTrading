@@ -186,6 +186,8 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 📋 <b>ACCIÓN RECOMENDADA:</b>
 🔴 Cerrar el 100% restante de la posición
 🏆 ¡Operación completada con éxito!
+━━━━━━━━━━━━━━━━━━━━
+🔖 <code>#{senal_id}</code>
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
@@ -209,6 +211,8 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 🔴 Cerrar 33% de la posición
 🔒 Mover SL a TP1 (${tp1:.2f})
 ⏳ Dejar correr hacia TP3 (${tp3:.2f})
+━━━━━━━━━━━━━━━━━━━━
+🔖 <code>#{senal_id}</code>
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
@@ -232,6 +236,8 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 🔴 Cerrar 33% de la posición
 🔒 Mover SL a breakeven (${precio_entrada:.2f})
 ⏳ Dejar correr hacia TP2 (${tp2:.2f})
+━━━━━━━━━━━━━━━━━━━━
+🔖 <code>#{senal_id}</code>
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
@@ -251,7 +257,9 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
                 f"📍 Actual: ${precio_actual:.2f}  ({pct}% del camino)\n"
                 f"🎯 TP1: ${tp1:.2f}  |  Faltan ${tp1 - precio_actual:.2f}\n"
                 f"💵 P&L actual: {beneficio_parcial:+.2f}%\n"
-                f"🔒 Considera mover SL a breakeven (${precio_entrada:.2f})"
+                f"🔒 Considera mover SL a breakeven (${precio_entrada:.2f})\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔖 <code>#{senal_id}</code>"
             )
             enviar_notificacion_telegram(msg_50, simbolo)
             progreso_50_enviado.add(senal_id)
@@ -272,7 +280,9 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
                 f"📉 Actual: ${precio_actual:.2f}\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"✅ Trade cerrado en <b>0% de pérdida</b>\n"
-                f"🔍 El bot buscará nueva oportunidad de entrada"
+                f"🔍 El bot buscará nueva oportunidad de entrada\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔖 <code>#{senal_id}</code>"
             )
             enviar_notificacion_telegram(mensaje, simbolo)
             logger.info(f"  🔄 [{simbolo}] BREAKEVEN BUY — cerrada en entrada ${precio_entrada:.2f}")
@@ -287,7 +297,9 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
                 f"📉 Actual: ${precio_actual:.2f}\n"
                 f"💸 Pérdida: {beneficio:.2f}%\n\n"
                 f"📋 <b>ACCIÓN RECOMENDADA:</b>\n"
-                f"🔴 Cerrar el 100% de la posición"
+                f"🔴 Cerrar el 100% de la posición\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔖 <code>#{senal_id}</code>"
             )
             enviar_notificacion_telegram(mensaje, simbolo)
         return
@@ -339,6 +351,8 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 📋 <b>ACCIÓN RECOMENDADA:</b>
 🔴 Cerrar el 100% restante de la posición
 🏆 ¡Operación completada con éxito!
+━━━━━━━━━━━━━━━━━━━━
+🔖 <code>#{senal_id}</code>
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
@@ -362,6 +376,8 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 🔴 Cerrar 33% de la posición
 🔒 Mover SL a TP1 (${tp1:.2f})
 ⏳ Dejar correr hacia TP3 (${tp3:.2f})
+━━━━━━━━━━━━━━━━━━━━
+🔖 <code>#{senal_id}</code>
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
@@ -385,6 +401,8 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 🔴 Cerrar 33% de la posición
 🔒 Mover SL a breakeven (${precio_entrada:.2f})
 ⏳ Dejar correr hacia TP2 (${tp2:.2f})
+━━━━━━━━━━━━━━━━━━━━
+🔖 <code>#{senal_id}</code>
         """
         enviar_notificacion_telegram(mensaje, simbolo)
         return
@@ -404,7 +422,9 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
                 f"📍 Actual: ${precio_actual:.2f}  ({pct}% del camino)\n"
                 f"🎯 TP1: ${tp1:.2f}  |  Faltan ${precio_actual - tp1:.2f}\n"
                 f"💵 P&L actual: {beneficio_parcial:+.2f}%\n"
-                f"🔒 Considera mover SL a breakeven (${precio_entrada:.2f})"
+                f"🔒 Considera mover SL a breakeven (${precio_entrada:.2f})\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔖 <code>#{senal_id}</code>"
             )
             enviar_notificacion_telegram(msg_50, simbolo)
             progreso_50_enviado.add(senal_id)
@@ -425,7 +445,9 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
                 f"📈 Actual: ${precio_actual:.2f}\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"✅ Trade cerrado en <b>0% de pérdida</b>\n"
-                f"🔍 El bot buscará nueva oportunidad de entrada"
+                f"🔍 El bot buscará nueva oportunidad de entrada\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔖 <code>#{senal_id}</code>"
             )
             enviar_notificacion_telegram(mensaje, simbolo)
             logger.info(f"  🔄 [{simbolo}] BREAKEVEN SELL — cerrada en entrada ${precio_entrada:.2f}")
@@ -440,7 +462,9 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
                 f"📈 Actual: ${precio_actual:.2f}\n"
                 f"💸 Pérdida: {beneficio:.2f}%\n\n"
                 f"📋 <b>ACCIÓN RECOMENDADA:</b>\n"
-                f"🔴 Cerrar el 100% de la posición"
+                f"🔴 Cerrar el 100% de la posición\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔖 <code>#{senal_id}</code>"
             )
             enviar_notificacion_telegram(mensaje, simbolo)
         return

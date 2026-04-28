@@ -62,6 +62,7 @@ class BaseDetector(ABC):
         self.alertas_enviadas: dict = {}
         self.ultimo_analisis: dict = {}
         self.aviso_macro: str = ""
+        self._last_senal_id: int | None = None  # ID de la última señal guardada en BD
 
         # Inicializar BD si las variables están configuradas
         import logging as _logging
@@ -88,7 +89,9 @@ class BaseDetector(ABC):
     def _guardar_senal(self, senal_data: dict) -> int:
         """Proxy sobre db.guardar_senal que inyecta self.telegram_thread_id."""
         senal_data.setdefault('telegram_thread_id', self.telegram_thread_id)
-        return self.db.guardar_senal(senal_data)
+        senal_id = self.db.guardar_senal(senal_data)
+        self._last_senal_id = senal_id  # lo consumirá el próximo enviar()
+        return senal_id
 
     # ─────────────────────────────────────────────────────────────────────────
     # Método abstracto — debe implementarse en cada subclase
@@ -347,8 +350,13 @@ class BaseDetector(ABC):
     def enviar(self, mensaje: str) -> bool:
         """
         Envía un mensaje a Telegram añadiendo el sufijo de aviso macro si existe.
+        Si justo antes se guardó una señal en BD, añade su #ID al mensaje.
         Delega en adapters.telegram.enviar_telegram para facilitar el mocking.
         """
+        senal_id = self._last_senal_id
+        self._last_senal_id = None  # consumir siempre, incluso si no se usa
+        if senal_id:
+            mensaje = mensaje.rstrip() + f"\n━━━━━━━━━━━━━━━━━━━━\n🔖 <b>#{senal_id}</b>"
         sufijo = (f"\n⚠️ <b>Evento macro próximo:</b> {self.aviso_macro}"
                   if self.aviso_macro else "")
         return _telegram_mod.enviar_telegram(mensaje + sufijo,
