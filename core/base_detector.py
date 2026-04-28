@@ -388,7 +388,11 @@ class BaseDetector(ABC):
         Devuelve True si la hora UTC actual está dentro de la sesión óptima
         de trading para Gold (Londres + NY): 08:00 - 21:00 UTC.
         Fuera de ese rango el volumen es bajo y los movimientos son ruido.
+        Poner SKIP_SESSION_FILTER=1 en .env para saltar este filtro (pruebas).
         """
+        import os
+        if os.getenv('SKIP_SESSION_FILTER', '0') == '1':
+            return True
         from datetime import datetime, timezone
         hora = datetime.now(timezone.utc).hour
         return 8 <= hora < 21
