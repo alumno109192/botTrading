@@ -463,6 +463,9 @@ class GoldDetector1H(BaseDetector):
         if _cuña_desc_1h == 'ruptura_alcista':
             score_buy += 6
             logger.info(f"  📐 [1H] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_1h:.2f}) — +6 pts BUY")
+        elif _cuña_desc_1h == 'ruptura_bajista':
+            score_sell += 6
+            logger.info(f"  📐 [1H] CUÑA DESC ROTA A LA BAJA (suelo ${_s_desc_1h:.2f}) — +6 pts SELL")
         elif _cuña_desc_1h == 'compresion':
             score_buy += 2
             logger.info(f"  📐 [1H] CUÑA DESC en compresión ${_s_desc_1h:.2f}-${_t_desc_1h:.2f} — +2 pts BUY")

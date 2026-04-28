@@ -1093,6 +1093,11 @@ def detectar_cuña_descendente(
     if close_act > precio_techo_act + atr * 0.1:
         return 'ruptura_alcista', round(precio_techo_act, 2), round(precio_suelo_act, 2)
 
+    # ── 6b. Ruptura bajista (continuación): cierre por debajo del suelo ─────
+    # Cuña descendente como patrón de continuación bajista (menos frecuente pero válido)
+    if close_act < precio_suelo_act - atr * 0.1:
+        return 'ruptura_bajista', round(precio_techo_act, 2), round(precio_suelo_act, 2)
+
     return 'compresion', round(precio_techo_act, 2), round(precio_suelo_act, 2)
 
 
