@@ -108,6 +108,25 @@ _uso_cache_ts: float = 0.0     # timestamp de la última carga
 _uso_cache_lock = threading.Lock()
 _USO_CACHE_TTL = 60            # segundos
 
+# Cooldown por minuto: cuando una key supera el límite/minuto se bloquea 65s
+_key_cooldown: dict = {}       # alias → timestamp hasta el que está bloqueada
+_cooldown_lock = threading.Lock()
+
+
+def _set_key_cooldown(alias: str, seconds: int = 65):
+    """Bloquea una key N segundos por haber superado el límite por minuto."""
+    import time as _time
+    with _cooldown_lock:
+        _key_cooldown[alias] = _time.time() + seconds
+    print(f"  🕐 [quota] {alias}: cooldown {seconds}s por límite/minuto")
+
+
+def _is_on_cooldown(alias: str) -> bool:
+    """True si la key está en cooldown por límite de minuto."""
+    import time as _time
+    with _cooldown_lock:
+        return _time.time() < _key_cooldown.get(alias, 0)
+
 
 def _cargar_uso_desde_bd() -> dict:
     """Lee uso de keys de hoy desde BD. Retorna dict alias→count o {} si falla."""
@@ -141,16 +160,23 @@ def _next_td_key() -> tuple:
             globals()['_uso_cache_ts'] = now
 
         if _uso_cache:
-            # Descartar keys que ya alcanzaron el límite diario (≥800 peticiones)
+            # Descartar keys agotadas (≥800/día) o en cooldown por minuto
             disponibles = [
                 ak for ak in _td_keys
-                if _uso_cache.get(ak[0], 0) < 800
+                if _uso_cache.get(ak[0], 0) < 800 and not _is_on_cooldown(ak[0])
             ]
             if not disponibles:
-                # Todas agotadas — loguear y usar la de menor uso igualmente
-                # (mejor devolver algo que fallar, la API devolverá error de cuota)
-                print("  ⚠️ [quota] TODAS las API keys han alcanzado el límite de 800/día")
-                disponibles = _td_keys
+                # Todas agotadas o en cooldown — intentar las que solo están en cooldown
+                disponibles_sin_diario = [
+                    ak for ak in _td_keys if _uso_cache.get(ak[0], 0) < 800
+                ]
+                if disponibles_sin_diario:
+                    # Hay keys con cuota diaria disponible pero en cooldown de minuto
+                    # Usar la de menor uso (el cooldown habrá expirado pronto)
+                    disponibles = disponibles_sin_diario
+                else:
+                    print("  ⚠️ [quota] TODAS las API keys han alcanzado el límite de 800/día")
+                    disponibles = _td_keys
             alias, key = min(disponibles, key=lambda ak: _uso_cache.get(ak[0], 0))
             return alias, key
 
@@ -276,7 +302,7 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
         alias, key = _next_td_key()
         if not key:
             break
-        df, ok = _get_twelve_data(ticker_yf, period, interval, key)
+        df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
         if ok and not df.empty:
             _registrar_uso_key(alias)
             rows = []
@@ -339,7 +365,7 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             alias, key = _next_td_key()
             if not key:
                 break
-            df, ok = _get_twelve_data(ticker_yf, period, interval, key)
+            df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
             if ok and not df.empty and len(df) >= 10:
                 _registrar_uso_key(alias)
                 print(f"  ✅ [data_provider] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
@@ -365,7 +391,8 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
     return pd.DataFrame(), True
 
 
-def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str) -> tuple:
+def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
+                     alias: str = '') -> tuple:
     """
     Descarga datos desde Twelve Data API (plan gratuito: 800 req/día por clave).
     Retorna: (DataFrame, success: bool)
@@ -411,6 +438,9 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str) -
         if data.get('status') == 'error' or 'values' not in data:
             msg = data.get('message', data.get('status', 'unknown error'))
             print(f"  ⚠️ Twelve Data error: {msg}")
+            # Límite por minuto → cooldown 65s para no seguir rotando en vano
+            if alias and 'current minute' in msg.lower():
+                _set_key_cooldown(alias, 65)
             return pd.DataFrame(), False
 
         values = data['values']
