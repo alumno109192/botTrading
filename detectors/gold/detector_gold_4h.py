@@ -73,6 +73,9 @@ SIMBOLOS = {
 alertas_enviadas = {}
 ultimo_analisis = {}
 
+# Instancia singleton — persiste alertas_enviadas entre ciclos
+_detector_instance: 'GoldDetector4H | None' = None
+
 
 # ══════════════════════════════════════
 # INDICADORES TÉCNICOS
@@ -1072,7 +1075,13 @@ class GoldDetector4H(BaseDetector):
 
 
 def analizar(simbolo, params):
-    return GoldDetector4H(simbolo=simbolo, tf_label='4H', params=params, telegram_thread_id=TELEGRAM_THREAD_ID).analizar(simbolo, params)
+    global _detector_instance
+    if _detector_instance is None:
+        _detector_instance = GoldDetector4H(
+            simbolo=simbolo, tf_label='4H', params=params,
+            telegram_thread_id=TELEGRAM_THREAD_ID
+        )
+    return _detector_instance.analizar(simbolo, params)
 
 
 def main():

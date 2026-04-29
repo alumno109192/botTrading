@@ -75,6 +75,9 @@ SIMBOLOS = {
 alertas_enviadas = {}
 ultimo_analisis = {}  # Guarda última fecha y scores analizados
 
+# Instancia singleton — persiste alertas_enviadas entre ciclos
+_detector_instance: 'GoldDetector1D | None' = None
+
 
 # ══════════════════════════════════════
 from core.indicators import (
@@ -1257,7 +1260,13 @@ class GoldDetector1D(BaseDetector):
 
 
 def analizar(simbolo, params):
-    return GoldDetector1D(simbolo=simbolo, tf_label='1D', params=params, telegram_thread_id=TELEGRAM_THREAD_ID).analizar(simbolo, params)
+    global _detector_instance
+    if _detector_instance is None:
+        _detector_instance = GoldDetector1D(
+            simbolo=simbolo, tf_label='1D', params=params,
+            telegram_thread_id=TELEGRAM_THREAD_ID
+        )
+    return _detector_instance.analizar(simbolo, params)
 
 
 def main():
