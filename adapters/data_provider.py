@@ -273,14 +273,14 @@ def _get_from_db(ticker_yf: str, period: str, interval: str):
         return None, None
 
     # Comprobar frescura: última vela dentro del umbral permitido
-    ultima_ts = pd.to_datetime(rows[-1]['ts'], utc=True)
+    ultima_ts = pd.to_datetime(rows[-1]['ts'], format='ISO8601', utc=True)
     umbral = _DB_STALE.get(db_interval, timedelta(minutes=10))
     if (datetime.now(timezone.utc) - ultima_ts) > umbral:
         return None, None
 
     # Construir DataFrame
     df = pd.DataFrame(rows)
-    df['ts'] = pd.to_datetime(df['ts'], utc=True)
+    df['ts'] = pd.to_datetime(df['ts'], format='ISO8601', utc=True)
     df = df.set_index('ts')
     df = df.rename(columns={
         'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'
@@ -322,7 +322,7 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
 
     ultima_ts_str = db.obtener_ultima_ts_vela(ticker_yf, interval)
     if ultima_ts_str:
-        ultima_ts = pd.to_datetime(ultima_ts_str, utc=True)
+        ultima_ts = pd.to_datetime(ultima_ts_str, format='ISO8601', utc=True)
         dias_sin_datos = (datetime.now(timezone.utc) - ultima_ts).total_seconds() / 86400
         velas_en_db = len(db.obtener_velas(ticker_yf, interval, '8d'))
         period = '7d' if (dias_sin_datos > 6 or velas_en_db < min_candles) else '1d'
