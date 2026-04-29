@@ -170,65 +170,31 @@ def _cargar_uso_desde_bd() -> dict:
 
 def _next_td_key() -> tuple:
     """
-    Devuelve (alias, key) eligiendo la key con MENOS peticiones hoy.
-    Fuentes de datos (en orden):
-      1. Cache local en memoria (TTL 60s) — evita una query BD por cada llamada
-      2. BD Turso — fuente de verdad del contador diario
-      3. Round-Robin — fallback si BD no está disponible
+    Devuelve (alias, key) en round-robin, saltando keys en cooldown por límite/minuto.
+    Con 11 keys × 800/día no es necesario rastrear el límite diario por key.
     """
     if not _td_keys:
         return None, None
 
-    import time as _time
-    now = _time.time()
+    # Intentar hasta len(_td_keys) veces para encontrar una sin cooldown
+    with _td_cycle_lock:
+        for _ in range(len(_td_keys)):
+            alias, key = next(_td_cycle)
+            if not _is_on_cooldown(alias):
+                return alias, key
 
-    with _uso_cache_lock:
-        if now - _uso_cache_ts > _USO_CACHE_TTL:
-            fresh = _cargar_uso_desde_bd()
-            if fresh or _uso_cache:          # actualiza si hay datos nuevos
-                _uso_cache.clear()
-                _uso_cache.update(fresh)
-            globals()['_uso_cache_ts'] = now
-
-        if _uso_cache:
-            # Descartar keys agotadas (≥800/día) o en cooldown por minuto
-            disponibles = [
-                ak for ak in _td_keys
-                if _uso_cache.get(ak[0], 0) < 800 and not _is_on_cooldown(ak[0])
-            ]
-            if not disponibles:
-                # Todas agotadas o en cooldown — intentar las que solo están en cooldown
-                disponibles_sin_diario = [
-                    ak for ak in _td_keys if _uso_cache.get(ak[0], 0) < 800
-                ]
-                if disponibles_sin_diario:
-                    # Hay keys con cuota diaria disponible pero en cooldown de minuto
-                    # Usar la de menor uso (el cooldown habrá expirado pronto)
-                    disponibles = disponibles_sin_diario
-                else:
-                    print("  ⚠️ [quota] TODAS las API keys han alcanzado el límite de 800/día")
-                    disponibles = _td_keys
-            alias, key = min(disponibles, key=lambda ak: _uso_cache.get(ak[0], 0))
-            return alias, key
-
-    # Fallback: round-robin (BD no disponible)
+    # Todas en cooldown — devolver la siguiente igualmente (la API dirá si falla)
     with _td_cycle_lock:
         return next(_td_cycle)
 
 
 def _registrar_uso_key(alias: str):
-    """Persiste el uso de la key en BD e invalida el cache local (best-effort)."""
+    """Registra uso en BD para estadísticas (best-effort, no bloquea la petición)."""
     try:
         from adapters.database import DatabaseManager
         total = DatabaseManager().incrementar_uso_key(alias)
-        # Actualizar cache local inmediatamente para que la próxima elección
-        # ya refleje este incremento sin esperar al TTL de 60s
-        with _uso_cache_lock:
-            _uso_cache[alias] = total
-            if total >= 800:
-                print(f"  🚫 [quota] {alias}: {total}/800 — KEY AGOTADA, descartada hasta mañana")
-            elif total % 50 == 0:
-                print(f"  📊 [quota] {alias}: {total}/800 peticiones hoy")
+        if total % 100 == 0:
+            print(f"  📊 [quota] {alias}: {total} peticiones hoy")
     except Exception:
         pass  # Nunca debe bloquear la petición de datos
 
