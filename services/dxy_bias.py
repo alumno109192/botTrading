@@ -95,7 +95,7 @@ def _fetch_dxy_twelve() -> pd.DataFrame:
                 continue
             _registrar_uso_dxy(alias)
             df = pd.DataFrame(data['values'])
-            df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
+            df['datetime'] = pd.to_datetime(df['datetime'], format='ISO8601', utc=True)
             df = df.set_index('datetime').sort_index()
             df['Close'] = df['close'].astype(float)
             return df[['Close']]

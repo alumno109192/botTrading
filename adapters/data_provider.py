@@ -487,7 +487,7 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
             return pd.DataFrame(), False
 
         df = pd.DataFrame(values)
-        df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
+        df['datetime'] = pd.to_datetime(df['datetime'], format='ISO8601', utc=True)
         df = df.set_index('datetime').sort_index()
         df.columns = df.columns.str.lower()  # normalizar case antes de rename
         df = df.rename(columns={
