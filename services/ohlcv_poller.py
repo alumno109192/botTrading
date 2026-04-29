@@ -22,8 +22,9 @@ logger = logging.getLogger('bottrading')
 # ── Activos y configuración ──────────────────────────────────────────────────
 # poll_secs: frecuencia de polling por target (respetar cuota API)
 POLL_TARGETS = [
-    {'ticker_yf': 'GC=F', 'interval': '5m', 'poll_secs':   60, 'max_dias_bd':  8},
-    {'ticker_yf': 'GC=F', 'interval': '4h', 'poll_secs': 1800, 'max_dias_bd': 65},
+    {'ticker_yf': 'GC=F', 'interval': '5m', 'poll_secs':   60, 'max_dias_bd':   8},
+    {'ticker_yf': 'GC=F', 'interval': '4h', 'poll_secs': 1800, 'max_dias_bd':  65},
+    {'ticker_yf': 'GC=F', 'interval': '1d', 'poll_secs': 3600, 'max_dias_bd': 365},  # 1 req/hora
 ]
 
 CHECK_INTERVAL = 60   # segundos entre ciclos del bucle principal

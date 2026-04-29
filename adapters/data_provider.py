@@ -108,13 +108,19 @@ _uso_cache_ts: float = 0.0     # timestamp de la última carga
 _uso_cache_lock = threading.Lock()
 _USO_CACHE_TTL = 60            # segundos
 
-# Cooldown por minuto: cuando una key supera el límite/minuto se bloquea 65s
+# Cooldown reactivo: cuando la API devuelve error de límite/minuto, bloquear 65s
 _key_cooldown: dict = {}       # alias → timestamp hasta el que está bloqueada
 _cooldown_lock = threading.Lock()
 
+# Contador proactivo por minuto: PREVIENE el error antes de que ocurra
+# Cada key tiene máx 7 slots/minuto (margen de 1 bajo el límite de 8)
+_key_minute_count: dict = {}   # alias → {'minute': int, 'count': int}
+_minute_lock = threading.Lock()
+_MAX_REQ_PER_MINUTE = 7        # límite real de Twelve Data es 8; usamos 7 para margen
+
 
 def _set_key_cooldown(alias: str, seconds: int = 65):
-    """Bloquea una key N segundos por haber superado el límite por minuto."""
+    """Bloquea una key N segundos (reactivo: cuando la API ya devolvió el error)."""
     import time as _time
     with _cooldown_lock:
         _key_cooldown[alias] = _time.time() + seconds
@@ -122,10 +128,35 @@ def _set_key_cooldown(alias: str, seconds: int = 65):
 
 
 def _is_on_cooldown(alias: str) -> bool:
-    """True si la key está en cooldown por límite de minuto."""
+    """True si la key está en cooldown reactivo."""
     import time as _time
     with _cooldown_lock:
         return _time.time() < _key_cooldown.get(alias, 0)
+
+
+def _reserve_minute_slot(alias: str) -> bool:
+    """
+    Proactivo: intenta reservar un slot de uso para el minuto actual.
+    - Atómico: check + increment bajo lock → imposible que dos threads
+      reserven el mismo slot número 7.
+    - Retorna True si se reservó (puede hacer la llamada).
+    - Retorna False si el cupo del minuto está lleno → rotar a otra key.
+    """
+    import time as _time
+    current_minute = int(_time.time() // 60)   # entero que cambia cada 60s
+    with _minute_lock:
+        entry = _key_minute_count.get(alias)
+        if entry is None or entry['minute'] != current_minute:
+            # Nuevo minuto — resetear contador
+            _key_minute_count[alias] = {'minute': current_minute, 'count': 1}
+            return True
+        if entry['count'] >= _MAX_REQ_PER_MINUTE:
+            # Cupo lleno — cooldown hasta el próximo minuto
+            secs_left = 62 - (int(_time.time()) % 60)   # +2s de margen
+            _set_key_cooldown(alias, secs_left)
+            return False
+        entry['count'] += 1
+        return True
 
 
 def _cargar_uso_desde_bd() -> dict:
@@ -302,6 +333,10 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
         alias, key = _next_td_key()
         if not key:
             break
+        # Proactivo: reservar slot de minuto antes de llamar a la API
+        if not _reserve_minute_slot(alias):
+            print(f"  🚦 [quota/poller] {alias}: cupo minuto lleno — rotando")
+            continue
         df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
         if ok and not df.empty:
             _registrar_uso_key(alias)
@@ -365,6 +400,10 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             alias, key = _next_td_key()
             if not key:
                 break
+            # Proactivo: reservar slot de minuto antes de llamar a la API
+            if not _reserve_minute_slot(alias):
+                print(f"  🚦 [quota] {alias}: cupo minuto lleno — rotando")
+                continue
             df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
             if ok and not df.empty and len(df) >= 10:
                 _registrar_uso_key(alias)
