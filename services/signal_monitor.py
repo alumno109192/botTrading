@@ -52,6 +52,13 @@ SIMBOLO_TO_TICKER = {
     'EURUSD':  'EURUSD=X',  # EUR/USD Forex
     'WTIUSD':  'CL=F',      # WTI Crude Oil Futures
     'XAGUSD':  'SI=F',      # Silver Futures
+    # Compatibilidad con señales antiguas guardadas con ticker yfinance como símbolo
+    'GC=F':    'GC=F',
+    'BTC-USD': 'BTC-USD',
+    'SI=F':    'SI=F',
+    'CL=F':    'CL=F',
+    '^GSPC':   '^GSPC',
+    '^IXIC':   '^IXIC',
 }
 
 def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
