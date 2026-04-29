@@ -295,13 +295,16 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
     else:
         period = '7d'  # Primera vez: fill completo
 
+    _keys_cooldown = 0
+    _keys_api_fail = 0
+
     for _ in range(len(_td_keys)):
         alias, key = _next_td_key()
         if not key:
             break
         # Proactivo: reservar slot de minuto antes de llamar a la API
         if not _reserve_minute_slot(alias):
-            print(f"  🚦 [quota/poller] {alias}: cupo minuto lleno — rotando")
+            _keys_cooldown += 1
             continue
         df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
         if ok and not df.empty:
@@ -319,8 +322,14 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
             db.purgar_velas_antiguas(ticker_yf, interval, dias_max=8)
             print(f"  💾 [poller] {ticker_yf} {interval} ({alias}) — {len(df)} velas → BD")
             return True
-        print(f"  ⚠️ [poller] {alias} falló para {ticker_yf} {interval}")
+        _keys_api_fail += 1
+        print(f"  ⚠️ [poller] {alias} error API para {ticker_yf} {interval}")
 
+    # Explicar por qué falló para facilitar diagnóstico
+    if _keys_cooldown > 0 and _keys_api_fail == 0:
+        print(f"  ⏳ [poller] {ticker_yf} {interval} — todas las keys en cooldown/minuto ({_keys_cooldown}), reintentando en 60s")
+    elif _keys_api_fail > 0:
+        print(f"  ❌ [poller] {ticker_yf} {interval} — {_keys_api_fail} keys con error API, {_keys_cooldown} en cooldown")
     return False
 
 
