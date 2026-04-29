@@ -59,10 +59,21 @@ _TICKER_MAP_POLYGON = {
 # Intervalos soportados por fuentes externas (incluye 4h y 1d para Twelve Data)
 _INTRADAY_INTERVALS = {'1m', '5m', '15m', '30m', '1h', '4h', '1d'}
 
-# ── Cache intraday y diario (TTL 65s intraday / 4h para 1d) ──
+# ── Cache intraday y diario (TTL proporcional al intervalo) ──
+# Para intervalos lentos (4h, 1d, 1wk) el precio no cambia en minutos:
+# usar TTL largo evita centenares de API calls/día innecesarias.
 _intraday_cache: dict = {}
 _intraday_cache_lock = threading.Lock()
-_INTRADAY_TTL = timedelta(seconds=65)
+_INTRADAY_TTL = timedelta(seconds=65)  # legacy — no se usa directamente
+_CACHE_TTL_MAP = {
+    '1m':  timedelta(seconds=65),
+    '5m':  timedelta(seconds=65),
+    '15m': timedelta(minutes=5),
+    '1h':  timedelta(minutes=20),
+    '4h':  timedelta(hours=5),
+    '1d':  timedelta(hours=12),
+    '1wk': timedelta(hours=24),
+}
 
 # ── Tiempo máximo desde la última vela en BD para considerar datos “frescos” ──
 _DB_STALE = {
@@ -238,12 +249,13 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 
     El DataFrame siempre tiene columnas: Open, High, Low, Close, Volume
     """
-    # 1️⃣ Cache en memoria (65s TTL) — la más rápida
+    # 1️⃣ Cache en memoria (TTL proporcional al intervalo) — la más rápida
     if interval in _INTRADAY_INTERVALS:
         _ck = (ticker_yf, period, interval)
+        _ttl = _CACHE_TTL_MAP.get(interval, _INTRADAY_TTL)
         with _intraday_cache_lock:
             _e = _intraday_cache.get(_ck)
-            if _e and (datetime.now(timezone.utc) - _e['ts']) < _INTRADAY_TTL:
+            if _e and (datetime.now(timezone.utc) - _e['ts']) < _ttl:
                 print(f"  💾 [data_provider] Cache mem hit — {ticker_yf} {interval} ({len(_e['df'])} velas)")
                 return _e['df'].copy(), _e['delayed']
 

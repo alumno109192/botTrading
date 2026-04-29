@@ -25,12 +25,36 @@ from datetime import datetime, timezone, timedelta
 # Usamos EUR/USD como proxy invertido si DXY no está disponible en plan free:
 # DXY sube ≈ EURUSD baja (correlación ~-0.96). Un proxy fiable y siempre disponible.
 _TWELVE_DATA_KEYS = [
-    k for k in [
+    (f'key{i}', k) for i, k in enumerate([
         os.environ.get('TWELVE_DATA_API_KEY'),
         os.environ.get('TWELVE_DATA_API_KEY_2'),
         os.environ.get('TWELVE_DATA_API_KEY_3'),
-    ] if k
+        os.environ.get('TWELVE_DATA_API_KEY_4'),
+        os.environ.get('TWELVE_DATA_API_KEY_5'),
+    ], start=1) if k
 ]
+_key_idx = 0
+_key_idx_lock = threading.Lock()
+
+
+def _next_dxy_key():
+    """Round-Robin entre las keys disponibles para DXY."""
+    global _key_idx
+    if not _TWELVE_DATA_KEYS:
+        return None, None
+    with _key_idx_lock:
+        alias, key = _TWELVE_DATA_KEYS[_key_idx % len(_TWELVE_DATA_KEYS)]
+        _key_idx += 1
+    return alias, key
+
+
+def _registrar_uso_dxy(alias: str):
+    """Registra el consumo de la key en BD (best-effort)."""
+    try:
+        from adapters.database import DatabaseManager
+        DatabaseManager().incrementar_uso_key(alias)
+    except Exception:
+        pass
 
 _cache: dict = {'bias': None, 'timestamp': None, 'precio': None, 'ema9': None, 'ema21': None}
 _cache_lock = threading.Lock()
@@ -45,7 +69,7 @@ def _fetch_dxy_twelve() -> pd.DataFrame:
     Cuando EUR/USD baja → DXY sube (bullish DXY = bearish Gold).
     Retorna DataFrame con columna 'Close' (precio EUR/USD) o vacío si falla.
     """
-    for key in _TWELVE_DATA_KEYS:
+    for alias, key in _TWELVE_DATA_KEYS:
         try:
             url = (
                 "https://api.twelvedata.com/time_series"
@@ -61,6 +85,7 @@ def _fetch_dxy_twelve() -> pd.DataFrame:
             data = r.json()
             if data.get('status') == 'error' or 'values' not in data:
                 continue
+            _registrar_uso_dxy(alias)
             df = pd.DataFrame(data['values'])
             df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
             df = df.set_index('datetime').sort_index()
