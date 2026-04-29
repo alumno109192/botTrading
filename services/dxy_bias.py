@@ -24,35 +24,43 @@ from datetime import datetime, timezone, timedelta
 # en Twelve Data como "USD" o bien como índice forex "USD".
 # Usamos EUR/USD como proxy invertido si DXY no está disponible en plan free:
 # DXY sube ≈ EURUSD baja (correlación ~-0.96). Un proxy fiable y siempre disponible.
-_TWELVE_DATA_KEYS = [
-    (f'key{i}', k) for i, k in enumerate([
-        os.environ.get('TWELVE_DATA_API_KEY'),
-        os.environ.get('TWELVE_DATA_API_KEY_2'),
-        os.environ.get('TWELVE_DATA_API_KEY_3'),
-        os.environ.get('TWELVE_DATA_API_KEY_4'),
-        os.environ.get('TWELVE_DATA_API_KEY_5'),
-    ], start=1) if k
+_ENV_KEYS = [
+    ('key1',  'TWELVE_DATA_API_KEY'),
+    ('key2',  'TWELVE_DATA_API_KEY_2'),
+    ('key3',  'TWELVE_DATA_API_KEY_3'),
+    ('key4',  'TWELVE_DATA_API_KEY_4'),
+    ('key5',  'TWELVE_DATA_API_KEY_5'),
+    ('key6',  'TWELVE_DATA_API_KEY_6'),
+    ('key7',  'TWELVE_DATA_API_KEY_7'),
+    ('key8',  'TWELVE_DATA_API_KEY_8'),
+    ('key9',  'TWELVE_DATA_API_KEY_9'),
+    ('key10', 'TWELVE_DATA_API_KEY_10'),
+    ('key11', 'TWELVE_DATA_API_KEY_11'),
 ]
-_key_idx = 0
-_key_idx_lock = threading.Lock()
+_TWELVE_DATA_KEYS = [
+    (alias, os.environ.get(env, '').strip())
+    for alias, env in _ENV_KEYS
+    if os.environ.get(env, '').strip()
+]
 
 
 def _next_dxy_key():
-    """Round-Robin entre las keys disponibles para DXY."""
-    global _key_idx
+    """Elige la key con MENOS uso hoy (delega en data_provider para reutilizar cache)."""
     if not _TWELVE_DATA_KEYS:
         return None, None
-    with _key_idx_lock:
-        alias, key = _TWELVE_DATA_KEYS[_key_idx % len(_TWELVE_DATA_KEYS)]
-        _key_idx += 1
-    return alias, key
+    try:
+        from adapters.data_provider import _next_td_key
+        return _next_td_key()
+    except Exception:
+        # Fallback local: primera key disponible
+        return _TWELVE_DATA_KEYS[0]
 
 
 def _registrar_uso_dxy(alias: str):
     """Registra el consumo de la key en BD (best-effort)."""
     try:
-        from adapters.database import DatabaseManager
-        DatabaseManager().incrementar_uso_key(alias)
+        from adapters.data_provider import _registrar_uso_key
+        _registrar_uso_key(alias)
     except Exception:
         pass
 

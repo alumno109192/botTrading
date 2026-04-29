@@ -30,15 +30,23 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 def _build_key_list():
-    """Construye lista de (alias, key) con las keys configuradas."""
+    """Construye lista de (alias, key) con las keys configuradas (key1..key11)."""
     keys = []
-    for alias, key in [
-        ('key1', os.environ.get('TWELVE_DATA_API_KEY')),
-        ('key2', os.environ.get('TWELVE_DATA_API_KEY_2')),
-        ('key3', os.environ.get('TWELVE_DATA_API_KEY_3')),
-        ('key4', os.environ.get('TWELVE_DATA_API_KEY_4')),
-        ('key5', os.environ.get('TWELVE_DATA_API_KEY_5')),
-    ]:
+    env_names = [
+        ('key1',  'TWELVE_DATA_API_KEY'),
+        ('key2',  'TWELVE_DATA_API_KEY_2'),
+        ('key3',  'TWELVE_DATA_API_KEY_3'),
+        ('key4',  'TWELVE_DATA_API_KEY_4'),
+        ('key5',  'TWELVE_DATA_API_KEY_5'),
+        ('key6',  'TWELVE_DATA_API_KEY_6'),
+        ('key7',  'TWELVE_DATA_API_KEY_7'),
+        ('key8',  'TWELVE_DATA_API_KEY_8'),
+        ('key9',  'TWELVE_DATA_API_KEY_9'),
+        ('key10', 'TWELVE_DATA_API_KEY_10'),
+        ('key11', 'TWELVE_DATA_API_KEY_11'),
+    ]
+    for alias, env in env_names:
+        key = os.environ.get(env, '').strip()
         if key:
             keys.append((alias, key))
     return keys
@@ -85,29 +93,77 @@ _DB_STALE = {
     '1d':  timedelta(hours=48),
 }
 
-# ── Round-Robin de API Keys ──────────────────────────────────────────────────
-# Se construye la lista al arranque con las keys disponibles.
-# El ciclo se comparte entre todos los threads (protegido con lock).
+# ── Selección de API Key por menor uso diario ────────────────────────────────
+# En cada petición se consulta la BD para elegir la key con menos calls hoy.
+# Si la BD no responde (arranque, error), se usa round-robin como fallback.
+# El lock evita que dos threads elijan la misma key simultáneamente.
 
 _td_keys = _build_key_list()
 _td_cycle = itertools.cycle(_td_keys) if _td_keys else iter([])
 _td_cycle_lock = threading.Lock()
 
-def _next_td_key():
-    """Devuelve (alias, key) siguiendo Round-Robin. None si no hay keys."""
+# Cache local de uso (evita una query a BD por cada petición; se refresca cada 60s)
+_uso_cache: dict = {}          # alias → peticiones hoy
+_uso_cache_ts: float = 0.0     # timestamp de la última carga
+_uso_cache_lock = threading.Lock()
+_USO_CACHE_TTL = 60            # segundos
+
+
+def _cargar_uso_desde_bd() -> dict:
+    """Lee uso de keys de hoy desde BD. Retorna dict alias→count o {} si falla."""
+    try:
+        from adapters.database import DatabaseManager
+        return DatabaseManager().obtener_uso_keys_hoy()
+    except Exception:
+        return {}
+
+
+def _next_td_key() -> tuple:
+    """
+    Devuelve (alias, key) eligiendo la key con MENOS peticiones hoy.
+    Fuentes de datos (en orden):
+      1. Cache local en memoria (TTL 60s) — evita una query BD por cada llamada
+      2. BD Turso — fuente de verdad del contador diario
+      3. Round-Robin — fallback si BD no está disponible
+    """
     if not _td_keys:
         return None, None
+
+    import time as _time
+    now = _time.time()
+
+    with _uso_cache_lock:
+        if now - _uso_cache_ts > _USO_CACHE_TTL:
+            fresh = _cargar_uso_desde_bd()
+            if fresh or _uso_cache:          # actualiza si hay datos nuevos
+                _uso_cache.clear()
+                _uso_cache.update(fresh)
+            globals()['_uso_cache_ts'] = now
+
+        if _uso_cache:
+            # Elegir la key disponible con menor uso
+            alias, key = min(
+                _td_keys,
+                key=lambda ak: _uso_cache.get(ak[0], 0)
+            )
+            return alias, key
+
+    # Fallback: round-robin (BD no disponible)
     with _td_cycle_lock:
         return next(_td_cycle)
 
+
 def _registrar_uso_key(alias: str):
-    """Persiste el uso de la key en BD de forma no bloqueante (best-effort)."""
+    """Persiste el uso de la key en BD e invalida el cache local (best-effort)."""
     try:
         from adapters.database import DatabaseManager
-        db = DatabaseManager()
-        total = db.incrementar_uso_key(alias)
-        if total % 100 == 0:  # Log cada 100 peticiones para no saturar stdout
-            print(f"  📊 [quota] {alias}: {total} peticiones hoy")
+        total = DatabaseManager().incrementar_uso_key(alias)
+        # Actualizar cache local inmediatamente para que la próxima elección
+        # ya refleje este incremento sin esperar al TTL de 60s
+        with _uso_cache_lock:
+            _uso_cache[alias] = total
+            if total % 50 == 0:
+                print(f"  📊 [quota] {alias}: {total} peticiones hoy")
     except Exception:
         pass  # Nunca debe bloquear la petición de datos
 
