@@ -141,11 +141,17 @@ def _next_td_key() -> tuple:
             globals()['_uso_cache_ts'] = now
 
         if _uso_cache:
-            # Elegir la key disponible con menor uso
-            alias, key = min(
-                _td_keys,
-                key=lambda ak: _uso_cache.get(ak[0], 0)
-            )
+            # Descartar keys que ya alcanzaron el límite diario (≥800 peticiones)
+            disponibles = [
+                ak for ak in _td_keys
+                if _uso_cache.get(ak[0], 0) < 800
+            ]
+            if not disponibles:
+                # Todas agotadas — loguear y usar la de menor uso igualmente
+                # (mejor devolver algo que fallar, la API devolverá error de cuota)
+                print("  ⚠️ [quota] TODAS las API keys han alcanzado el límite de 800/día")
+                disponibles = _td_keys
+            alias, key = min(disponibles, key=lambda ak: _uso_cache.get(ak[0], 0))
             return alias, key
 
     # Fallback: round-robin (BD no disponible)
@@ -162,8 +168,10 @@ def _registrar_uso_key(alias: str):
         # ya refleje este incremento sin esperar al TTL de 60s
         with _uso_cache_lock:
             _uso_cache[alias] = total
-            if total % 50 == 0:
-                print(f"  📊 [quota] {alias}: {total} peticiones hoy")
+            if total >= 800:
+                print(f"  🚫 [quota] {alias}: {total}/800 — KEY AGOTADA, descartada hasta mañana")
+            elif total % 50 == 0:
+                print(f"  📊 [quota] {alias}: {total}/800 peticiones hoy")
     except Exception:
         pass  # Nunca debe bloquear la petición de datos
 
