@@ -341,9 +341,9 @@ class GoldDetector5M(BaseDetector):
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo se consulta si estamos en zona de desempate (score cerca del umbral)
             # Evita llamadas innecesarias a la API y mantiene el intervalo bajo
-            _umbral_conf = 8  # igual que _umbral_fue antes del ajuste DXY/vol
-            _necesita_conf_sell = 4 <= score_sell < _umbral_conf
-            _necesita_conf_buy  = 4 <= score_buy  < _umbral_conf
+            _umbral_conf = 10  # igual que _umbral_fue antes del ajuste DXY/vol
+            _necesita_conf_sell = 5 <= score_sell < _umbral_conf
+            _necesita_conf_buy  = 5 <= score_buy  < _umbral_conf
             if _necesita_conf_sell or _necesita_conf_buy:
                 try:
                     df_1m, _ = get_ohlcv(params['ticker_yf'], period='1d', interval='1m')
@@ -377,8 +377,8 @@ class GoldDetector5M(BaseDetector):
             max_score = 30  # +2 posibles del confirmador 1M
 
             # Umbrales 5M — solo FUERTE llega a Telegram
-            senal_sell_fuerte = score_sell >= 8
-            senal_buy_fuerte  = score_buy  >= 8
+            senal_sell_fuerte = score_sell >= 10
+            senal_buy_fuerte  = score_buy  >= 10
 
             # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
             dxy_bias = get_dxy_bias()
@@ -399,7 +399,7 @@ class GoldDetector5M(BaseDetector):
                 logger.info(f"  ⚠️ [5M] Volumen bajo ({vol_actual:.0f} < {vol_medio * params['vol_mult']:.0f}) — scores penalizados -3")
 
             # Recalcular umbrales tras ajuste DXY y filtro de volumen (con umbral adaptativo)
-            _umbral_fue = self.umbral_adaptativo(8, atr, atr_media)
+            _umbral_fue = self.umbral_adaptativo(10, atr, atr_media)
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
@@ -492,7 +492,7 @@ class GoldDetector5M(BaseDetector):
             # Se envía aunque confluencia/R:R/señal-activa lo bloqueen después.
             # Guarda señal en BD para que el monitor de P&L haga seguimiento TP/SL.
             # Anti-spam: una vez por vela (5 min) por dirección.
-            _UMBRAL_AVISO = 5
+            _UMBRAL_AVISO = 6
             _simbolo_db_5m = f"{simbolo}_5M"
             if self.en_sesion_optima():
                 if score_sell >= _UMBRAL_AVISO and not ya_enviada('aviso_sell'):
