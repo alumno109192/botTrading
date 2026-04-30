@@ -11,9 +11,19 @@ def main():
     print("🔍 Diagnóstico de TwelveData API Keys")
     print("=" * 60)
     
-    # Cargar keys desde .env
-    from dotenv import load_dotenv
-    load_dotenv()
+    # Cargar keys desde .env del proyecto
+    import sys
+    import os
+    # Asegurar que el path incluye el directorio raíz
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+    
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        print("⚠️ python-dotenv no disponible, usando variables de entorno del sistema")
     
     keys_config = [
         ('key1',  'TWELVE_DATA_API_KEY'),
