@@ -1,10 +1,13 @@
 """
 data_provider.py — Fuente de datos OHLCV con prioridad de fuentes
 
-Prioridad (de mejor a peor):
-  1. Twelve Data (Grow 55: ∞ req/día, 55/min) → TWELVE_DATA_API_KEY en .env
-  2. Polygon.io  (de pago, ~$29/mes, tiempo real) → POLYGON_API_KEY en .env
-  3. yfinance fallback (gratuito, 15 min delay en intraday)
+🔥 MODO DIRECT FETCH — Plan Grow 55 (peticiones ilimitadas)
+    Con plan de pago, consultamos TwelveData directamente sin cache.
+    Datos siempre frescos, sin preocupación por límites API.
+
+Prioridad:
+  1. Twelve Data (Grow 55: ∞ req/día, 55/min) → directo, tiempo real
+  2. yfinance fallback (gratuito, 15 min delay) → si TD falla
 
 Uso:
     from adapters.data_provider import get_ohlcv
@@ -15,10 +18,9 @@ Uso:
 Plan actual: Grow 55 (32€/mes) — Peticiones ILIMITADAS, solo límite 55 req/min
     https://twelvedata.com/pricing
 
-Keys adicionales (opcional para redundancia):
-    Añadir al .env:
-        TWELVE_DATA_API_KEY=clave_principal
-        TWELVE_DATA_API_KEY_2=clave_backup  ← opcional
+Configuración .env:
+    TWELVE_DATA_API_KEY=tu_key_grow_55
+    DIRECT_FETCH_MODE=true  ← activa consulta directa (sin cache/BD)
 """
 import os
 import itertools
@@ -387,37 +389,39 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
         return df_db, delayed_db
 
     # 3️⃣ Twelve Data (tiempo real) — soporta intraday y 1d
-    if interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
-        for _ in range(len(_td_keys)):
-            alias, key = _next_td_key()
-            if not key:
-                break
-            # Proactivo: reservar slot de minuto antes de llamar a la API
-            if not _reserve_minute_slot(alias):
-                print(f"  🚦 [quota] {alias}: cupo minuto lleno — rotando")
-                continue
-            df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
+        if interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
+            for _ in range(len(_td_keys)):
+                alias, key = _next_td_key()
+                if not key:
+                    break
+                # Proactivo: reservar slot de minuto antes de llamar a la API
+                if not _reserve_minute_slot(alias):
+                    print(f"  🚦 [quota] {alias}: cupo minuto lleno — rotando")
+                    continue
+                df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
+                if ok and not df.empty and len(df) >= 10:
+                    _registrar_uso_key(alias)
+                    print(f"  ✅ [legacy] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                    _guardar_en_db(ticker_yf, interval, df)
+                    with _intraday_cache_lock:
+                        _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
+                    return df, False
+                print(f"  ⚠️ [legacy] Twelve Data {alias} falló — rotando a siguiente key")
+
+        # 4️⃣ Polygon.io (de pago) — solo en modo legacy
+        if interval in _INTRADAY_INTERVALS and POLYGON_API_KEY and ticker_yf in _TICKER_MAP_POLYGON:
+            df, ok = _get_polygon(ticker_yf, period, interval)
             if ok and not df.empty and len(df) >= 10:
-                _registrar_uso_key(alias)
-                print(f"  ✅ [data_provider] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                print(f"  ✅ [legacy] Polygon.io — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
                 _guardar_en_db(ticker_yf, interval, df)
                 with _intraday_cache_lock:
                     _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
                 return df, False
-            print(f"  ⚠️ [data_provider] Twelve Data {alias} falló — rotando a siguiente key")
+            print(f"  ⚠️ [legacy] Polygon.io falló — fallback a yfinance")
 
-    # 4️⃣ Polygon.io (de pago)
-    if interval in _INTRADAY_INTERVALS and POLYGON_API_KEY and ticker_yf in _TICKER_MAP_POLYGON:
-        df, ok = _get_polygon(ticker_yf, period, interval)
-        if ok and not df.empty and len(df) >= 10:
-            print(f"  ✅ [data_provider] Polygon.io — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
-            _guardar_en_db(ticker_yf, interval, df)
-            with _intraday_cache_lock:
-                _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
-            return df, False
-        print(f"  ⚠️ [data_provider] Polygon.io falló — fallback a yfinance")
-
-    # 5️⃣ yfinance (fallback final, delay 15 min en intraday)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # FALLBACK FINAL: yfinance (delay 15 min en intraday)
+    # ═══════════════════════════════════════════════════════════════════════════
     print(f"  🔄 [data_provider] Todas las fuentes premium fallaron — usando yfinance (delay 15 min)")
     df, ok = _get_yfinance(ticker_yf, period, interval)
     if ok and not df.empty and len(df) >= 10:
