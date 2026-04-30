@@ -761,6 +761,10 @@ def main():
     ciclo = 0
     while True:
         ciclo += 1
+        
+        # Verificar si hay eventos finalizados para notificar reanudación
+        verificar_y_notificar_reanudacion()
+        
         ahora_utc = datetime.now(timezone.utc)
         if ahora_utc.weekday() == 5:
             from datetime import timedelta
