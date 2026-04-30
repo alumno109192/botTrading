@@ -128,8 +128,8 @@ class GoldDetector4H(BaseDetector):
             df, is_delayed = get_ohlcv(params['ticker_yf'], period='60d', interval='4h')
             if is_delayed:
                 logger.warning("  ⚠️  [4H] Datos con 15 min de delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
-            if df.empty or len(df) < 200:
-                logger.warning(f"⚠️ Datos insuficientes para {simbolo}")
+            if df.empty or len(df) < 50:
+                logger.warning(f"⚠️ Datos insuficientes para {simbolo} 4H (mínimo 50 velas, hay {len(df)})")
                 return
         except Exception as e:
             logger.error(f"❌ Error descargando {simbolo}: {e}")

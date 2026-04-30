@@ -114,8 +114,7 @@ class GoldDetector1H(BaseDetector):
         logger.info(f"\n🔍 Analizando {simbolo} [1H intradía]...")
 
         try:
-            df_5m, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
-            df = df_5m.resample('1h').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
+            df, is_delayed = get_ohlcv(params['ticker_yf'], period='30d', interval='1h')
             if is_delayed:
                 logger.warning("  ⚠️  [1H] Datos con 15 min de delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
             if df.empty or len(df) < 80:
