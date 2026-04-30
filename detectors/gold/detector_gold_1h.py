@@ -155,12 +155,23 @@ class GoldDetector1H(BaseDetector):
         _atr_raw = float(df['atr'].iloc[-2])
         if _atr_raw > 80:
             logger.warning(f"  ⚠️ [1H] ATR anómalo ({_atr_raw:.1f}) — posible contaminación de datos, saltando ciclo")
-            # Invalidar cache para forzar recarga limpia en el siguiente ciclo
+            logger.warning(f"  🧹 [1H] Limpiando cache memoria y BD contaminada...")
+            
+            # Invalidar cache memoria para forzar recarga limpia en el siguiente ciclo
             from adapters.data_provider import _intraday_cache, _intraday_cache_lock
             with _intraday_cache_lock:
                 claves = [k for k in _intraday_cache if k[0] == params['ticker_yf']]
                 for k in claves:
                     _intraday_cache.pop(k, None)
+                logger.warning(f"  🗑️ [1H] Cache memoria limpiado ({len(claves)} entradas)")
+            
+            # Purgar datos de BD para 1H — forzará descarga fresca desde TwelveData
+            try:
+                self.db.purgar_velas_antiguas(params['ticker_yf'], '1h', dias_max=0)
+                logger.warning(f"  🗑️ [1H] BD limpiada — próximo ciclo descargará datos frescos")
+            except Exception as e:
+                logger.error(f"  ⚠️ [1H] Error limpiando BD: {e}")
+            
             return
         ema_fast = row['ema_fast']; ema_slow = row['ema_slow']; ema_trend = row['ema_trend']
         atr = row['atr']; vol_avg = row['vol_avg']
