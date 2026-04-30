@@ -64,10 +64,12 @@ print(f'aprox_soporte: {aprox_sop}')
 
 # tf_bias
 from services import tf_bias
-bias = tf_bias.get_sesgo_actual('XAUUSD', '1D')
+bias_1d = tf_bias.obtener_sesgo('XAUUSD', '1D')
+bias_4h = tf_bias.obtener_sesgo('XAUUSD', '4H')
 print(f'\n--- TF BIAS ---')
-print(f'Sesgo 1D: {bias}')
-ok_sell, desc_sell = tf_bias.verificar_confluencia('XAUUSD', '4H', tf_bias.BIAS_BEARISH)
-ok_buy,  desc_buy  = tf_bias.verificar_confluencia('XAUUSD', '4H', tf_bias.BIAS_BULLISH)
+print(f'Sesgo 1D: {bias_1d}')
+print(f'Sesgo 4H: {bias_4h}')
+ok_sell, desc_sell = tf_bias.verificar_confluencia('XAUUSD', '4H', 'SELL')
+ok_buy,  desc_buy  = tf_bias.verificar_confluencia('XAUUSD', '4H', 'BUY')
 print(f'Confluencia SELL ok: {ok_sell} — {desc_sell[:120]}')
 print(f'Confluencia BUY  ok: {ok_buy}  — {desc_buy[:120]}')

@@ -9,13 +9,14 @@ MANTENIMIENTO:
     Fuente de referencia: https://www.forexfactory.com/calendar (filtrar: USD, Impact=High)
 
 Uso:
-    from services.economic_calendar import hay_evento_impacto
-    bloqueado, descripcion = hay_evento_impacto(ventana_minutos=60)
+    from services.economic_calendar import debe_bloquear_trading
+    bloqueado, descripcion, minutos = debe_bloquear_trading(90)
     if bloqueado:
-        print(f"⚠️ Señal bloqueada: evento próximo → {descripcion}")
+        print(f"⚠️ Trading bloqueado: {descripcion}")
         return
 """
 import bisect
+import time
 from datetime import datetime, timezone, timedelta
 
 # ══════════════════════════════════════════════════════════════════
@@ -148,6 +149,22 @@ def _alertar_calendario_expirado():
         print(f"⚠️ No se pudo enviar alerta de calendario: {e}")
 
 
+# ── EVENTOS CRÍTICOS QUE BLOQUEAN TRADING ────────────────────────────────
+# Palabras clave de eventos que DEBEN bloquear completamente las señales
+EVENTOS_CRITICOS = [
+    'FOMC',
+    'Powell',
+    'NFP',
+    'CPI',
+    'PIB',
+    'PCE inflación',
+]
+
+def es_evento_critico(descripcion: str) -> bool:
+    """Verifica si un evento es crítico y debe bloquear trading."""
+    return any(palabra in descripcion for palabra in EVENTOS_CRITICOS)
+
+
 def hay_evento_impacto(ventana_minutos: int = 60) -> tuple:
     """
     Comprueba si hay un evento USD de alto impacto en los próximos o últimos
@@ -237,6 +254,105 @@ def obtener_aviso_macro(ventana_minutos: int, tf: str, simbolo: str = '') -> str
         print(f"  ⚠️ No se pudo guardar macro_event_log: {_e}")
 
     return descripcion
+
+
+def debe_bloquear_trading(ventana_minutos: int = 90) -> tuple:
+    """
+    Verifica si hay un evento CRÍTICO que debe bloquear completamente el trading.
+    
+    Eventos críticos: FOMC, Powell, NFP, CPI, PIB, PCE
+    
+    Args:
+        ventana_minutos: Ventana de bloqueo (default 90 min = 1.5h antes/después)
+    
+    Returns:
+        (debe_bloquear: bool, descripcion: str, minutos_hasta_evento: int)
+    """
+    try:
+        hay_evento, descripcion = hay_evento_impacto(ventana_minutos)
+    except RuntimeError:
+        # Calendario expirado, no bloquear
+        return False, "", 0
+    
+    if not hay_evento:
+        return False, "", 0
+    
+    # Verificar si es evento crítico
+    if not es_evento_critico(descripcion):
+        return False, descripcion, 0
+    
+    # Calcular minutos hasta el evento
+    ahora = datetime.now(timezone.utc)
+    for año, mes, dia, hora, minuto, desc in _EVENTOS_SORTED:
+        if desc == descripcion:
+            evento_dt = datetime(año, mes, dia, hora, minuto, tzinfo=timezone.utc)
+            diferencia = evento_dt - ahora
+            minutos = int(diferencia.total_seconds() / 60)
+            return True, descripcion, minutos
+    
+    return True, descripcion, 0
+
+
+# Cache para alertas enviadas (evitar spam)
+_alertas_bloqueo_enviadas = {}
+
+def enviar_alerta_bloqueo(descripcion: str, minutos: int, tfs: list = None):
+    """
+    Envía alerta a Telegram informando del bloqueo de trading.
+    
+    Args:
+        descripcion: Descripción del evento
+        minutos: Minutos hasta el evento (negativo si ya pasó)
+        tfs: Lista de timeframes afectados
+    """
+    global _alertas_bloqueo_enviadas
+    
+    # Evitar duplicados (max 1 alerta cada 30 min por evento)
+    clave = f"{descripcion}"
+    ultimo_envio = _alertas_bloqueo_enviadas.get(clave, 0)
+    if time.time() - ultimo_envio < 1800:  # 30 minutos
+        return
+    
+    _alertas_bloqueo_enviadas[clave] = time.time()
+    
+    # Construir mensaje
+    if minutos > 0:
+        tiempo_str = f"en {minutos} minutos"
+    elif minutos == 0:
+        tiempo_str = "AHORA"
+    else:
+        tiempo_str = f"hace {abs(minutos)} minutos"
+    
+    tfs_str = " / ".join(tfs) if tfs else "TODOS"
+    
+    mensaje = f"""
+🚫 <b>TRADING BLOQUEADO</b>
+
+⚠️ <b>Evento crítico detectado:</b>
+{descripcion}
+
+⏰ <b>Timing:</b> {tiempo_str}
+
+🛡️ <b>Acción tomada:</b>
+• No se generarán nuevas señales
+• Timeframes afectados: {tfs_str}
+• Ventana de bloqueo: ±90 minutos
+
+💡 <b>Señales activas:</b>
+Las posiciones abiertas siguen activas.
+Considera cerrarlas manualmente si hay alta exposición.
+
+━━━━━━━━━━━━━━━━━━━━
+⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
+🔄 El trading se reanudará automáticamente después del evento.
+"""
+    
+    try:
+        from adapters.telegram import enviar_telegram
+        enviar_telegram(mensaje)
+        print(f"  🚫 Alerta de bloqueo enviada a Telegram: {descripcion}")
+    except Exception as e:
+        print(f"  ⚠️ Error enviando alerta de bloqueo: {e}")
 
 
 def proximos_eventos(n: int = 5) -> list:

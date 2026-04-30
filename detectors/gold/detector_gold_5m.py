@@ -8,7 +8,7 @@ from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
 from services.cot_bias import get_cot_bias, ajustar_score_por_cot
 from services.open_interest import get_oi_bias, ajustar_score_por_oi
-from services.economic_calendar import obtener_aviso_macro
+from services.economic_calendar import obtener_aviso_macro, debe_bloquear_trading, enviar_alerta_bloqueo
 from adapters.data_provider import get_ohlcv
 import pandas as pd
 import numpy as np
@@ -55,9 +55,10 @@ SIMBOLOS = {
         'sr_lookback':        100,          # 100 velas 5M ≈ 8 horas de historia
         'sr_zone_mult':       0.8,          # ancho de zona = atr × 0.8
         # TPs calculados automáticamente como múltiplo de ATR — sin mantenimiento manual
-        'atr_tp1_mult':       1.0,          # TP1: 1.0× ATR 5M (~$15-25 desde entry)
-        'atr_tp2_mult':       2.0,          # TP2: 2.0× ATR
-        'atr_tp3_mult':       3.0,          # TP3: 3.0× ATR (objetivo micro-scalp amplio)
+        'atr_tp1_mult':       2.0,          # TP1: 2.0× ATR 5M (~$8-10 desde entry)
+        'atr_tp2_mult':       3.0,          # TP2: 3.0× ATR
+        'atr_tp3_mult':       4.0,          # TP3: 4.0× ATR (objetivo micro-scalp amplio)
+        'atr_min':            5.0,          # ATR mínimo $5 para evitar señales en baja volatilidad
         'limit_offset_pct':   0.08,         # Offset mínimo (micro-scalp)
         'anticipar_velas':    2,
         'cancelar_dist':      1.0,
@@ -68,7 +69,7 @@ SIMBOLOS = {
         'ema_slow_len':       8,
         'ema_trend_len':      21,
         'atr_length':         7,
-        'atr_sl_mult':        1.0,          # SL muy ajustado
+        'atr_sl_mult':        1.5,          # SL más amplio para dar espacio
         'vol_mult':           1.3,
         'min_score_scalping': 3,
         'max_perdidas_dia':   3,
@@ -412,20 +413,25 @@ class GoldDetector5M(BaseDetector):
             cancelar_sell = (close < zsl) or (rsi < 28)
             cancelar_buy  = (close > zrh) or (rsi > 72)
 
+            # ── ATR mínimo para evitar señales en baja volatilidad ──
+            atr_efectivo = max(atr, params.get('atr_min', 5.0))
+            if atr < params.get('atr_min', 5.0):
+                logger.warning(f"  ⚠️ [5M] ATR bajo ({atr:.2f} < {params.get('atr_min', 5.0)}) — usando ATR mínimo {atr_efectivo:.2f}")
+
             asm = params['atr_sl_mult']
-            sl_venta  = close + (atr * asm)
-            sl_compra = close - (atr * asm)
+            sl_venta  = close + (atr_efectivo * asm)
+            sl_compra = close - (atr_efectivo * asm)
 
             offset_pct = params['limit_offset_pct']
             sell_limit = close * (1 + offset_pct / 100)
             buy_limit  = close * (1 - offset_pct / 100)
 
-            tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
-            tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
-            tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
-            tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
-            tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
-            tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
+            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'], 2)
+            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'], 2)
+            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'], 2)
+            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'], 2)
+            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'], 2)
+            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'], 2)
 
             def rr(limit, sl, tp):
                 return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
@@ -492,26 +498,22 @@ class GoldDetector5M(BaseDetector):
             # Se envía aunque confluencia/R:R/señal-activa lo bloqueen después.
             # Guarda señal en BD para que el monitor de P&L haga seguimiento TP/SL.
             # Anti-spam: una vez por vela (5 min) por dirección.
+            # ⚠️ FILTRO R:R MÍNIMO 1.5:1 para evitar señales poco rentables
             _UMBRAL_AVISO = 6
+            _RR_MINIMO_SETUP = 1.5
             _simbolo_db_5m = f"{simbolo}_5M"
             if self.en_sesion_optima():
                 if score_sell >= _UMBRAL_AVISO and not ya_enviada('aviso_sell'):
-                    _msg_aviso = (
-                        f"⚡ <b>📛 SETUP SELL detectado — GOLD 5M</b>\n"
-                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                        f"💰 Precio:  ${round(close, 2)}\n"
-                        f"🛑 SL ref:  ${round(sl_venta, 2)}  ({round(sl_venta - close, 1):+.1f} pts)\n"
-                        f"🎯 TP1 ref: ${tp1_v}  ({round(close - tp1_v, 1):+.1f} pts)\n"
-                        f"🎯 TP2 ref: ${tp2_v}  ({round(close - tp2_v, 1):+.1f} pts)\n"
-                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                        f"📊 Score: {score_sell}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
-                        f"⏱️ 5M  📅 {fecha}"
-                    )
-                    self.enviar(_msg_aviso)
-                    marcar_enviada('aviso_sell')
-                    if self.db and not self.db.existe_senal_activa_tf(_simbolo_db_5m):
-                        try:
-                            self._guardar_senal({
+                    # Verificar R:R antes de enviar SETUP
+                    rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
+                    if rr_sell_tp1 < _RR_MINIMO_SETUP:
+                        logger.warning(f"  ⚠️ [5M] SETUP SELL bloqueado — R:R {rr_sell_tp1}:1 < {_RR_MINIMO_SETUP}:1 mínimo")
+                    else:
+                        # ── Guardar señal PRIMERO para obtener ID ──
+                        senal_id = None
+                        if self.db and not self.db.existe_senal_activa_tf(_simbolo_db_5m):
+                            try:
+                                senal_id = self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc),
                                 'simbolo': _simbolo_db_5m,
                                 'direccion': 'VENTA',
@@ -523,28 +525,36 @@ class GoldDetector5M(BaseDetector):
                                 'patron_velas': 'aviso_setup_temprano',
                                 'version_detector': '5M-AVISO-v1'
                             })
-                            logger.info(f"  ⚡ [5M] AVISO SETUP SELL — señal guardada en BD (score {score_sell})")
+                            logger.info(f"  ⚡ [5M] AVISO SETUP SELL — señal guardada en BD (ID {senal_id}, score {score_sell})")
                         except Exception as _e_av:
                             logger.error(f"  ⚠️ Error guardando aviso SELL BD: {_e_av}")
+                        
+                        # ── Enviar mensaje DESPUÉS (incluirá ID automáticamente) ──
+                        _msg_aviso = (
+                            f"⚡ <b>📛 SETUP SELL detectado — GOLD 5M</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"💰 Precio:  ${round(close, 2)}\n"
+                            f"🛑 SL ref:  ${round(sl_venta, 2)}  ({round(sl_venta - close, 1):+.1f} pts)\n"
+                            f"🎯 TP1 ref: ${tp1_v}  ({round(close - tp1_v, 1):+.1f} pts)  R:R {rr_sell_tp1}:1\n"
+                            f"🎯 TP2 ref: ${tp2_v}  ({round(close - tp2_v, 1):+.1f} pts)\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"📊 Score: {score_sell}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
+                            f"⏱️ 5M  📅 {fecha}"
+                        )
+                        self.enviar(_msg_aviso)
+                        marcar_enviada('aviso_sell')
+                        
+                        if not senal_id:
+                            logger.info(f"  ⚡ [5M] AVISO SETUP SELL enviado (score {score_sell}) — BD ya tiene señal activa")
+                    rr_buy_tp1 = rr(buy_limit, sl_compra, tp1_c)
+                    if rr_buy_tp1 < _RR_MINIMO_SETUP:
+                        logger.warning(f"  ⚠️ [5M] SETUP BUY bloqueado — R:R {rr_buy_tp1}:1 < {_RR_MINIMO_SETUP}:1 mínimo")
                     else:
-                        logger.info(f"  ⚡ [5M] AVISO SETUP SELL enviado (score {score_sell}) — BD ya tiene señal activa")
-                if score_buy >= _UMBRAL_AVISO and not ya_enviada('aviso_buy'):
-                    _msg_aviso = (
-                        f"⚡ <b>📗 SETUP BUY detectado — GOLD 5M</b>\n"
-                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                        f"💰 Precio:  ${round(close, 2)}\n"
-                        f"🛑 SL ref:  ${round(sl_compra, 2)}  ({round(sl_compra - close, 1):+.1f} pts)\n"
-                        f"🎯 TP1 ref: ${tp1_c}  ({round(tp1_c - close, 1):+.1f} pts)\n"
-                        f"🎯 TP2 ref: ${tp2_c}  ({round(tp2_c - close, 1):+.1f} pts)\n"
-                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                        f"📊 Score: {score_buy}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
-                        f"⏱️ 5M  📅 {fecha}"
-                    )
-                    self.enviar(_msg_aviso)
-                    marcar_enviada('aviso_buy')
-                    if self.db and not self.db.existe_senal_activa_tf(_simbolo_db_5m):
-                        try:
-                            self._guardar_senal({
+                        # ── Guardar señal PRIMERO para obtener ID ──
+                        senal_id = None
+                        if self.db and not self.db.existe_senal_activa_tf(_simbolo_db_5m):
+                            try:
+                                senal_id = self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc),
                                 'simbolo': _simbolo_db_5m,
                                 'direccion': 'COMPRA',
@@ -556,11 +566,27 @@ class GoldDetector5M(BaseDetector):
                                 'patron_velas': 'aviso_setup_temprano',
                                 'version_detector': '5M-AVISO-v1'
                             })
-                            logger.info(f"  ⚡ [5M] AVISO SETUP BUY — señal guardada en BD (score {score_buy})")
+                            logger.info(f"  ⚡ [5M] AVISO SETUP BUY — señal guardada en BD (ID {senal_id}, score {score_buy})")
                         except Exception as _e_av:
                             logger.error(f"  ⚠️ Error guardando aviso BUY BD: {_e_av}")
-                    else:
-                        logger.info(f"  ⚡ [5M] AVISO SETUP BUY enviado (score {score_buy}) — BD ya tiene señal activa")
+                        
+                        # ── Enviar mensaje DESPUÉS (incluirá ID automáticamente) ──
+                        _msg_aviso = (
+                            f"⚡ <b>📗 SETUP BUY detectado — GOLD 5M</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"💰 Precio:  ${round(close, 2)}\n"
+                            f"🛑 SL ref:  ${round(sl_compra, 2)}  ({round(sl_compra - close, 1):+.1f} pts)\n"
+                            f"🎯 TP1 ref: ${tp1_c}  ({round(tp1_c - close, 1):+.1f} pts)  R:R {rr_buy_tp1}:1\n"
+                            f"🎯 TP2 ref: ${tp2_c}  ({round(tp2_c - close, 1):+.1f} pts)\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"📊 Score: {score_buy}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
+                            f"⏱️ 5M  📅 {fecha}"
+                        )
+                        self.enviar(_msg_aviso)
+                        marcar_enviada('aviso_buy')
+                        
+                        if not senal_id:
+                            logger.info(f"  ⚡ [5M] AVISO SETUP BUY enviado (score {score_buy}) — BD ya tiene señal activa")
 
             if senal_sell_fuerte:
                 _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BEARISH)

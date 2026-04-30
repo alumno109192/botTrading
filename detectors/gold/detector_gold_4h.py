@@ -12,7 +12,7 @@ from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
 from services.cot_bias import get_cot_bias, ajustar_score_por_cot
 from services.open_interest import get_oi_bias, ajustar_score_por_oi
-from services.economic_calendar import obtener_aviso_macro
+from services.economic_calendar import obtener_aviso_macro, debe_bloquear_trading, enviar_alerta_bloqueo
 
 # Cargar variables de entorno
 load_dotenv()
@@ -113,7 +113,14 @@ class GoldDetector4H(BaseDetector):
     def analizar(self, simbolo, params):
         logger.info(f"\n🔍 Analizando {simbolo} [4H]...")
 
-        # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
+        # ── Bloqueo por eventos críticos (FOMC, Powell, NFP, CPI) ──
+        bloqueado, desc_evento, minutos = debe_bloquear_trading(90)
+        if bloqueado:
+            enviar_alerta_bloqueo(desc_evento, minutos, ['4H'])
+            logger.warning(f"🚫 [4H] Trading bloqueado por evento: {desc_evento}")
+            return
+        
+        # ── Aviso calendario económico (eventos menores) ──
         self.aviso_macro = obtener_aviso_macro(60, '4H', simbolo)
 
         # Descargar datos 4H
