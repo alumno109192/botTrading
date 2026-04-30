@@ -363,36 +363,61 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 
     El DataFrame siempre tiene columnas: Open, High, Low, Close, Volume
     """
-    # Mínimo de velas aceptables por intervalo (evita cachear resultados insuficientes)
+    # Mínimo de velas aceptables por intervalo
     _MIN_VELAS = {'5m': 100, '15m': 50, '1h': 40, '4h': 20, '1d': 30, '1wk': 20}
 
-    # 1️⃣ Cache en memoria (TTL proporcional al intervalo) — la más rápida
-    if interval in _INTRADAY_INTERVALS:
-        _ck = (ticker_yf, period, interval)
-        _ttl = _CACHE_TTL_MAP.get(interval, _INTRADAY_TTL)
-        with _intraday_cache_lock:
-            _e = _intraday_cache.get(_ck)
-            if _e and (datetime.now(timezone.utc) - _e['ts']) < _ttl:
-                _min_v = _MIN_VELAS.get(interval, 10)
-                if len(_e['df']) >= _min_v:
-                    print(f"  💾 [data_provider] Cache mem hit — {ticker_yf} {interval} ({len(_e['df'])} velas)")
-                    return _e['df'].copy(), _e['delayed']
-                else:
-                    # Cache insuficiente: invalidar y refrescar
-                    print(f"  ⚠️ [data_provider] Cache mem insuficiente ({len(_e['df'])} velas) — {ticker_yf} {interval}, refrescando")
-                    _intraday_cache.pop(_ck, None)
+    # ══════════════════════════════════════════════════════════════════════════════
+    # MODO DIRECT FETCH: Consulta directa a TwelveData (plan ilimitado)
+    # ══════════════════════════════════════════════════════════════════════════════
+    if DIRECT_FETCH_MODE and interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
+        for _ in range(len(_td_keys)):
+            alias, key = _next_td_key()
+            if not key:
+                break
+            # Proactivo: reservar slot de minuto antes de llamar a la API
+            if not _reserve_minute_slot(alias):
+                print(f"  🚦 [quota] {alias}: cupo minuto lleno — rotando")
+                continue
+            df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
+            if ok and not df.empty and len(df) >= 10:
+                _registrar_uso_key(alias)
+                print(f"  🔥 [DIRECT] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
+                return df, False
+            print(f"  ⚠️ [DIRECT] Twelve Data {alias} falló — rotando a siguiente key")
+        
+        # Si todas las keys de TD fallaron, ir a fallback yfinance
+        print(f"  ⚠️ [DIRECT] Todas las keys TD fallaron — fallback a yfinance")
 
-    # 2️⃣ Base de datos local (persistente, TTL por intervalo)
-    df_db, delayed_db = _get_from_db(ticker_yf, period, interval)
-    if df_db is not None and not df_db.empty:
+    # ══════════════════════════════════════════════════════════════════════════════
+    # MODO LEGACY: Sistema de 3 capas (cache → BD → API)
+    # ══════════════════════════════════════════════════════════════════════════════
+    if not DIRECT_FETCH_MODE:
+        # 1️⃣ Cache en memoria (TTL proporcional al intervalo)
         if interval in _INTRADAY_INTERVALS:
+            _ck = (ticker_yf, period, interval)
+            _ttl = _CACHE_TTL_MAP.get(interval, _INTRADAY_TTL)
             with _intraday_cache_lock:
-                _intraday_cache[(ticker_yf, period, interval)] = {
-                    'df': df_db.copy(), 'ts': datetime.now(timezone.utc), 'delayed': delayed_db
-                }
-        return df_db, delayed_db
+                _e = _intraday_cache.get(_ck)
+                if _e and (datetime.now(timezone.utc) - _e['ts']) < _ttl:
+                    _min_v = _MIN_VELAS.get(interval, 10)
+                    if len(_e['df']) >= _min_v:
+                        print(f"  💾 [cache] Cache mem hit — {ticker_yf} {interval} ({len(_e['df'])} velas)")
+                        return _e['df'].copy(), _e['delayed']
+                    else:
+                        print(f"  ⚠️ [cache] Cache insuficiente ({len(_e['df'])} velas) — refrescando")
+                        _intraday_cache.pop(_ck, None)
 
-    # 3️⃣ Twelve Data (tiempo real) — soporta intraday y 1d
+        # 2️⃣ Base de datos local (persistente, TTL por intervalo)
+        df_db, delayed_db = _get_from_db(ticker_yf, period, interval)
+        if df_db is not None and not df_db.empty:
+            if interval in _INTRADAY_INTERVALS:
+                with _intraday_cache_lock:
+                    _intraday_cache[(ticker_yf, period, interval)] = {
+                        'df': df_db.copy(), 'ts': datetime.now(timezone.utc), 'delayed': delayed_db
+                    }
+            return df_db, delayed_db
+
+        # 3️⃣ Twelve Data (tiempo real) — soporta intraday y 1d
         if interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
             for _ in range(len(_td_keys)):
                 alias, key = _next_td_key()
