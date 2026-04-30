@@ -143,6 +143,19 @@ class GoldDetector1H(BaseDetector):
         row  = df.iloc[-2]; prev = df.iloc[-3]; p2 = df.iloc[-4]
         close = row['Close']; high = row['High']; low = row['Low']; open_ = row['Open']; vol = row['Volume']
         rsi = row['rsi']; rsi_prev = prev['rsi']
+
+        # ── Guardia: ATR anómalo indica datos sucios (p.ej. 1D colado en cache 1H) ──
+        # ATR 1H para XAUUSD normal: $5-$40. Si supera $80 los TPs/SL son erróneos.
+        _atr_raw = float(df['atr'].iloc[-2])
+        if _atr_raw > 80:
+            logger.warning(f"  ⚠️ [1H] ATR anómalo ({_atr_raw:.1f}) — posible contaminación de datos, saltando ciclo")
+            # Invalidar cache para forzar recarga limpia en el siguiente ciclo
+            from adapters.data_provider import _intraday_cache, _intraday_cache_lock
+            with _intraday_cache_lock:
+                claves = [k for k in _intraday_cache if k[0] == params['ticker_yf']]
+                for k in claves:
+                    _intraday_cache.pop(k, None)
+            return
         ema_fast = row['ema_fast']; ema_slow = row['ema_slow']; ema_trend = row['ema_trend']
         atr = row['atr']; vol_avg = row['vol_avg']
         atr_media = float(df['atr'].rolling(20).mean().iloc[-2])

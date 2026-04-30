@@ -113,7 +113,7 @@ def obtener_precio_actual(simbolo: str) -> tuple | None:
     return _fetch_precios_ticker(ticker)
 
 
-def enviar_notificacion_telegram(mensaje: str, simbolo: str = None):
+def enviar_notificacion_telegram(mensaje: str, simbolo: str = None, reply_to_message_id: int = None):
     """Envía una notificación a Telegram al hilo correcto según el símbolo"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -126,6 +126,8 @@ def enviar_notificacion_telegram(mensaje: str, simbolo: str = None):
             thread_id = obtener_thread_id(simbolo)
             if thread_id:
                 data['message_thread_id'] = thread_id
+        if reply_to_message_id:
+            data['reply_to_message_id'] = reply_to_message_id
 
         response = requests.post(url, json=data, timeout=10)
 
@@ -158,6 +160,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     """
     senal_id = senal['id']
     simbolo = senal['simbolo']
+    reply_msg_id = senal.get('telegram_message_id')
 
     # Convertir valores numéricos de BD — guard para valores None (columnas no rellenadas)
     try:
@@ -167,7 +170,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         tp3 = float(senal['tp3'])
         sl  = float(senal['sl'])
     except (TypeError, ValueError):
-        logger.info(f"\u26a0\ufe0f [monitor] Se\u00f1al {senal_id} tiene precios nulos/inv\u00e1lidos — saltando")
+        logger.info(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
         return
     # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
     tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
@@ -196,7 +199,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
-        enviar_notificacion_telegram(mensaje, simbolo)
+        enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
         return
 
     # Verificar TP2 — usa High reciente
@@ -221,7 +224,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
-        enviar_notificacion_telegram(mensaje, simbolo)
+        enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
         return
 
     # Verificar TP1 — usa High reciente
@@ -246,7 +249,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
-        enviar_notificacion_telegram(mensaje, simbolo)
+        enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
         return
 
     # Verificar progreso 50% hacia TP1 — aviso intermedio
@@ -268,7 +271,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔖 <code>#{senal_id}</code>"
             )
-            enviar_notificacion_telegram(msg_50, simbolo)
+            enviar_notificacion_telegram(msg_50, simbolo, reply_to_message_id=reply_msg_id)
             progreso_50_enviado.add(senal_id)
             logger.info(f"  ⚡ [50%] {simbolo} COMPRA — notificación de progreso enviada")
 
@@ -291,7 +294,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔖 <code>#{senal_id}</code>"
             )
-            enviar_notificacion_telegram(mensaje, simbolo)
+            enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
             logger.info(f"  🔄 [{simbolo}] BREAKEVEN BUY — cerrada en entrada ${precio_entrada:.2f}")
         else:
             beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
@@ -308,7 +311,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔖 <code>#{senal_id}</code>"
             )
-            enviar_notificacion_telegram(mensaje, simbolo)
+            enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
         return
 
 
@@ -323,6 +326,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     """
     senal_id = senal['id']
     simbolo = senal['simbolo']
+    reply_msg_id = senal.get('telegram_message_id')
 
     # Convertir valores numéricos de BD — guard para valores None (columnas no rellenadas)
     try:
@@ -361,7 +365,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
-        enviar_notificacion_telegram(mensaje, simbolo)
+        enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
         return
 
     # Verificar TP2 — usa Low reciente
@@ -386,7 +390,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
-        enviar_notificacion_telegram(mensaje, simbolo)
+        enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
         return
 
     # Verificar TP1 — usa Low reciente
@@ -411,7 +415,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
-        enviar_notificacion_telegram(mensaje, simbolo)
+        enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
         return
 
     # Verificar progreso 50% hacia TP1 — aviso intermedio
@@ -433,7 +437,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔖 <code>#{senal_id}</code>"
             )
-            enviar_notificacion_telegram(msg_50, simbolo)
+            enviar_notificacion_telegram(msg_50, simbolo, reply_to_message_id=reply_msg_id)
             progreso_50_enviado.add(senal_id)
             logger.info(f"  ⚡ [50%] {simbolo} VENTA — notificación de progreso enviada")
 
@@ -456,7 +460,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔖 <code>#{senal_id}</code>"
             )
-            enviar_notificacion_telegram(mensaje, simbolo)
+            enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
             logger.info(f"  🔄 [{simbolo}] BREAKEVEN SELL — cerrada en entrada ${precio_entrada:.2f}")
         else:
             beneficio = calcular_beneficio_pct(precio_entrada, sl, 'VENTA')
@@ -473,11 +477,8 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔖 <code>#{senal_id}</code>"
             )
-            enviar_notificacion_telegram(mensaje, simbolo)
+            enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
         return
-
-
-_TIMEOUT_PENDIENTE_CONFIRM_HORAS = 2  # señal 1H caduca si no hay confirmación en 2h
 
 
 def _verificar_trampa_patron(senal: dict, db: DatabaseManager, trampa_avisada: set):

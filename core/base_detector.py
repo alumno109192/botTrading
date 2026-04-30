@@ -350,7 +350,8 @@ class BaseDetector(ABC):
     def enviar(self, mensaje: str) -> bool:
         """
         Envía un mensaje a Telegram añadiendo el sufijo de aviso macro si existe.
-        Si justo antes se guardó una señal en BD, añade su #ID al mensaje.
+        Si justo antes se guardó una señal en BD, añade su #ID al mensaje
+        y guarda el message_id de Telegram en la BD para reply posterior.
         Delega en adapters.telegram.enviar_telegram para facilitar el mocking.
         """
         senal_id = self._last_senal_id
@@ -359,8 +360,18 @@ class BaseDetector(ABC):
             mensaje = mensaje.rstrip() + f"\n━━━━━━━━━━━━━━━━━━━━\n🔖 <b>#{senal_id}</b>"
         sufijo = (f"\n⚠️ <b>Evento macro próximo:</b> {self.aviso_macro}"
                   if self.aviso_macro else "")
-        return _telegram_mod.enviar_telegram(mensaje + sufijo,
-                                             self.telegram_thread_id)
+        message_id = _telegram_mod.enviar_telegram(mensaje + sufijo,
+                                                   self.telegram_thread_id)
+        # Guardar message_id en BD para poder hacer reply en alertas TP/SL
+        if message_id and senal_id and self.db:
+            try:
+                self.db.ejecutar_query(
+                    "UPDATE senales SET telegram_message_id = ? WHERE id = ?",
+                    (message_id, senal_id)
+                )
+            except Exception:
+                pass
+        return bool(message_id)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Filtro de volumen

@@ -14,18 +14,22 @@ _TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 _TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
 
-def enviar_telegram(mensaje, thread_id=None):
-    """Envía mensaje a Telegram con 3 reintentos y backoff exponencial."""
+def enviar_telegram(mensaje, thread_id=None, reply_to_message_id=None):
+    """Envía mensaje a Telegram con 3 reintentos y backoff exponencial.
+    Retorna el message_id del mensaje enviado, o None si falla."""
     url = f"https://api.telegram.org/bot{_TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": _TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
     if thread_id:
         payload["message_thread_id"] = thread_id
+    if reply_to_message_id:
+        payload["reply_to_message_id"] = reply_to_message_id
     for intento in range(1, 4):
         try:
             r = requests.post(url, json=payload, timeout=10)
             if r.status_code == 200:
                 print(f"✅ Telegram enviado (intento {intento})")
-                return True
+                result = r.json()
+                return result.get('result', {}).get('message_id')
             else:
                 print(f"❌ Telegram intento {intento} → HTTP {r.status_code}: {r.text[:80]}")
         except Exception as e:
@@ -33,4 +37,4 @@ def enviar_telegram(mensaje, thread_id=None):
         if intento < 3:
             time.sleep(2 ** intento)
     print("❌ Telegram: falló tras 3 intentos")
-    return False
+    return None
