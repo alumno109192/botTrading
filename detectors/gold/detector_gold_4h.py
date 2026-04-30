@@ -124,12 +124,13 @@ class GoldDetector4H(BaseDetector):
         self.aviso_macro = obtener_aviso_macro(60, '4H', simbolo)
 
         # Descargar datos 4H
+        # Solicita 3mo (90 días) → ~540 velas necesarias para EMA_trend_len=400
         try:
-            df, is_delayed = get_ohlcv(params['ticker_yf'], period='60d', interval='4h')
+            df, is_delayed = get_ohlcv(params['ticker_yf'], period='3mo', interval='4h')
             if is_delayed:
                 logger.warning("  ⚠️  [4H] Datos con 15 min de delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
-            if df.empty or len(df) < 50:
-                logger.warning(f"⚠️ Datos insuficientes para {simbolo} 4H (mínimo 50 velas, hay {len(df)})")
+            if df.empty or len(df) < 150:
+                logger.warning(f"⚠️ Datos insuficientes para {simbolo} 4H (mínimo 150 velas para EMA 400p, hay {len(df)})")
                 return
         except Exception as e:
             logger.error(f"❌ Error descargando {simbolo}: {e}")

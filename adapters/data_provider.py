@@ -284,19 +284,21 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
     except Exception:
         return False
 
-    # Decidir periodo: fill inicial 7d o incremental 1d
+    # Decidir periodo: fill inicial según intervalo o incremental 1d
     # Umbrales mínimos de velas para considerar el historial suficiente
-    _MIN_CANDLES = {'5m': 800, '15m': 150, '1h': 100, '4h': 30, '1d': 20}
+    _MIN_CANDLES = {'5m': 800, '15m': 150, '1h': 100, '4h': 450, '1d': 200}
+    _FILL_PERIOD = {'5m': '7d', '15m': '7d', '1h': '30d', '4h': '3mo', '1d': '3mo'}
     min_candles = _MIN_CANDLES.get(interval, 100)
+    fill_period = _FILL_PERIOD.get(interval, '7d')
 
     ultima_ts_str = db.obtener_ultima_ts_vela(ticker_yf, interval)
     if ultima_ts_str:
         ultima_ts = pd.to_datetime(ultima_ts_str, format='ISO8601', utc=True)
         dias_sin_datos = (datetime.now(timezone.utc) - ultima_ts).total_seconds() / 86400
         velas_en_db = len(db.obtener_velas(ticker_yf, interval, '8d'))
-        period = '7d' if (dias_sin_datos > 6 or velas_en_db < min_candles) else '1d'
+        period = fill_period if (dias_sin_datos > 6 or velas_en_db < min_candles) else '1d'
     else:
-        period = '7d'  # Primera vez: fill completo
+        period = fill_period  # Primera vez: fill completo según intervalo
 
     _keys_cooldown = 0
     _keys_api_fail = 0

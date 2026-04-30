@@ -5,7 +5,7 @@ Descarga velas de Twelve Data y las persiste en la BD con frecuencia
 adaptada por intervalo para minimizar el consumo de quota API.
 
 Flujo:
-  1. Al arrancar: fill inicial si la BD está vacía.
+  1. Al arrancar: fill inicial si la BD está vacía (3mo para 4H, 7d para 5M).
   2. Cada N segundos según poll_secs del target → fetch incremental → upsert BD.
   3. Cada 8h: purga de velas antiguas para controlar tamaño de la tabla.
 
@@ -21,10 +21,11 @@ logger = logging.getLogger('bottrading')
 
 # ── Activos y configuración ──────────────────────────────────────────────────
 # poll_secs: frecuencia de polling por target (respetar cuota API)
+# max_dias_bd: 4H necesita 95d (540 velas) para EMA de 400p, 1D necesita 400d
 POLL_TARGETS = [
     {'ticker_yf': 'GC=F', 'interval': '5m', 'poll_secs':   60, 'max_dias_bd':   8},
-    {'ticker_yf': 'GC=F', 'interval': '4h', 'poll_secs': 1800, 'max_dias_bd':  65},
-    {'ticker_yf': 'GC=F', 'interval': '1d', 'poll_secs': 3600, 'max_dias_bd': 365},  # 1 req/hora
+    {'ticker_yf': 'GC=F', 'interval': '4h', 'poll_secs': 1800, 'max_dias_bd':  95},
+    {'ticker_yf': 'GC=F', 'interval': '1d', 'poll_secs': 3600, 'max_dias_bd': 400},  # 1 req/hora
 ]
 
 CHECK_INTERVAL = 60   # segundos entre ciclos del bucle principal
