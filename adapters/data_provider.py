@@ -33,6 +33,10 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+# ── MODO DIRECT FETCH (plan Grow 55 ilimitado) ────────────────────────────────────────────────
+# Con peticiones ilimitadas, consultamos directamente TD sin cache para datos frescos
+DIRECT_FETCH_MODE = os.getenv('DIRECT_FETCH_MODE', 'true').lower() == 'true'
+
 def _build_key_list():
     """Construye lista de (alias, key) con las keys configuradas (key1..key11)."""
     keys = []
