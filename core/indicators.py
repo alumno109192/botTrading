@@ -1204,12 +1204,19 @@ def calcular_fibonacci(df: pd.DataFrame, lookback: int = 100) -> dict:
         'niveles':    dict {0.236: precio, 0.382: precio, ...}
     """
     ventana = df.iloc[-lookback:]
+    # Filtrar velas con precios inválidos (corrupción puntual de datos, e.g. Low=0)
+    ventana = ventana[(ventana['High'] > 0) & (ventana['Low'] > 0) & (ventana['Close'] > 0)]
+    if len(ventana) < 10:
+        return {}
     idx_high = ventana['High'].idxmax()
     idx_low  = ventana['Low'].idxmin()
     swing_high = float(ventana['High'].max())
     swing_low  = float(ventana['Low'].min())
     rango = swing_high - swing_low
     if rango < 1e-6:
+        return {}
+    # Sanidad: si el rango supera el 60% del swing_high es una anomalía de datos
+    if rango > swing_high * 0.60:
         return {}
 
     pos_high = ventana.index.get_loc(idx_high)

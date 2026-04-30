@@ -206,6 +206,9 @@ def _guardar_en_db(ticker_yf: str, interval: str, df: pd.DataFrame):
         db = DatabaseManager()
         rows = []
         for ts, row in df.iterrows():
+            # Ignorar velas con precios inválidos (Low=0, etc.) para no contaminar la BD
+            if float(row['Low']) <= 0 or float(row['High']) <= 0 or float(row['Close']) <= 0:
+                continue
             ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
             rows.append((
                 ts_str,
@@ -320,6 +323,7 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
                 ))
             db.guardar_velas(ticker_yf, interval, rows)
             db.purgar_velas_antiguas(ticker_yf, interval, dias_max=8)
+            db.purgar_velas_corruptas(ticker_yf, interval)
             print(f"  💾 [poller] {ticker_yf} {interval} ({alias}) — {len(df)} velas → BD")
             return True
         _keys_api_fail += 1
@@ -349,6 +353,9 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 
     El DataFrame siempre tiene columnas: Open, High, Low, Close, Volume
     """
+    # Mínimo de velas aceptables por intervalo (evita cachear resultados insuficientes)
+    _MIN_VELAS = {'5m': 100, '15m': 50, '1h': 40, '4h': 20, '1d': 30, '1wk': 20}
+
     # 1️⃣ Cache en memoria (TTL proporcional al intervalo) — la más rápida
     if interval in _INTRADAY_INTERVALS:
         _ck = (ticker_yf, period, interval)
@@ -356,8 +363,14 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
         with _intraday_cache_lock:
             _e = _intraday_cache.get(_ck)
             if _e and (datetime.now(timezone.utc) - _e['ts']) < _ttl:
-                print(f"  💾 [data_provider] Cache mem hit — {ticker_yf} {interval} ({len(_e['df'])} velas)")
-                return _e['df'].copy(), _e['delayed']
+                _min_v = _MIN_VELAS.get(interval, 10)
+                if len(_e['df']) >= _min_v:
+                    print(f"  💾 [data_provider] Cache mem hit — {ticker_yf} {interval} ({len(_e['df'])} velas)")
+                    return _e['df'].copy(), _e['delayed']
+                else:
+                    # Cache insuficiente: invalidar y refrescar
+                    print(f"  ⚠️ [data_provider] Cache mem insuficiente ({len(_e['df'])} velas) — {ticker_yf} {interval}, refrescando")
+                    _intraday_cache.pop(_ck, None)
 
     # 2️⃣ Base de datos local (persistente, TTL por intervalo)
     df_db, delayed_db = _get_from_db(ticker_yf, period, interval)

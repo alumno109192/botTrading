@@ -947,6 +947,15 @@ class DatabaseManager:
         DELETE FROM ohlcv WHERE symbol = ? AND interval = ? AND ts < ?
         """, (symbol, interval, desde))
 
+    def purgar_velas_corruptas(self, symbol: str, interval: str):
+        """Elimina velas con precios inválidos (low=0, high=0, close=0) de la BD."""
+        self.ejecutar_query("""
+        DELETE FROM ohlcv WHERE symbol = ? AND interval = ? AND (low <= 0 OR high <= 0 OR close <= 0)
+        """, (symbol, interval))
+        self.ejecutar_query("""
+        DELETE FROM ohlcv WHERE symbol = ? AND interval = ? AND high < low
+        """, (symbol, interval))
+
     def obtener_precio_reciente_bd(self, symbol: str, interval: str = '5m',
                                    max_minutos: int = 10) -> tuple | None:
         """
