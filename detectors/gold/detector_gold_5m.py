@@ -131,6 +131,13 @@ class GoldDetector5M(BaseDetector):
     def analizar(self, simbolo, params):
         global perdidas_consecutivas, ultima_senal_timestamp
 
+        # ── BLOQUEO POR EVENTOS FOMC/NFP/CPI ──
+        bloqueado, desc_evento, minutos = debe_bloquear_trading(90)
+        if bloqueado:
+            logger.warning(f"  🚫 [5M] Trading bloqueado — {desc_evento} en {minutos} min")
+            enviar_alerta_bloqueo(desc_evento, minutos, ['5M'])
+            return
+
         # ── Aviso calendario económico (no bloquea, solo advierte en el mensaje) ──
         self.aviso_macro = obtener_aviso_macro(30, '5M', simbolo)
 
