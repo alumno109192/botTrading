@@ -12,7 +12,7 @@ from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
 from services.cot_bias import get_cot_bias, ajustar_score_por_cot
 from services.open_interest import get_oi_bias, ajustar_score_por_oi
-from services.economic_calendar import obtener_aviso_macro, debe_bloquear_trading, enviar_alerta_bloqueo
+from services.economic_calendar import obtener_aviso_macro, debe_bloquear_trading, enviar_alerta_bloqueo, verificar_y_notificar_reanudacion
 
 # Cargar variables de entorno
 load_dotenv()
