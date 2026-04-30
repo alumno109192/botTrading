@@ -1380,3 +1380,91 @@ def detectar_rebote_bajista(df: pd.DataFrame, atr: float,
         desc = f"RSI={rsi_act:.1f}↓ | {tipo} | resist ${nivel_cercano:.2f}"
         return True, desc
     return False, ''
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DETECCIÓN DE PULLBACK ACTIVO (contexto multi-TF)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def detectar_pullback_activo(
+    df: pd.DataFrame,
+    atr: float,
+    ema_trend_length: int = 200,
+    lookback: int = 80,
+) -> tuple:
+    """
+    Detecta si el precio está en un pullback activo contra su tendencia principal.
+
+    Lógica:
+      - Tendencia principal → EMA{ema_trend_length}: alcista si close > EMA, bajista si <.
+      - Pullback alcista: tendencia alcista + swing bajista reciente (precio retrocedió
+        desde un máximo) + retroceso entre 15% y 88% del rango.
+      - Pullback bajista: tendencia bajista + swing alcista reciente (precio rebotó
+        desde un mínimo) + retroceso entre 15% y 88% del rango.
+      - El nivel Fibonacci más cercano al precio actual indica la zona de soporte/resist.
+
+    Returns:
+        (en_pullback: bool,
+         tendencia_principal: str,    # 'alcista' | 'bajista' | ''
+         nivel_fib: float | None,     # 0.236 / 0.382 / 0.5 / 0.618 / 0.786 más cercano
+         precio_nivel: float | None,  # precio exacto del nivel Fib
+         profundidad: float)          # retroceso normalizado [0,1] (0=inicio, 1=total)
+    """
+    _vacio = (False, '', None, None, 0.0)
+    if len(df) < max(ema_trend_length, lookback) + 5:
+        return _vacio
+
+    close = float(df['Close'].iloc[-2])
+    ema_trend = float(df['Close'].ewm(span=ema_trend_length, adjust=False).mean().iloc[-2])
+    tendencia_principal = 'alcista' if close > ema_trend else 'bajista'
+
+    fib = calcular_fibonacci(df, lookback)
+    if not fib:
+        return (False, tendencia_principal, None, None, 0.0)
+
+    swing_high   = fib['swing_high']
+    swing_low    = fib['swing_low']
+    rango        = swing_high - swing_low
+    tendencia_fib = fib['tendencia']
+
+    if rango < atr * 0.5:  # rango demasiado pequeño → no es un swing significativo
+        return (False, tendencia_principal, None, None, 0.0)
+
+    # Pullback = tendencia principal OPUESTA al swing más reciente
+    es_pullback_alcista = (tendencia_principal == 'alcista' and tendencia_fib == 'bajista')
+    es_pullback_bajista = (tendencia_principal == 'bajista' and tendencia_fib == 'alcista')
+
+    if not (es_pullback_alcista or es_pullback_bajista):
+        return (False, tendencia_principal, None, None, 0.0)
+
+    # Profundidad del retroceso normalizada [0,1]
+    # 0 = precio en el extremo de la tendencia principal (sin pullback aún)
+    # 1 = precio en el extremo opuesto (retroceso total / posible reversión)
+    if es_pullback_alcista:
+        # Tendencia alcista, precio bajando desde swing_high
+        profundidad = (swing_high - close) / rango
+    else:
+        # Tendencia bajista, precio subiendo desde swing_low
+        profundidad = (close - swing_low) / rango
+
+    # Pullback válido: retroceso significativo pero no reversión
+    if not (0.15 <= profundidad <= 0.88):
+        return (False, tendencia_principal, None, None, profundidad)
+
+    # Nivel Fibonacci más cercano al precio actual
+    _FIBS = [0.236, 0.382, 0.5, 0.618, 0.786]
+    nivel_cercano = None
+    precio_nivel  = None
+    dist_min      = float('inf')
+    for nf in _FIBS:
+        if es_pullback_alcista:
+            p = round(swing_high - rango * nf, 2)   # niveles bajan desde el high
+        else:
+            p = round(swing_low  + rango * nf, 2)   # niveles suben desde el low
+        d = abs(close - p)
+        if d < dist_min:
+            dist_min      = d
+            nivel_cercano = nf
+            precio_nivel  = p
+
+    return (True, tendencia_principal, nivel_cercano, precio_nivel, round(profundidad, 3))

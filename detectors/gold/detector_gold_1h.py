@@ -645,9 +645,24 @@ class GoldDetector1H(BaseDetector):
         _canal_4h  = tf_bias.obtener_canal_4h(simbolo)
         _canal_1d  = tf_bias.obtener_canal_1d(simbolo)
         _canal_1w  = tf_bias.obtener_canal_1w(simbolo)
+        _pullback_4h = tf_bias.obtener_pullback_4h(simbolo)   # estado pullback del TF superior
         _dir_1d    = _bias_1d['bias']  if _bias_1d  else tf_bias.BIAS_NEUTRAL
         _dir_1w    = _bias_1w['bias']  if _bias_1w  else tf_bias.BIAS_NEUTRAL
         _dir_4h    = _bias_4h['bias']  if _bias_4h  else tf_bias.BIAS_NEUTRAL
+
+        # Contexto pullback 4H para mensajes
+        _ctx_pb4h = ""
+        if _pullback_4h and _pullback_4h.get('en_pullback'):
+            _pb4h_tend  = _pullback_4h['tendencia']
+            _pb4h_fib   = _pullback_4h['nivel_fib']
+            _pb4h_precio = _pullback_4h['precio_nivel']
+            _pb4h_prof  = _pullback_4h['profundidad']
+            _fib4h_str  = f"Fib {_pb4h_fib:.3f}" if _pb4h_fib else "zona media"
+            _ctx_pb4h = (f"🔄 <b>4H:</b> Pullback {_pb4h_tend} — {_fib4h_str} "
+                         f"${_pb4h_precio:.0f} ({round(_pb4h_prof * 100, 0):.0f}%)"
+                         if _pb4h_precio else
+                         f"🔄 <b>4H:</b> Pullback {_pb4h_tend} ({round(_pb4h_prof * 100, 0):.0f}%)")
+        self.contexto_pullback = _ctx_pb4h
 
         # Estado de canal por TF superior
         _canal_4h_alcista_roto = _canal_4h['alcista_roto']  if _canal_4h else False

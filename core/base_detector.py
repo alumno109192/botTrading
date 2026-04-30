@@ -62,6 +62,7 @@ class BaseDetector(ABC):
         self.alertas_enviadas: dict = {}
         self.ultimo_analisis: dict = {}
         self.aviso_macro: str = ""
+        self.contexto_pullback: str = ""  # contexto pullback multi-TF; se appendea en cada mensaje
         self._last_senal_id: int | None = None  # ID de la última señal guardada en BD
 
         # Inicializar BD si las variables están configuradas
@@ -360,7 +361,9 @@ class BaseDetector(ABC):
             mensaje = mensaje.rstrip() + f"\n━━━━━━━━━━━━━━━━━━━━\n🔖 <b>#{senal_id}</b>"
         sufijo = (f"\n⚠️ <b>Evento macro próximo:</b> {self.aviso_macro}"
                   if self.aviso_macro else "")
-        message_id = _telegram_mod.enviar_telegram(mensaje + sufijo,
+        sufijo_pb = (f"\n{self.contexto_pullback}"
+                     if self.contexto_pullback else "")
+        message_id = _telegram_mod.enviar_telegram(mensaje + sufijo + sufijo_pb,
                                                    self.telegram_thread_id)
         # Guardar message_id en BD para poder hacer reply en alertas TP/SL
         if message_id and senal_id and self.db:

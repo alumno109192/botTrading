@@ -91,7 +91,7 @@ from core.indicators import (
     detectar_ruptura_soporte_horizontal, detectar_ruptura_resistencia_horizontal,
     detectar_cuña_descendente, detectar_cuña_ascendente,
     detectar_precio_en_fibonacci, detectar_rebote_alcista, detectar_rebote_bajista,
-    calcular_fibonacci,
+    calcular_fibonacci, detectar_pullback_activo,
 )
 
 # ══════════════════════════════════════
@@ -542,6 +542,39 @@ class GoldDetector4H(BaseDetector):
             score_buy += 4
             logger.info(f"  🔄 [4H] REBOTE ALCISTA detectado ({_desc_rebote_alc}) — +4 pts BUY")
 
+        # ── PULLBACK ACTIVO (4H) ──────────────────────────────────────────────────
+        _pb, _pb_tend, _pb_fib, _pb_precio, _pb_prof = detectar_pullback_activo(
+            df, atr, ema_trend_length=200, lookback=params.get('sr_lookback', 80))
+
+        _pb_contexto = ""  # línea de contexto para mensajes Telegram
+        if _pb:
+            _fib_str = f"Fib {_pb_fib:.3f}" if _pb_fib else "zona media"
+            _pb_pct  = round(_pb_prof * 100, 1)
+            if _pb_tend == 'alcista':
+                # Pullback dentro de uptrend: precio bajando desde el high
+                # Bonus BUY si precio está cerca del nivel Fib (oportunidad de entrada)
+                _en_fib_pb = _pb_precio is not None and abs(close - _pb_precio) <= atr * 0.6
+                if _en_fib_pb:
+                    score_buy += 4
+                    logger.info(f"  📉↗️ [4H] PULLBACK ALCISTA {_pb_pct}% en {_fib_str} (${_pb_precio:.0f}) — +4 pts BUY")
+                else:
+                    logger.info(f"  📉↗️ [4H] PULLBACK ALCISTA {_pb_pct}% — precio alejado de Fib ({_fib_str} ${_pb_precio:.0f})")
+                _pb_contexto = f"📉↗️ <b>Pullback</b> en uptrend 4H — {_pb_pct}% retroceso ({_fib_str} ${_pb_precio:.0f})"
+            else:
+                # Pullback dentro de downtrend: precio subiendo desde el low
+                _en_fib_pb = _pb_precio is not None and abs(close - _pb_precio) <= atr * 0.6
+                if _en_fib_pb:
+                    score_sell += 4
+                    logger.info(f"  📈↘️ [4H] PULLBACK BAJISTA {_pb_pct}% en {_fib_str} (${_pb_precio:.0f}) — +4 pts SELL")
+                else:
+                    logger.info(f"  📈↘️ [4H] PULLBACK BAJISTA {_pb_pct}% — precio alejado de Fib ({_fib_str} ${_pb_precio:.0f})")
+                _pb_contexto = f"📈↘️ <b>Pullback</b> en downtrend 4H — {_pb_pct}% retroceso ({_fib_str} ${_pb_precio:.0f})"
+        else:
+            logger.debug(f"  [4H] Sin pullback activo (prof={round(_pb_prof*100,1)}%)")
+
+        # Exponer contexto pullback para que se appendee en todos los mensajes 4H
+        self.contexto_pullback = _pb_contexto
+
         # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
         dxy_bias = get_dxy_bias()
         score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
@@ -670,6 +703,8 @@ class GoldDetector4H(BaseDetector):
         tf_bias.publicar_canal_4h(simbolo,
             alcista_roto=canal_alcista_roto_4h, bajista_roto=canal_bajista_roto_4h,
             linea_soporte=linea_soporte_canal_4h, linea_resist=linea_resist_canal_4h)
+        # Publicar estado de pullback para que 1H y 15M lo consulten
+        tf_bias.publicar_pullback_4h(simbolo, _pb, _pb_tend, _pb_fib, _pb_precio, _pb_prof)
         _conf_sell = ""; _conf_buy = ""
         if senal_sell_alerta:
             _ok, _desc = tf_bias.verificar_confluencia(simbolo, '4H', tf_bias.BIAS_BEARISH)

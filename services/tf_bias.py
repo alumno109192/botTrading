@@ -45,6 +45,7 @@ _canal_1h_store = {}   # canal 1H en memoria
 _canal_1d_store = {}   # canal 1D en memoria
 _canal_1w_store     = {}   # canal 1W en memoria
 _zona_activa_store  = {}   # {simbolo: {BULLISH/BEARISH: {...}}} — zona 1H activa para modo caza
+_pullback_4h_store  = {}   # {simbolo: {en_pullback, tendencia, nivel_fib, precio_nivel, profundidad, ts}}
 TTL_ZONA_ACTIVA_MIN = 120  # zona activa expira a las 2 horas (en minutos)
 # ─────────────────────────────────────
 
@@ -171,6 +172,32 @@ def publicar_canal_4h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
 def obtener_canal_4h(simbolo: str) -> dict:
     """Retorna el estado de canal 4H: memoria primero, BD como fallback ante restart."""
     return _obtener_canal_gen(_canal_store, simbolo, '4H', TTL_CANAL_4H_HORAS)
+
+
+def publicar_pullback_4h(simbolo: str, en_pullback: bool, tendencia: str,
+                         nivel_fib, precio_nivel, profundidad: float) -> None:
+    """Publica el estado de pullback 4H en memoria. TTL = 4H (una vela 4H)."""
+    with _lock:
+        _pullback_4h_store[simbolo] = {
+            'en_pullback':  en_pullback,
+            'tendencia':    tendencia,       # 'alcista' | 'bajista'
+            'nivel_fib':    nivel_fib,       # 0.236/0.382/0.5/0.618/0.786 | None
+            'precio_nivel': precio_nivel,    # float | None
+            'profundidad':  profundidad,     # [0,1]
+            'ts':           datetime.now(),
+        }
+
+
+def obtener_pullback_4h(simbolo: str) -> dict | None:
+    """Retorna el estado de pullback 4H o None si no hay datos o han expirado (>4h)."""
+    with _lock:
+        datos = _pullback_4h_store.get(simbolo)
+        if datos is None:
+            return None
+        edad_h = (datetime.now() - datos['ts']).total_seconds() / 3600
+        if edad_h > TTL_CANAL_4H_HORAS:
+            return None
+        return dict(datos)
 
 
 def publicar_canal_1h(simbolo: str, alcista_roto: bool, bajista_roto: bool,
