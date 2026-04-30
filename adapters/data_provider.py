@@ -24,6 +24,7 @@ import itertools
 import threading
 import pandas as pd
 import requests
+import yfinance as yf
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
@@ -413,10 +414,21 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             with _intraday_cache_lock:
                 _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
             return df, False
-        print(f"  ⚠️ [data_provider] Polygon.io falló — intentando Twelve Data")
+        print(f"  ⚠️ [data_provider] Polygon.io falló — fallback a yfinance")
 
-    # 5️⃣ Sin más fuentes disponibles — devolver DataFrame vacío
-    print(f"  ❌ [data_provider] No hay fuente disponible para {ticker_yf} {interval} {period}")
+    # 5️⃣ yfinance (fallback final, delay 15 min en intraday)
+    print(f"  🔄 [data_provider] Todas las fuentes premium fallaron — usando yfinance (delay 15 min)")
+    df, ok = _get_yfinance(ticker_yf, period, interval)
+    if ok and not df.empty and len(df) >= 10:
+        print(f"  ✅ [data_provider] yfinance — {ticker_yf} {interval} ({len(df)} velas, delay 15 min)")
+        # Guardar en BD para cachear (aunque tenga delay, es mejor que nada)
+        _guardar_en_db(ticker_yf, interval, df)
+        with _intraday_cache_lock:
+            _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': True}
+        return df, True
+    
+    # 6️⃣ Sin más fuentes disponibles — devolver DataFrame vacío
+    print(f"  ❌ [data_provider] Todas las fuentes fallaron para {ticker_yf} {interval} {period}")
     return pd.DataFrame(), True
 
 
@@ -550,4 +562,47 @@ def _get_polygon(ticker_yf: str, period: str, interval: str) -> tuple:
 
     except Exception as e:
         print(f"  ⚠️ Polygon.io excepción: {e}")
+        return pd.DataFrame(), False
+
+
+def _get_yfinance(ticker_yf: str, period: str, interval: str) -> tuple:
+    """
+    Fallback final: descarga datos desde yfinance (gratuito, delay 15 min en intraday).
+    Retorna: (DataFrame, success: bool)
+    """
+    try:
+        # Mapeo de intervalos (yfinance usa mismo formato)
+        yf_interval = interval
+        if interval == '30m':
+            yf_interval = '30m'
+        elif interval == '1wk':
+            yf_interval = '1wk'
+        
+        # Mapeo de period (yfinance usa mismo formato)
+        yf_period = period
+        if period == '3mo':
+            yf_period = '3mo'
+        elif period == '60d':
+            yf_period = '60d'
+        
+        ticker = yf.Ticker(ticker_yf)
+        df = ticker.history(period=yf_period, interval=yf_interval)
+        
+        if df.empty:
+            return pd.DataFrame(), False
+        
+        # Normalizar columnas (yfinance ya usa Open, High, Low, Close, Volume)
+        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+        df = df.astype(float)
+        
+        # Asegurar que el índice sea timezone-aware UTC
+        if df.index.tz is None:
+            df.index = df.index.tz_localize('UTC')
+        else:
+            df.index = df.index.tz_convert('UTC')
+        
+        return df, True
+    
+    except Exception as e:
+        print(f"  ⚠️ yfinance excepción: {e}")
         return pd.DataFrame(), False
