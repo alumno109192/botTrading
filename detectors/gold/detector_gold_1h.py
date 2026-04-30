@@ -114,7 +114,18 @@ class GoldDetector1H(BaseDetector):
         logger.info(f"\n🔍 Analizando {simbolo} [1H intradía]...")
 
         try:
-            df, is_delayed = get_ohlcv(params['ticker_yf'], period='30d', interval='1h')
+            # NOTA: TwelveData tiene problemas con el endpoint 1H directo (ATR ~$110 vs $20 real)
+            # Solución: descargar 5M (confiable) y resamplear a 1H
+            df_5m, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
+            if df_5m.empty or len(df_5m) < 100:
+                logger.warning(f"⚠️ Datos insuficientes para {simbolo} 1H")
+                return
+            
+            # Resample 5M → 1H (más confiable que endpoint 1H directo de TD)
+            df = df_5m.resample('1h').agg({
+                'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+            
             if is_delayed:
                 logger.warning("  ⚠️  [1H] Datos con 15 min de delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
             if df.empty or len(df) < 80:
