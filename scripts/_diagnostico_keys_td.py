@@ -58,7 +58,7 @@ def main():
     
     # Verificar uso desde BD
     print()
-    print("📈 Uso de keys hoy (límite: 8,000 req/día — plan BASIC):")
+    print("📈 Uso de keys hoy (plan Grow 55 — peticiones ILIMITADAS):")
     print()
     
     try:
@@ -70,31 +70,32 @@ def main():
         for alias, _ in keys_activas:
             count = uso.get(alias, 0)
             total_peticiones += count
-            porcentaje = (count / 8000) * 100
+            # Plan Grow 55: Sin límite diario, solo monitoreo
+            porcentaje = 0  # No hay límite diario
             
-            if count >= 8000:
+            if False:  # Sin límite diario en plan Grow 55
                 emoji = "🔴"
                 estado = "AGOTADA"
-            elif count >= 6000:
+            elif False:
                 emoji = "🟡"
                 estado = "ALTA"
             else:
                 emoji = "🟢"
                 estado = "OK"
             
-            barra = "█" * int(porcentaje / 10) + "░" * (10 - int(porcentaje / 10))
-            print(f"  {emoji} {alias:6} {count:5}/8000 [{barra}] {porcentaje:5.1f}% — {estado}")
+            barra = "∞" * 10  # Sin límite diario
+            print(f"  {emoji} {alias:6} {count:5} req [{barra}] — {estado}")
         
         print()
-        print(f"📊 Total peticiones hoy: {total_peticiones} ({total_peticiones}/{len(keys_activas)*8000} capacidad)")
-        print(f"💡 Capacidad restante: {len(keys_activas)*8000 - total_peticiones} peticiones")
+        print(f"📊 Total peticiones hoy: {total_peticiones} (sin límite diario)")
+        print(f"💡 Plan Grow 55: Peticiones ILIMITADAS ✨")
         
     except Exception as e:
         print(f"⚠️ No se pudo consultar la BD: {e}")
     
     # Verificar estado de cooldown
     print()
-    print("⏱️ Estado de cooldown (límite: 50/55 req/minuto — plan BASIC):")
+    print("⏱️ Estado de cooldown (límite: 50/55 req/minuto — plan Grow 55):")
     print()
     
     try:
@@ -148,8 +149,8 @@ def main():
     
     print()
     print("=" * 60)
-    print("💡 Plan actual: BASIC (32€/mes) — 8,000 peticiones/día, 55 req/min")
-    print("💡 Las keys se resetean a las 00:00 UTC (medianoche)")
+    print("💡 Plan actual: Grow 55 (32€/mes) — Peticiones ILIMITADAS, 55 req/min")
+    print("💡 Solo límite de rate: 55 peticiones por minuto máximo")
 
 if __name__ == '__main__':
     main()

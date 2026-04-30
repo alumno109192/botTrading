@@ -2,8 +2,8 @@
 data_provider.py — Fuente de datos OHLCV con prioridad de fuentes
 
 Prioridad (de mejor a peor):
-  1. Twelve Data (BASIC plan: 8,000 req/día, 55/min) → TWELVE_DATA_API_KEY en .env
-  2. Polygon.io  (de pago, ~$29/mes, tiempo real)    → POLYGON_API_KEY en .env
+  1. Twelve Data (Grow 55: ∞ req/día, 55/min) → TWELVE_DATA_API_KEY en .env
+  2. Polygon.io  (de pago, ~$29/mes, tiempo real) → POLYGON_API_KEY en .env
   3. yfinance fallback (gratuito, 15 min delay en intraday)
 
 Uso:
@@ -12,7 +12,7 @@ Uso:
     if is_delayed:
         print("⚠️ Datos con 15 min de delay (yfinance free)")
 
-Plan actual: BASIC (32€/mes) — 8,000 peticiones/día, 55 req/min
+Plan actual: Grow 55 (32€/mes) — Peticiones ILIMITADAS, solo límite 55 req/min
     https://twelvedata.com/pricing
 
 Keys adicionales (opcional para redundancia):
@@ -436,7 +436,7 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
                      alias: str = '') -> tuple:
     """
-    Descarga datos desde Twelve Data API (plan BASIC: 8,000 req/día, 55 req/min).
+    Descarga datos desde Twelve Data API (plan Grow 55: ∞ req/día, 55 req/min).
     Retorna: (DataFrame, success: bool)
 
     Documentación: https://twelvedata.com/docs#time-series
