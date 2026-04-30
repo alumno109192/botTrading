@@ -295,6 +295,7 @@ def debe_bloquear_trading(ventana_minutos: int = 90) -> tuple:
 
 # Cache para alertas enviadas (evitar spam)
 _alertas_bloqueo_enviadas = {}
+_alertas_reanudacion_pendientes = {}  # {descripcion: timestamp_fin_bloqueo}
 
 def enviar_alerta_bloqueo(descripcion: str, minutos: int, tfs: list = None):
     """
@@ -305,7 +306,7 @@ def enviar_alerta_bloqueo(descripcion: str, minutos: int, tfs: list = None):
         minutos: Minutos hasta el evento (negativo si ya pasó)
         tfs: Lista de timeframes afectados
     """
-    global _alertas_bloqueo_enviadas
+    global _alertas_bloqueo_enviadas, _alertas_reanudacion_pendientes
     
     # Evitar duplicados (max 1 alerta cada 30 min por evento)
     clave = f"{descripcion}"
@@ -314,6 +315,24 @@ def enviar_alerta_bloqueo(descripcion: str, minutos: int, tfs: list = None):
         return
     
     _alertas_bloqueo_enviadas[clave] = time.time()
+    
+    # Calcular timestamp del evento y ventana de bloqueo
+    ahora = datetime.now(timezone.utc)
+    
+    # Buscar el evento para calcular ventana exacta
+    evento_dt = None
+    for año, mes, dia, hora, minuto, desc in _EVENTOS_SORTED:
+        if desc == descripcion:
+            evento_dt = datetime(año, mes, dia, hora, minuto, tzinfo=timezone.utc)
+            break
+    
+    if evento_dt:
+        ventana_minutos = 90
+        inicio_bloqueo = evento_dt - timedelta(minutes=ventana_minutos)
+        fin_bloqueo = evento_dt + timedelta(minutes=ventana_minutos)
+        
+        # Registrar para enviar mensaje de reanudación después
+        _alertas_reanudacion_pendientes[descripcion] = fin_bloqueo.timestamp()
     
     # Construir mensaje
     if minutos > 0:
@@ -325,6 +344,14 @@ def enviar_alerta_bloqueo(descripcion: str, minutos: int, tfs: list = None):
     
     tfs_str = " / ".join(tfs) if tfs else "TODOS"
     
+    # Formatear rango horario de bloqueo
+    if evento_dt:
+        rango_str = f"{inicio_bloqueo.strftime('%H:%M')} - {fin_bloqueo.strftime('%H:%M UTC')}"
+        evento_hora = evento_dt.strftime('%H:%M UTC')
+    else:
+        rango_str = "±90 minutos del evento"
+        evento_hora = "--:--"
+    
     mensaje = f"""
 🚫 <b>TRADING BLOQUEADO</b>
 
@@ -332,11 +359,15 @@ def enviar_alerta_bloqueo(descripcion: str, minutos: int, tfs: list = None):
 {descripcion}
 
 ⏰ <b>Timing:</b> {tiempo_str}
+📅 <b>Hora del evento:</b> {evento_hora}
 
 🛡️ <b>Acción tomada:</b>
 • No se generarán nuevas señales
 • Timeframes afectados: {tfs_str}
 • Ventana de bloqueo: ±90 minutos
+
+🕒 <b>Señales bloqueadas desde:</b>
+{rango_str}
 
 💡 <b>Señales activas:</b>
 Las posiciones abiertas siguen activas.
@@ -344,7 +375,7 @@ Considera cerrarlas manualmente si hay alta exposición.
 
 ━━━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
-🔄 El trading se reanudará automáticamente después del evento.
+🔔 Te notificaremos cuando se reanude el trading.
 """
     
     try:
@@ -353,6 +384,58 @@ Considera cerrarlas manualmente si hay alta exposición.
         print(f"  🚫 Alerta de bloqueo enviada a Telegram: {descripcion}")
     except Exception as e:
         print(f"  ⚠️ Error enviando alerta de bloqueo: {e}")
+
+
+def enviar_alerta_reanudacion(descripcion: str):
+    """
+    Envía alerta a Telegram informando que el trading se ha reanudado.
+    
+    Args:
+        descripcion: Descripción del evento que terminó
+    """
+    mensaje = f"""
+✅ <b>TRADING REANUDADO</b>
+
+🟢 <b>Evento finalizado:</b>
+{descripcion}
+
+✅ <b>Estado actual:</b>
+• Generación de señales: <b>ACTIVA</b>
+• Todos los timeframes operativos
+• Sistema funcionando con normalidad
+
+🚀 El bot continuará detectando oportunidades en todos los timeframes.
+
+━━━━━━━━━━━━━━━━━━━━
+⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
+"""
+    
+    try:
+        from adapters.telegram import enviar_telegram
+        enviar_telegram(mensaje)
+        print(f"  ✅ Alerta de reanudación enviada a Telegram: {descripcion}")
+    except Exception as e:
+        print(f"  ⚠️ Error enviando alerta de reanudación: {e}")
+
+
+def verificar_y_notificar_reanudacion():
+    """
+    Verifica si alguna ventana de bloqueo ha terminado y envía notificación.
+    Llamar esta función periódicamente desde los detectores.
+    """
+    global _alertas_reanudacion_pendientes
+    
+    ahora = time.time()
+    eventos_finalizados = []
+    
+    for descripcion, timestamp_fin in list(_alertas_reanudacion_pendientes.items()):
+        if ahora >= timestamp_fin:
+            enviar_alerta_reanudacion(descripcion)
+            eventos_finalizados.append(descripcion)
+    
+    # Limpiar eventos finalizados
+    for desc in eventos_finalizados:
+        _alertas_reanudacion_pendientes.pop(desc, None)
 
 
 def proximos_eventos(n: int = 5) -> list:
