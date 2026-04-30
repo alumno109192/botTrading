@@ -58,7 +58,7 @@ def main():
     
     # Verificar uso desde BD
     print()
-    print("📈 Uso de keys hoy (límite: 800 req/día por key):")
+    print("📈 Uso de keys hoy (límite: 8,000 req/día — plan BASIC):")
     print()
     
     try:
@@ -70,12 +70,12 @@ def main():
         for alias, _ in keys_activas:
             count = uso.get(alias, 0)
             total_peticiones += count
-            porcentaje = (count / 800) * 100
+            porcentaje = (count / 8000) * 100
             
-            if count >= 800:
+            if count >= 8000:
                 emoji = "🔴"
                 estado = "AGOTADA"
-            elif count >= 600:
+            elif count >= 6000:
                 emoji = "🟡"
                 estado = "ALTA"
             else:
@@ -83,18 +83,18 @@ def main():
                 estado = "OK"
             
             barra = "█" * int(porcentaje / 10) + "░" * (10 - int(porcentaje / 10))
-            print(f"  {emoji} {alias:6} {count:4}/800 [{barra}] {porcentaje:5.1f}% — {estado}")
+            print(f"  {emoji} {alias:6} {count:5}/8000 [{barra}] {porcentaje:5.1f}% — {estado}")
         
         print()
-        print(f"📊 Total peticiones hoy: {total_peticiones} ({total_peticiones}/{len(keys_activas)*800} capacidad)")
-        print(f"💡 Capacidad restante: {len(keys_activas)*800 - total_peticiones} peticiones")
+        print(f"📊 Total peticiones hoy: {total_peticiones} ({total_peticiones}/{len(keys_activas)*8000} capacidad)")
+        print(f"💡 Capacidad restante: {len(keys_activas)*8000 - total_peticiones} peticiones")
         
     except Exception as e:
         print(f"⚠️ No se pudo consultar la BD: {e}")
     
     # Verificar estado de cooldown
     print()
-    print("⏱️ Estado de cooldown (límite: 7-8 req/minuto por key):")
+    print("⏱️ Estado de cooldown (límite: 50/55 req/minuto — plan BASIC):")
     print()
     
     try:
@@ -113,7 +113,7 @@ def main():
             else:
                 minute_info = _key_minute_count.get(alias)
                 if minute_info:
-                    print(f"  ✅ {alias:6} — {minute_info['count']}/7 peticiones este minuto")
+                    print(f"  ✅ {alias:6} — {minute_info['count']}/50 peticiones este minuto")
                 else:
                     print(f"  ✅ {alias:6} — sin uso este minuto")
         
@@ -148,7 +148,7 @@ def main():
     
     print()
     print("=" * 60)
-    print("💡 Si todas las keys están agotadas, el sistema usará yfinance (delay 15 min)")
+    print("💡 Plan actual: BASIC (32€/mes) — 8,000 peticiones/día, 55 req/min")
     print("💡 Las keys se resetean a las 00:00 UTC (medianoche)")
 
 if __name__ == '__main__':

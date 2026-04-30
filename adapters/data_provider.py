@@ -2,8 +2,8 @@
 data_provider.py — Fuente de datos OHLCV con prioridad de fuentes
 
 Prioridad (de mejor a peor):
-  1. Twelve Data (gratuito, 800 req/día, tiempo real) → TWELVE_DATA_API_KEY en .env
-  2. Polygon.io  (de pago, ~$29/mes, tiempo real)     → POLYGON_API_KEY en .env
+  1. Twelve Data (BASIC plan: 8,000 req/día, 55/min) → TWELVE_DATA_API_KEY en .env
+  2. Polygon.io  (de pago, ~$29/mes, tiempo real)    → POLYGON_API_KEY en .env
   3. yfinance fallback (gratuito, 15 min delay en intraday)
 
 Uso:
@@ -12,12 +12,13 @@ Uso:
     if is_delayed:
         print("⚠️ Datos con 15 min de delay (yfinance free)")
 
-Obtener claves Twelve Data gratuitas (3 cuentas = 2400 req/día):
-    https://twelvedata.com/apikey  →  Sign Up → Free plan (800 req/día c/u)
+Plan actual: BASIC (32€/mes) — 8,000 peticiones/día, 55 req/min
+    https://twelvedata.com/pricing
+
+Keys adicionales (opcional para redundancia):
     Añadir al .env:
-        TWELVE_DATA_API_KEY=clave_cuenta_1
-        TWELVE_DATA_API_KEY_2=clave_cuenta_2  ← opcional, backup automático
-        TWELVE_DATA_API_KEY_3=clave_cuenta_3  ← opcional, backup automático
+        TWELVE_DATA_API_KEY=clave_principal
+        TWELVE_DATA_API_KEY_2=clave_backup  ← opcional
 """
 import os
 import itertools
@@ -114,10 +115,10 @@ _key_cooldown: dict = {}       # alias → timestamp hasta el que está bloquead
 _cooldown_lock = threading.Lock()
 
 # Contador proactivo por minuto: PREVIENE el error antes de que ocurra
-# Cada key tiene máx 7 slots/minuto (margen de 1 bajo el límite de 8)
+# Plan BASIC: 55 req/min por key; usamos 50 para margen de seguridad
 _key_minute_count: dict = {}   # alias → {'minute': int, 'count': int}
 _minute_lock = threading.Lock()
-_MAX_REQ_PER_MINUTE = 7        # límite real de Twelve Data es 8; usamos 7 para margen
+_MAX_REQ_PER_MINUTE = 50       # límite real del plan BASIC es 55; usamos 50 para margen
 
 
 def _set_key_cooldown(alias: str, seconds: int = 65):
@@ -435,7 +436,7 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
                      alias: str = '') -> tuple:
     """
-    Descarga datos desde Twelve Data API (plan gratuito: 800 req/día por clave).
+    Descarga datos desde Twelve Data API (plan BASIC: 8,000 req/día, 55 req/min).
     Retorna: (DataFrame, success: bool)
 
     Documentación: https://twelvedata.com/docs#time-series

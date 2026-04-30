@@ -26,7 +26,7 @@ def main():
         print()
         print("❌ Error en la descarga")
         print("⚠️ Verifica que TWELVE_DATA_API_KEY esté configurada en .env")
-        print("⚠️ Verifica que no hayas excedido el límite de 800 req/día")
+        print("⚠️ Verifica que no hayas excedido el límite (plan BASIC: 8,000 req/día)")
 
 if __name__ == '__main__':
     main()
