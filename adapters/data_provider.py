@@ -353,6 +353,9 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
             print(f"  💾 [poller] {ticker_yf} {interval} ({alias}) — {len(df)} velas → BD")
             return True
         _keys_api_fail += 1
+        # Garantía: forzar cooldown mínimo si _get_twelve_data no lo puso
+        if not _is_on_cooldown(alias):
+            _set_key_cooldown(alias, 10, reason='fallo poller sin cooldown previo')
         print(f"  ⚠️ [poller] {alias} error API para {ticker_yf} {interval}")
 
     # Explicar por qué falló para facilitar diagnóstico
@@ -398,8 +401,12 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
                 _registrar_uso_key(alias)
                 print(f"  🔥 [DIRECT] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
                 return df, False
+            # Garantía: si _get_twelve_data no puso cooldown, forzar cooldown mínimo
+            # para que _next_td_key() rote a la siguiente key en la próxima iteración
+            if not _is_on_cooldown(alias):
+                _set_key_cooldown(alias, 10, reason='fallo sin cooldown previo')
             print(f"  ⚠️ [DIRECT] Twelve Data {alias} falló — rotando a siguiente key")
-        
+
         # Si todas las keys de TD fallaron, devolver error
         print(f"  ❌ [DIRECT] Todas las keys TD fallaron para {ticker_yf} {interval}")
         return pd.DataFrame(), False
@@ -532,6 +539,10 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
 
         values = data['values']
         if not values:
+            # Respuesta válida pero sin velas (holiday, plan sin acceso, etc.)
+            # Poner cooldown corto para forzar rotación y no ciclar en key1
+            if alias:
+                _set_key_cooldown(alias, 15, reason='values vacío')
             return pd.DataFrame(), False
 
         df = pd.DataFrame(values)
