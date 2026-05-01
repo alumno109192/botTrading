@@ -175,20 +175,39 @@ def _cargar_uso_desde_bd() -> dict:
 
 def _next_td_key() -> tuple:
     """
-    Devuelve (alias, key) en round-robin, saltando keys en cooldown por límite/minuto.
-    Con 11 keys × 800/día no es necesario rastrear el límite diario por key.
+    Devuelve (alias, key) con prioridad:
+    1. key1 (Plan Grow 55: ∞ req/día, 55 req/min) - SIEMPRE PRIMERO
+    2. keys 2-11 (Plan FREE: 800 req/día) - FALLBACK en round-robin
+    
+    Estrategia:
+    - Si key1 disponible (no en cooldown) → usar key1
+    - Si key1 en cooldown → rotar entre key2-key11 disponibles
+    - Si todas en cooldown → devolver la siguiente del ciclo
     """
     if not _td_keys:
         return None, None
 
-    # Intentar hasta len(_td_keys) veces para encontrar una sin cooldown
+    # 1️⃣ PRIORIDAD: Intentar key1 primero (Plan Grow 55 ilimitado)
+    for alias, key in _td_keys:
+        if alias == 'key1' and not _is_on_cooldown(alias):
+            return alias, key
+    
+    # 2️⃣ FALLBACK: key1 en cooldown → usar keys FREE (2-11) en round-robin
     with _td_cycle_lock:
         for _ in range(len(_td_keys)):
             alias, key = next(_td_cycle)
+            # Saltar key1 en el ciclo (ya la intentamos arriba)
+            if alias == 'key1':
+                continue
             if not _is_on_cooldown(alias):
                 return alias, key
 
-    # Todas en cooldown — devolver la siguiente igualmente (la API dirá si falla)
+    # 3️⃣ ÚLTIMA OPCIÓN: Todas en cooldown → devolver key1 (la API dirá si falla)
+    for alias, key in _td_keys:
+        if alias == 'key1':
+            return alias, key
+    
+    # Si key1 no existe, devolver la siguiente del ciclo
     with _td_cycle_lock:
         return next(_td_cycle)
 
