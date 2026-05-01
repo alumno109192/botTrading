@@ -25,6 +25,7 @@ import itertools
 import threading
 import pandas as pd
 import requests
+from collections import deque
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
@@ -118,10 +119,12 @@ _key_cooldown: dict = {}       # alias → timestamp hasta el que está bloquead
 _cooldown_lock = threading.Lock()
 
 # Contador proactivo por minuto: PREVIENE el error antes de que ocurra
-# Plan BASIC: 55 req/min por key; usamos 50 para margen de seguridad
-_key_minute_count: dict = {}   # alias → {'minute': int, 'count': int}
+# Usa ventana DESLIZANTE (deque de timestamps) en lugar de ventana fija.
+# TwelveData aplica ventana deslizante de 60s → la ventana fija causaba picos
+# de hasta límite*2 req en el cruce de minuto (p.ej. 50+9=59 con límite 55).
+_key_minute_window: dict = {}  # alias → deque de timestamps float
 _minute_lock = threading.Lock()
-_MAX_REQ_PER_MINUTE = 50       # límite real del plan BASIC es 55; usamos 50 para margen
+_MAX_REQ_PER_MINUTE = 50       # límite real del plan es 55; usamos 50 para margen
 
 
 def _set_key_cooldown(alias: str, seconds: int = 65, reason: str = 'error API'):
@@ -142,25 +145,29 @@ def _is_on_cooldown(alias: str) -> bool:
 def _reserve_minute_slot(alias: str) -> bool:
     """
     Proactivo: intenta reservar un slot de uso para el minuto actual.
-    - Atómico: check + increment bajo lock → imposible que dos threads
-      reserven el mismo slot número 7.
+    Usa ventana DESLIZANTE de 60s para reflejar fielmente cómo TwelveData
+    cuenta las peticiones (evita el efecto de cruce de minuto con ventana fija).
+    - Atómico: check + append bajo lock → imposible que dos threads
+      reserven el mismo slot simultáneamente.
     - Retorna True si se reservó (puede hacer la llamada).
-    - Retorna False si el cupo del minuto está lleno → rotar a otra key.
+    - Retorna False si el cupo está lleno → rotar a otra key.
     """
     import time as _time
-    current_minute = int(_time.time() // 60)   # entero que cambia cada 60s
+    now = _time.time()
+    window_start = now - 60.0
     with _minute_lock:
-        entry = _key_minute_count.get(alias)
-        if entry is None or entry['minute'] != current_minute:
-            # Nuevo minuto — resetear contador
-            _key_minute_count[alias] = {'minute': current_minute, 'count': 1}
-            return True
-        if entry['count'] >= _MAX_REQ_PER_MINUTE:
-            # Cupo lleno — cooldown hasta el próximo minuto
-            secs_left = 62 - (int(_time.time()) % 60)   # +2s de margen
-            _set_key_cooldown(alias, secs_left, reason='cupo/min lleno')
+        if alias not in _key_minute_window:
+            _key_minute_window[alias] = deque()
+        window = _key_minute_window[alias]
+        # Eliminar timestamps que ya salieron de la ventana de 60s
+        while window and window[0] <= window_start:
+            window.popleft()
+        if len(window) >= _MAX_REQ_PER_MINUTE:
+            # Cupo lleno — cooldown hasta que el timestamp más antiguo expire
+            secs_left = int(window[0] - window_start) + 2
+            _set_key_cooldown(alias, max(secs_left, 5), reason='cupo/min lleno')
             return False
-        entry['count'] += 1
+        window.append(now)
         return True
 
 
