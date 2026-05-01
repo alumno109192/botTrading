@@ -1,11 +1,15 @@
 """Análisis de zonas 1H del oro."""
 import warnings; warnings.filterwarnings('ignore')
-import yfinance as yf
+import sys; sys.path.insert(0, '.')
+from adapters.data_provider import get_ohlcv
 import pandas as pd
 import numpy as np
 
-tk = yf.Ticker('GC=F')
-df = tk.history(period='10d', interval='1h')
+df, _ = get_ohlcv('GC=F', period='60d', interval='1h')
+if df.empty:
+    print("⚠️ No se pudieron obtener datos")
+    sys.exit(1)
+
 df.columns = [c.lower() for c in df.columns]
 
 close = df['close']

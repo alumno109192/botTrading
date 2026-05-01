@@ -442,6 +442,136 @@ def detectar_doble_suelo(df: pd.DataFrame, atr: float,
     return True, nivel_suelo, round(neckline, 2)
 
 
+def detectar_v_reversal_alcista(df: pd.DataFrame, atr: float, 
+                                  lookback: int = 20,
+                                  min_caida_atr: float = 3.0,
+                                  min_rebote_atr: float = 2.5) -> tuple[bool, float, float]:
+    """
+    Detecta patrón V-Reversal alcista: caída vertical + rebote vertical inmediato.
+    
+    Características del patrón:
+      1. Caída pronunciada de al menos min_caida_atr × ATR en las últimas N velas
+      2. Rebote inmediato de al menos min_rebote_atr × ATR desde el mínimo
+      3. Alta velocidad: caída y rebote ocurren en ventana corta (lookback velas)
+      4. Sin consolidación entre la caída y el rebote (forma de V limpia)
+    
+    Args:
+        df: DataFrame con OHLCV
+        atr: ATR actual del instrumento
+        lookback: Ventana de velas para buscar el patrón (default 20)
+        min_caida_atr: Mínima caída en múltiplos de ATR (default 3.0)
+        min_rebote_atr: Mínimo rebote en múltiplos de ATR (default 2.5)
+    
+    Returns:
+        (patron_detectado, nivel_minimo, precio_actual)
+    
+    Uso:
+        - 5M:  lookback=20 (~100 min), min_caida_atr=3.0, min_rebote_atr=2.5
+        - 15M: lookback=16 (~4h), min_caida_atr=4.0, min_rebote_atr=3.0
+        - 1H:  lookback=12 (~12h), min_caida_atr=5.0, min_rebote_atr=4.0
+    """
+    if len(df) < lookback + 2:
+        return False, 0.0, 0.0
+    
+    ventana = df.iloc[-lookback:]
+    
+    # 1. Encontrar el mínimo de la ventana
+    idx_minimo = ventana['Low'].idxmin()
+    nivel_minimo = float(ventana.loc[idx_minimo, 'Low'])
+    
+    # 2. Precio antes de la caída (máximo antes del mínimo)
+    velas_pre_minimo = ventana.loc[:idx_minimo]
+    if len(velas_pre_minimo) < 3:
+        return False, 0.0, 0.0
+    
+    precio_pre_caida = float(velas_pre_minimo['High'].max())
+    
+    # 3. Precio actual (cierre más reciente)
+    precio_actual = float(df['Close'].iloc[-1])
+    
+    # 4. Calcular magnitudes de caída y rebote
+    caida_pts = precio_pre_caida - nivel_minimo
+    rebote_pts = precio_actual - nivel_minimo
+    
+    caida_atr = caida_pts / atr if atr > 0 else 0
+    rebote_atr = rebote_pts / atr if atr > 0 else 0
+    
+    # 5. Verificar que cumple los mínimos
+    if caida_atr < min_caida_atr or rebote_atr < min_rebote_atr:
+        return False, 0.0, 0.0
+    
+    # 6. Verificar velocidad: el mínimo debe estar en la mitad más reciente de la ventana
+    #    (para asegurar que el rebote es rápido y no hay consolidación larga)
+    pos_minimo = list(ventana.index).index(idx_minimo)
+    if pos_minimo < len(ventana) / 2:
+        return False, 0.0, 0.0  # Mínimo muy antiguo, no es V-Reversal
+    
+    # 7. Verificar ausencia de consolidación: precio actual debe estar significativamente
+    #    sobre el mínimo (no lateral)
+    if rebote_pts < caida_pts * 0.3:  # Rebote al menos 30% de la caída
+        return False, 0.0, 0.0
+    
+    return True, round(nivel_minimo, 2), round(precio_actual, 2)
+
+
+def detectar_v_reversal_bajista(df: pd.DataFrame, atr: float,
+                                  lookback: int = 20,
+                                  min_subida_atr: float = 3.0,
+                                  min_caida_atr: float = 2.5) -> tuple[bool, float, float]:
+    """
+    Detecta patrón V-Reversal bajista: subida vertical + caída vertical inmediata.
+    
+    Características del patrón:
+      1. Subida pronunciada de al menos min_subida_atr × ATR
+      2. Caída inmediata de al menos min_caida_atr × ATR desde el máximo
+      3. Alta velocidad: subida y caída en ventana corta
+      4. Sin consolidación entre subida y caída (V invertida limpia)
+    
+    Returns:
+        (patron_detectado, nivel_maximo, precio_actual)
+    """
+    if len(df) < lookback + 2:
+        return False, 0.0, 0.0
+    
+    ventana = df.iloc[-lookback:]
+    
+    # 1. Encontrar el máximo de la ventana
+    idx_maximo = ventana['High'].idxmax()
+    nivel_maximo = float(ventana.loc[idx_maximo, 'High'])
+    
+    # 2. Precio antes de la subida (mínimo antes del máximo)
+    velas_pre_maximo = ventana.loc[:idx_maximo]
+    if len(velas_pre_maximo) < 3:
+        return False, 0.0, 0.0
+    
+    precio_pre_subida = float(velas_pre_maximo['Low'].min())
+    
+    # 3. Precio actual
+    precio_actual = float(df['Close'].iloc[-1])
+    
+    # 4. Calcular magnitudes
+    subida_pts = nivel_maximo - precio_pre_subida
+    caida_pts = nivel_maximo - precio_actual
+    
+    subida_atr = subida_pts / atr if atr > 0 else 0
+    caida_atr = caida_pts / atr if atr > 0 else 0
+    
+    # 5. Verificar mínimos
+    if subida_atr < min_subida_atr or caida_atr < min_caida_atr:
+        return False, 0.0, 0.0
+    
+    # 6. Verificar velocidad: máximo en mitad reciente
+    pos_maximo = list(ventana.index).index(idx_maximo)
+    if pos_maximo < len(ventana) / 2:
+        return False, 0.0, 0.0
+    
+    # 7. Caída al menos 30% de la subida
+    if caida_pts < subida_pts * 0.3:
+        return False, 0.0, 0.0
+    
+    return True, round(nivel_maximo, 2), round(precio_actual, 2)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # CANAL ROTO + S/R MÚLTIPLES (compartido entre 1H y 4H)
 # ──────────────────────────────────────────────────────────────────────────────

@@ -82,6 +82,7 @@ from core.indicators import (
     detectar_precio_en_fibonacci, detectar_rebote_alcista, detectar_rebote_bajista,
     calcular_fibonacci,
     detectar_doble_techo, detectar_doble_suelo,
+    detectar_v_reversal_alcista, detectar_v_reversal_bajista,
 )
 
 
@@ -126,8 +127,6 @@ class GoldDetector1H(BaseDetector):
                 'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
             }).dropna()
             
-            if is_delayed:
-                logger.warning("  ⚠️  [1H] Datos con 15 min de delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
             if df.empty or len(df) < 80:
                 logger.warning(f"⚠️ Datos insuficientes para {simbolo} 1H")
                 return
@@ -540,6 +539,19 @@ class GoldDetector1H(BaseDetector):
             score_buy += 4
             logger.info(f"  🔺 [1H] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_1h:.1f} cuello=${_ds_neck_1h:.1f} — +4 pts BUY")
 
+        # ── V-Reversal (1H) — Reversión vertical de alta velocidad ─────────────
+        # Parámetros 1H: lookback=12 velas (~12h), mínimo 5.0 ATR caída, 4.0 ATR rebote
+        v_rev_alc_1h, v_min_1h, v_precio_1h = detectar_v_reversal_alcista(
+            df, atr, lookback=12, min_caida_atr=5.0, min_rebote_atr=4.0)
+        v_rev_baj_1h, v_max_1h, v_precio_baj_1h = detectar_v_reversal_bajista(
+            df, atr, lookback=12, min_subida_atr=5.0, min_caida_atr=4.0)
+        if v_rev_alc_1h:
+            score_buy += 5
+            logger.info(f"  ⚡ [1H] V-REVERSAL ALCISTA detectado — mín ${v_min_1h:.2f} → ${v_precio_1h:.2f} — +5 pts BUY")
+        if v_rev_baj_1h:
+            score_sell += 5
+            logger.info(f"  ⚡ [1H] V-REVERSAL BAJISTA detectado — máx ${v_max_1h:.2f} → ${v_precio_baj_1h:.2f} — +5 pts SELL")
+
         if adx_lateral and not en_zona_resist_any: score_sell = max(0, score_sell - 3)
 
         # ── SCORING COMPRA ─────────────────────────────────────────
@@ -884,7 +896,11 @@ class GoldDetector1H(BaseDetector):
         def rr(limit, sl, tp):
             return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
 
-        fecha = df.index[-2].strftime('%Y-%m-%d %H:%M')
+        # ── Timestamps: separar vela estudiada vs envío del mensaje ──
+        timestamp_vela = df.index[-2]  # Última vela CERRADA (para señales normales)
+        timestamp_vela_live = df.index[-1]  # Vela EN CURSO (para señales LIVE)
+        timestamp_envio = datetime.now(timezone.utc)  # Momento de envío del mensaje
+        fecha = timestamp_vela.strftime('%Y-%m-%d %H:%M')
 
         clave_simbolo = simbolo
         if clave_simbolo in self.ultimo_analisis:
@@ -987,7 +1003,21 @@ class GoldDetector1H(BaseDetector):
                   "👀 BUY ALERTA")
             # SL debajo del mínimo de la vela viva + buffer
             sl_live = round(low_live - atr * 0.3, 2)
-            rr_live = rr(close_live, sl_live, tp1_c)
+            
+            # ── TPs LIVE: recalcular desde close_live (no reutilizar tp1_c/tp2_c/tp3_c) ──
+            tp1_live = _tp1_viable_buy(resistencias_sr, close_live, sl_live, 1.2,
+                                       close_live + atr * params['atr_tp1_mult'])
+            _resis_sobre_live = sorted([v for v in resistencias_sr if v > close_live])
+            tp2_live = _recortar_tp_compra(
+                _tp_desde_sr(_resis_sobre_live, 2, close_live + atr * params['atr_tp2_mult']),
+                tp1_live, resistencias_sr, atr)
+            tp3_live = _recortar_tp_compra(
+                _tp_desde_sr(_resis_sobre_live, 3, close_live + atr * params['atr_tp3_mult']),
+                tp2_live, resistencias_sr, atr)
+            
+            rr_live = rr(close_live, sl_live, tp1_live)
+            fecha_live = timestamp_vela_live.strftime('%Y-%m-%d %H:%M')
+            hora_envio = timestamp_envio.strftime('%H:%M:%S')
             msg = (f"⚡ <b>REBOTE EN SOPORTE — ORO (XAUUSD) 1H</b>  ← VELA EN CURSO\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv} | V-REVERSAL ACTIVO\n"
@@ -995,22 +1025,23 @@ class GoldDetector1H(BaseDetector):
                    f"📉 <b>Low vela:</b>       ${low_live:.2f}  ← tocó soporte ${zsl:.0f}-${zsh:.0f}\n"
                    f"🛑 <b>Stop Loss:</b>      ${sl_live:.2f}  (-${round(close_live - sl_live, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr_live}:1\n"
-                   f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(close_live, sl_live, tp2_c)}:1\n"
-                   f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(close_live, sl_live, tp3_c)}:1\n"
+                   f"🎯 <b>TP1:</b> ${tp1_live:.2f}  R:R {rr_live}:1\n"
+                   f"🎯 <b>TP2:</b> ${tp2_live:.2f}  R:R {rr(close_live, sl_live, tp2_live)}:1\n"
+                   f"🎯 <b>TP3:</b> ${tp3_live:.2f}  R:R {rr(close_live, sl_live, tp3_live)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
-                   f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🕐 Vela aún abierta")
+                   f"⏱️ <b>TF:</b> 1H\n"
+                   f"📅 <b>Estudio:</b> {fecha_live} UTC  🕐 <b>Envío:</b> {hora_envio} UTC")
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
                 try:
                     self._guardar_senal({
                         'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                         'direccion': 'COMPRA', 'precio_entrada': close_live,
-                        'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_live,
+                        'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
                         'score': score_buy,
                         'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
                         'patron_velas': f"ReboteVivo:True, Low={low_live:.2f}",
-                        'version_detector': 'GOLD 1H-v2.0'
+                        'version_detector': 'GOLD 1H-v2.1'
                     })
                 except Exception as e:
                     logger.error(f"  ⚠️ Error BD: {e}")
@@ -1022,7 +1053,21 @@ class GoldDetector1H(BaseDetector):
                   "⚡ SELL MEDIA"  if senal_sell_media  else
                   "👀 SELL ALERTA")
             sl_live = round(high_live + atr * 0.3, 2)
-            rr_live = rr(close_live, sl_live, tp1_v)
+            
+            # ── TPs LIVE: recalcular desde close_live (no reutilizar tp1_v/tp2_v/tp3_v) ──
+            _sop_debajo_live = sorted([s for s in soportes_sr if s < close_live], reverse=True)
+            tp1_live = _tp1_viable_sell(_sop_debajo_live, close_live, sl_live, 1.2,
+                                        close_live - atr * params['atr_tp1_mult'])
+            tp2_live = _recortar_tp_venta(
+                _tp_desde_sr(_sop_debajo_live, 2, close_live - atr * params['atr_tp2_mult']),
+                tp1_live, soportes_sr, atr)
+            tp3_live = _recortar_tp_venta(
+                _tp_desde_sr(_sop_debajo_live, 3, close_live - atr * params['atr_tp3_mult']),
+                tp2_live, soportes_sr, atr)
+            
+            rr_live = rr(close_live, sl_live, tp1_live)
+            fecha_live = timestamp_vela_live.strftime('%Y-%m-%d %H:%M')
+            hora_envio = timestamp_envio.strftime('%H:%M:%S')
             msg = (f"⚡ <b>RECHAZO EN RESISTENCIA — ORO (XAUUSD) 1H</b>  ← VELA EN CURSO\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv} | V-REVERSAL ACTIVO\n"
@@ -1030,22 +1075,23 @@ class GoldDetector1H(BaseDetector):
                    f"📈 <b>High vela:</b>       ${high_live:.2f}  ← tocó resist ${zrl:.0f}-${zrh:.0f}\n"
                    f"🛑 <b>Stop Loss:</b>      ${sl_live:.2f}  (+${round(sl_live - close_live, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr_live}:1\n"
-                   f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(close_live, sl_live, tp2_v)}:1\n"
-                   f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(close_live, sl_live, tp3_v)}:1\n"
+                   f"🎯 <b>TP1:</b> ${tp1_live:.2f}  R:R {rr_live}:1\n"
+                   f"🎯 <b>TP2:</b> ${tp2_live:.2f}  R:R {rr(close_live, sl_live, tp2_live)}:1\n"
+                   f"🎯 <b>TP3:</b> ${tp3_live:.2f}  R:R {rr(close_live, sl_live, tp3_live)}:1\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
-                   f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🕐 Vela aún abierta")
+                   f"⏱️ <b>TF:</b> 1H\n"
+                   f"📅 <b>Estudio:</b> {fecha_live} UTC  🕐 <b>Envío:</b> {hora_envio} UTC")
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
                 try:
                     self._guardar_senal({
                         'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                         'direccion': 'VENTA', 'precio_entrada': close_live,
-                        'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_live,
+                        'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
                         'score': score_sell,
                         'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
                         'patron_velas': f"RechazoVivo:True, High={high_live:.2f}",
-                        'version_detector': 'GOLD 1H-v2.0'
+                        'version_detector': 'GOLD 1H-v2.1'
                     })
                 except Exception as e:
                     logger.error(f"  ⚠️ Error BD: {e}")

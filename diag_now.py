@@ -8,18 +8,22 @@ for h in logging.root.handlers[:]:
 logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stdout)
 logger = logging.getLogger()
 
-import yfinance as yf
 import pandas as pd
 from datetime import datetime, timezone
+from adapters.data_provider import get_ohlcv
 
 # ── Precio actual ──────────────────────────────────────
 print("=" * 60)
 print("📊 DIAGNÓSTICO GOLD — " + datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'))
 print("=" * 60)
 
-t = yf.Ticker('GC=F')
-fast = t.fast_info
-print(f"💰 Precio: ${fast.last_price:.2f}  |  Max: ${fast.day_high:.2f}  Min: ${fast.day_low:.2f}")
+# Obtener precio actual desde TwelveData
+df_1m, _ = get_ohlcv('GC=F', period='1d', interval='1m')
+if not df_1m.empty:
+    last_row = df_1m.iloc[-1]
+    print(f"💰 Precio: ${last_row['Close']:.2f}  |  Max: ${df_1m['High'].max():.2f}  Min: ${df_1m['Low'].min():.2f}")
+else:
+    print("⚠️ No se pudo obtener precio actual")
 print()
 
 # ── Sesgo COT + DXY + OI ───────────────────────────────

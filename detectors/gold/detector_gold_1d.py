@@ -237,8 +237,6 @@ class GoldDetector1D(BaseDetector):
         # ── Descargar datos ──
         try:
             df, is_delayed = get_ohlcv(params['ticker_yf'], period='2y', interval='1d')
-            if is_delayed:
-                logger.warning("  ⚠️  [1D] Datos con delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
             if df.empty or len(df) < 210:
                 logger.warning(f"⚠️ Datos insuficientes para {simbolo}")
                 return

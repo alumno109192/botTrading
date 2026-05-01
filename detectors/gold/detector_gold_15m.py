@@ -99,6 +99,8 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_rechazo_en_directriz,
     detectar_cuña_descendente, detectar_cuña_ascendente,
     detectar_doble_techo, detectar_doble_suelo,
+    detectar_v_reversal_alcista, detectar_v_reversal_bajista,
+    detectar_doble_techo, detectar_doble_suelo,
 )
 
 # ══════════════════════════════════════
@@ -167,10 +169,8 @@ class GoldDetector15M(BaseDetector):
 
         try:
             # Descargar datos 5M y resamplear a 15M (comparte caché con detectores 5M y 1H)
-            df_5m, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
+            df_5m, _ = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
             df = df_5m.resample('15min').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
-            if is_delayed:
-                logger.warning("  ⚠️  [15M] Datos con 15 min de delay (yfinance free). Señales de entrada pueden estar desfasadas.")
         
             if df.empty or len(df) < 100:
                 logger.warning(f"⚠️ Datos insuficientes para {simbolo}")
@@ -295,6 +295,29 @@ class GoldDetector15M(BaseDetector):
             if detectar_stop_hunt_alcista(df):
                 score_buy += 3
                 logger.info(f"  🎯 [15M] Stop Hunt ALCISTA detectado — +3 pts BUY")
+
+            # 9.5. Doble Techo / Doble Suelo (patrones de inversión)
+            if detectar_doble_techo(df, atr):
+                score_sell += 2
+                logger.info(f"  🎯 [15M] DOBLE TECHO detectado — +2 pts SELL")
+            if detectar_doble_suelo(df, atr):
+                score_buy += 2
+                logger.info(f"  🎯 [15M] DOBLE SUELO detectado — +2 pts BUY")
+
+            # 9.6. V-Reversal (reversión vertical — patrón de alta velocidad)
+            # Parámetros 15M: lookback=16 velas (~4h), mínimo 4.0 ATR caída, 3.0 ATR rebote
+            v_rev_alc, v_min, v_precio = detectar_v_reversal_alcista(df, atr, lookback=16, 
+                                                                       min_caida_atr=4.0, 
+                                                                       min_rebote_atr=3.0)
+            v_rev_baj, v_max, v_precio_baj = detectar_v_reversal_bajista(df, atr, lookback=16,
+                                                                           min_subida_atr=4.0,
+                                                                           min_caida_atr=3.0)
+            if v_rev_alc:
+                score_buy += 4
+                logger.info(f"  ⚡ [15M] V-REVERSAL ALCISTA detectado — mín ${v_min:.2f} → ${v_precio:.2f} — +4 pts BUY")
+            if v_rev_baj:
+                score_sell += 4
+                logger.info(f"  ⚡ [15M] V-REVERSAL BAJISTA detectado — máx ${v_max:.2f} → ${v_precio_baj:.2f} — +4 pts SELL")
 
             # 10. Canal roto / directriz (patrón de rotura 15M) ─────────────
             _lkb15 = params.get('sr_lookback', 200)
@@ -626,12 +649,40 @@ class GoldDetector15M(BaseDetector):
                 cancelar_buy = True
 
             simbolo_db = f"{simbolo}_15M"
+            
+            # ── Construir diagnóstico de patrones detectados ──
+            patrones_detectados = []
+            if patron_envolvente_bajista(df):
+                patrones_detectados.append("📉 Envolvente Bajista")
+            if patron_envolvente_alcista(df):
+                patrones_detectados.append("📈 Envolvente Alcista")
+            if patron_doji(df):
+                patrones_detectados.append("⚪ Doji (indecisión)")
+            if detectar_stop_hunt_bajista(df):
+                patrones_detectados.append("🎯 Stop Hunt Bajista (trampa alcista)")
+            if detectar_stop_hunt_alcista(df):
+                patrones_detectados.append("🎯 Stop Hunt Alcista (trampa bajista)")
+            if detectar_doble_techo(df, atr):
+                patrones_detectados.append("🔻 Doble Techo (M)")
+            if detectar_doble_suelo(df, atr):
+                patrones_detectados.append("🔺 Doble Suelo (W)")
+            if v_rev_alc:
+                patrones_detectados.append(f"⚡ V-Reversal Alcista (${v_min:.2f}→${v_precio:.2f})")
+            if v_rev_baj:
+                patrones_detectados.append(f"⚡ V-Reversal Bajista (${v_max:.2f}→${v_precio_baj:.2f})")
+            
+            diagnostico_patrones = "\n".join(patrones_detectados) if patrones_detectados else "Sin patrones destacados"
 
             # ── SEÑALES VENTA — solo FUERTE ──
             if senal_sell_fuerte and not cancelar_sell:
                 if self.db and self.db.existe_senal_activa_tf(simbolo_db):
                     logger.info(f"  ℹ️  SELL 15M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
                 else:
+                    # Timestamp de la vela analizada
+                    timestamp_vela = df.index[-1]
+                    hora_estudio = timestamp_vela.strftime('%Y-%m-%d %H:%M UTC')
+                    hora_envio = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
+                    
                     msg = (f"{_titulo_sell}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
@@ -643,20 +694,28 @@ class GoldDetector15M(BaseDetector):
                            f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                           f"⏱️ <b>TF:</b> 15M  📅 {fecha}")
+                           f"⏱️ <b>TF:</b> 15M\n"
+                           f"📅 <b>Estudio:</b> {hora_estudio}\n"
+                           f"🕐 <b>Envío:</b> {hora_envio}\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"🔍 <b>Patrones Detectados:</b>\n{diagnostico_patrones}")
                     if _conf_sell:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                     if self.db:
                         try:
                             self._guardar_senal({
-                                'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                'timestamp': datetime.now(timezone.utc), 
+                                'timestamp_entry': timestamp_vela.isoformat(),  # Hora de la vela
+                                'simbolo': simbolo_db,
+                                'asset': 'GOLD',
+                                'timeframe': '15M',
                                 'direccion': 'VENTA', 'precio_entrada': sell_limit,
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                 'score': score_sell,
                                 'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
                                                            'atr': round(atr, 2)}),
                                 'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
-                                'version_detector': '15M-SCALP-v2.0'
+                                'version_detector': '15M-SCALP-v2.1'
                             })
                         except Exception as e:
                             logger.error(f"  ⚠️ Error guardando señal: {e}")
@@ -667,6 +726,11 @@ class GoldDetector15M(BaseDetector):
                 if self.db and self.db.existe_senal_activa_tf(simbolo_db):
                     logger.info(f"  ℹ️  BUY 15M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
                 else:
+                    # Timestamp de la vela analizada
+                    timestamp_vela = df.index[-1]
+                    hora_estudio = timestamp_vela.strftime('%Y-%m-%d %H:%M UTC')
+                    hora_envio = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
+                    
                     msg = (f"{_titulo_buy}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
@@ -678,20 +742,28 @@ class GoldDetector15M(BaseDetector):
                            f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                           f"⏱️ <b>TF:</b> 15M  📅 {fecha}")
+                           f"⏱️ <b>TF:</b> 15M\n"
+                           f"📅 <b>Estudio:</b> {hora_estudio}\n"
+                           f"🕐 <b>Envío:</b> {hora_envio}\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"🔍 <b>Patrones Detectados:</b>\n{diagnostico_patrones}")
                     if _conf_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                     if self.db:
                         try:
                             self._guardar_senal({
-                                'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                'timestamp': datetime.now(timezone.utc), 
+                                'timestamp_entry': timestamp_vela.isoformat(),  # Hora de la vela
+                                'simbolo': simbolo_db,
+                                'asset': 'GOLD',
+                                'timeframe': '15M',
                                 'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                 'score': score_buy,
                                 'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
                                                            'atr': round(atr, 2)}),
                                 'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}",
-                                'version_detector': '15M-SCALP-v2.0'
+                                'version_detector': '15M-SCALP-v2.1'
                             })
                         except Exception as e:
                             logger.error(f"  ⚠️ Error guardando señal: {e}")

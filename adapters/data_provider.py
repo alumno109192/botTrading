@@ -1,19 +1,17 @@
 """
-data_provider.py — Fuente de datos OHLCV con prioridad de fuentes
+data_provider.py — Fuente de datos OHLCV con TwelveData
 
 🔥 MODO DIRECT FETCH — Plan Grow 55 (peticiones ilimitadas)
     Con plan de pago, consultamos TwelveData directamente sin cache.
     Datos siempre frescos, sin preocupación por límites API.
 
-Prioridad:
+Fuentes de datos:
   1. Twelve Data (Grow 55: ∞ req/día, 55/min) → directo, tiempo real
-  2. yfinance fallback (gratuito, 15 min delay) → si TD falla
+  2. Polygon.io (opcional, de pago) → backup en modo legacy
 
 Uso:
     from adapters.data_provider import get_ohlcv
     df, is_delayed = get_ohlcv('GC=F', period='5d', interval='15m')
-    if is_delayed:
-        print("⚠️ Datos con 15 min de delay (yfinance free)")
 
 Plan actual: Grow 55 (32€/mes) — Peticiones ILIMITADAS, solo límite 55 req/min
     https://twelvedata.com/pricing
@@ -27,7 +25,6 @@ import itertools
 import threading
 import pandas as pd
 import requests
-import yfinance as yf
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
@@ -60,13 +57,13 @@ def _build_key_list():
     return keys
 POLYGON_API_KEY       = os.environ.get('POLYGON_API_KEY')
 
-# Mapa de tickers yfinance → símbolo Twelve Data
+# Mapa de tickers → símbolo Twelve Data
 _TICKER_MAP_TWELVE = {
     'GC=F':  'XAU/USD',   # Gold Spot
     'SI=F':  'XAG/USD',   # Silver Spot
 }
 
-# Mapa de tickers yfinance → símbolo Polygon.io Forex/Metals
+# Mapa de tickers → símbolo Polygon.io Forex/Metals
 _TICKER_MAP_POLYGON = {
     'GC=F':  'C:XAUUSD',   # Gold Spot
     'SI=F':  'C:XAGUSD',   # Silver Spot
@@ -352,14 +349,13 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
     Descarga datos OHLCV para el ticker y periodo indicados.
 
     Orden de prioridad:
-      1. Twelve Data (Round-Robin entre key1/key2/key3, tiempo real)
+      1. Twelve Data (Round-Robin entre keys, tiempo real)
       2. Polygon.io  (de pago, tiempo real) si POLYGON_API_KEY configurada
-      3. yfinance    (delay 15 min en intraday)
 
     Retorna:
         (DataFrame, is_delayed: bool)
-        - is_delayed=False → datos en tiempo real
-        - is_delayed=True  → datos con delay de yfinance
+        - is_delayed siempre es False con TwelveData (datos en tiempo real)
+        - Si todas las fuentes fallan, retorna (DataFrame vacío, False)
 
     El DataFrame siempre tiene columnas: Open, High, Low, Close, Volume
     """
@@ -385,8 +381,9 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
                 return df, False
             print(f"  ⚠️ [DIRECT] Twelve Data {alias} falló — rotando a siguiente key")
         
-        # Si todas las keys de TD fallaron, ir a fallback yfinance
-        print(f"  ⚠️ [DIRECT] Todas las keys TD fallaron — fallback a yfinance")
+        # Si todas las keys de TD fallaron, devolver error
+        print(f"  ❌ [DIRECT] Todas las keys TD fallaron para {ticker_yf} {interval}")
+        return pd.DataFrame(), False
 
     # ══════════════════════════════════════════════════════════════════════════════
     # MODO LEGACY: Sistema de 3 capas (cache → BD → API)
@@ -446,24 +443,13 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
                 with _intraday_cache_lock:
                     _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': False}
                 return df, False
-            print(f"  ⚠️ [legacy] Polygon.io falló — fallback a yfinance")
+            print(f"  ⚠️ [legacy] Polygon.io falló")
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # FALLBACK FINAL: yfinance (delay 15 min en intraday)
+    # Sin más fuentes disponibles — devolver DataFrame vacío
     # ═══════════════════════════════════════════════════════════════════════════
-    print(f"  🔄 [data_provider] Todas las fuentes premium fallaron — usando yfinance (delay 15 min)")
-    df, ok = _get_yfinance(ticker_yf, period, interval)
-    if ok and not df.empty and len(df) >= 10:
-        print(f"  ✅ [data_provider] yfinance — {ticker_yf} {interval} ({len(df)} velas, delay 15 min)")
-        # Guardar en BD para cachear (aunque tenga delay, es mejor que nada)
-        _guardar_en_db(ticker_yf, interval, df)
-        with _intraday_cache_lock:
-            _intraday_cache[(ticker_yf, period, interval)] = {'df': df.copy(), 'ts': datetime.now(timezone.utc), 'delayed': True}
-        return df, True
-    
-    # 6️⃣ Sin más fuentes disponibles — devolver DataFrame vacío
     print(f"  ❌ [data_provider] Todas las fuentes fallaron para {ticker_yf} {interval} {period}")
-    return pd.DataFrame(), True
+    return pd.DataFrame(), False
 
 
 def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
@@ -599,44 +585,4 @@ def _get_polygon(ticker_yf: str, period: str, interval: str) -> tuple:
         return pd.DataFrame(), False
 
 
-def _get_yfinance(ticker_yf: str, period: str, interval: str) -> tuple:
-    """
-    Fallback final: descarga datos desde yfinance (gratuito, delay 15 min en intraday).
-    Retorna: (DataFrame, success: bool)
-    """
-    try:
-        # Mapeo de intervalos (yfinance usa mismo formato)
-        yf_interval = interval
-        if interval == '30m':
-            yf_interval = '30m'
-        elif interval == '1wk':
-            yf_interval = '1wk'
-        
-        # Mapeo de period (yfinance usa mismo formato)
-        yf_period = period
-        if period == '3mo':
-            yf_period = '3mo'
-        elif period == '60d':
-            yf_period = '60d'
-        
-        ticker = yf.Ticker(ticker_yf)
-        df = ticker.history(period=yf_period, interval=yf_interval)
-        
-        if df.empty:
-            return pd.DataFrame(), False
-        
-        # Normalizar columnas (yfinance ya usa Open, High, Low, Close, Volume)
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
-        df = df.astype(float)
-        
-        # Asegurar que el índice sea timezone-aware UTC
-        if df.index.tz is None:
-            df.index = df.index.tz_localize('UTC')
-        else:
-            df.index = df.index.tz_convert('UTC')
-        
-        return df, True
-    
-    except Exception as e:
-        print(f"  ⚠️ yfinance excepción: {e}")
-        return pd.DataFrame(), False
+

@@ -127,8 +127,6 @@ class GoldDetector4H(BaseDetector):
         # Solicita 3mo (90 días) → ~540 velas necesarias para EMA_trend_len=400
         try:
             df, is_delayed = get_ohlcv(params['ticker_yf'], period='3mo', interval='4h')
-            if is_delayed:
-                logger.warning("  ⚠️  [4H] Datos con 15 min de delay (yfinance). Configura TWELVE_DATA_API_KEY para tiempo real.")
             if df.empty or len(df) < 150:
                 logger.warning(f"⚠️ Datos insuficientes para {simbolo} 4H (mínimo 150 velas para EMA 400p, hay {len(df)})")
                 return

@@ -13,8 +13,11 @@ for row in r.rows:
 # Verificar si el signal_monitor en Render detectó eso
 print()
 print("=== Minimo precio alcanzado hoy segun velas ===")
-import yfinance as yf
-df = yf.Ticker('GC=F').history(period='2d', interval='5m')
-df_hoy = df[df.index.date >= df.index[-1].date()]
-print("Min hoy: %.2f  Max hoy: %.2f  Velas: %d" % (df['Low'].min(), df['High'].max(), len(df)))
-print("Min ultimas 24h: %.2f" % df['Low'].tail(288).min())
+from adapters.data_provider import get_ohlcv
+df, _ = get_ohlcv('GC=F', period='2d', interval='5m')
+if not df.empty:
+    df_hoy = df[df.index.date >= df.index[-1].date()]
+    print("Min hoy: %.2f  Max hoy: %.2f  Velas: %d" % (df['Low'].min(), df['High'].max(), len(df)))
+    print("Min ultimas 24h: %.2f" % df['Low'].tail(288).min())
+else:
+    print("⚠️ No se pudieron obtener datos")

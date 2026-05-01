@@ -2,22 +2,25 @@
 import sys, time
 sys.path.insert(0, '.')
 
-import yfinance as yf
 import pandas as pd
+from adapters.data_provider import get_ohlcv
 
-df = yf.Ticker('GC=F').history(period='5d', interval='5m')
-df = df.resample('1h').agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
+df, _ = get_ohlcv('GC=F', period='5d', interval='5m')
+if not df.empty:
+    df = df.resample('1h').agg({'Open':'first','High':'max','Low':'min','Close':'last','Volume':'sum'}).dropna()
 
-print(f"Velas 1H: {len(df)}")
-print(f"Ultima cerrada: {df.index[-2]}  Close={df.iloc[-2]['Close']:.2f}")
-print(f"Vela viva:      {df.index[-1]}  Close={df.iloc[-1]['Close']:.2f}")
-print()
+    print(f"Velas 1H: {len(df)}")
+    print(f"Ultima cerrada: {df.index[-2]}  Close={df.iloc[-2]['Close']:.2f}")
+    print(f"Vela viva:      {df.index[-1]}  Close={df.iloc[-1]['Close']:.2f}")
+    print()
 
-# Mostrar ultimas 6 velas
-print("=== ULTIMAS 6 VELAS 1H ===")
-for i in range(-6, 0):
-    row = df.iloc[i]
-    print(f"  {df.index[i]}  O={row['Open']:.2f}  H={row['High']:.2f}  L={row['Low']:.2f}  C={row['Close']:.2f}")
+    # Mostrar ultimas 6 velas
+    print("=== ULTIMAS 6 VELAS 1H ===")
+    for i in range(-6, 0):
+        row = df.iloc[i]
+        print(f"  {df.index[i]}  O={row['Open']:.2f}  H={row['High']:.2f}  L={row['Low']:.2f}  C={row['Close']:.2f}")
+else:
+    print("⚠️ No se pudieron obtener datos")
 
 print()
 

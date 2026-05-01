@@ -62,7 +62,6 @@ def test_dependencies():
     print_header("TEST 2: Dependencias Instaladas")
     
     required_packages = [
-        ('yfinance', 'yfinance'),
         ('pandas', 'pandas'),
         ('numpy', 'numpy'),
         ('requests', 'requests'),

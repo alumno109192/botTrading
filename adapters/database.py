@@ -259,6 +259,48 @@ class DatabaseManager:
                     logger.debug(f"  {col} ya existía en senales")
                 else:
                     logger.warning(f"⚠️ migrate_add_telegram_thread_id: {e}")
+    
+    def migrate_add_timestamp_and_split_symbol(self) -> None:
+        """Migración idempotente: añade timestamp_entry, asset y timeframe a senales."""
+        columnas_nuevas = [
+            ('timestamp_entry', 'TEXT'),  # timestamp de la vela analizada
+            ('asset', 'TEXT'),             # ej: 'GOLD', 'BTC'
+            ('timeframe', 'TEXT')          # ej: '5M', '15M', '1H', '4H', '1D'
+        ]
+        for col, tipo in columnas_nuevas:
+            try:
+                self.ejecutar_query(f"ALTER TABLE senales ADD COLUMN {col} {tipo}")
+                logger.info(f"✅ Migración: columna {col} añadida a senales")
+            except Exception as e:
+                if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+                    logger.debug(f"  {col} ya existía en senales")
+                else:
+                    logger.warning(f"⚠️ migrate_add_timestamp_and_split_symbol: {e}")
+        
+        # Poblar asset y timeframe desde simbolo existente (para registros legacy)
+        try:
+            # Solo actualizar registros donde asset o timeframe sea NULL
+            self.ejecutar_query("""
+                UPDATE senales 
+                SET asset = CASE
+                    WHEN simbolo LIKE 'XAUUSD%' THEN 'GOLD'
+                    WHEN simbolo LIKE 'BTCUSD%' THEN 'BTC'
+                    WHEN simbolo LIKE 'SPX%' THEN 'SPX'
+                    ELSE SUBSTR(simbolo, 1, INSTR(simbolo || '_', '_') - 1)
+                END,
+                timeframe = CASE
+                    WHEN simbolo LIKE '%_1D' THEN '1D'
+                    WHEN simbolo LIKE '%_4H' THEN '4H'
+                    WHEN simbolo LIKE '%_1H' THEN '1H'
+                    WHEN simbolo LIKE '%_15M' THEN '15M'
+                    WHEN simbolo LIKE '%_5M' THEN '5M'
+                    ELSE SUBSTR(simbolo, INSTR(simbolo, '_') + 1)
+                END
+                WHERE asset IS NULL OR timeframe IS NULL
+            """)
+            logger.info("✅ Migración: asset y timeframe poblados desde simbolo legacy")
+        except Exception as e:
+            logger.warning(f"⚠️ Error poblando asset/timeframe: {e}")
 
     def guardar_senal(self, senal_data: Dict) -> int:
         """
@@ -266,6 +308,11 @@ class DatabaseManager:
         
         Args:
             senal_data: Dictionary con los datos de la señal
+                - timestamp: timestamp del mensaje/envío
+                - timestamp_entry: timestamp de la vela de entrada (nuevo)
+                - simbolo: símbolo completo (ej: XAUUSD_15M) - legacy
+                - asset: activo (ej: GOLD) - nuevo
+                - timeframe: temporalidad (ej: 15M) - nuevo
             
         Returns:
             ID de la señal insertada
@@ -273,13 +320,29 @@ class DatabaseManager:
         estado = senal_data.get('estado', 'ACTIVA')
         thread_id = senal_data.get('telegram_thread_id')
         msg_id = senal_data.get('telegram_message_id')
+        
+        # Extraer asset y timeframe del símbolo si no se proporcionan explícitamente
+        simbolo = senal_data['simbolo']
+        asset = senal_data.get('asset')
+        timeframe = senal_data.get('timeframe')
+        
+        if not asset or not timeframe:
+            # Parsear desde simbolo: XAUUSD_15M -> asset=GOLD, timeframe=15M
+            if '_' in simbolo:
+                base, tf = simbolo.rsplit('_', 1)
+                if not asset:
+                    asset = 'GOLD' if base == 'XAUUSD' else base
+                if not timeframe:
+                    timeframe = tf
+        
         query = f"""
         INSERT INTO senales (
             timestamp, simbolo, direccion, precio_entrada,
             tp1, tp2, tp3, sl, score,
             indicadores, patron_velas, version_detector,
-            estado, telegram_thread_id, telegram_message_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}', ?, ?)
+            estado, telegram_thread_id, telegram_message_id,
+            timestamp_entry, asset, timeframe
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}', ?, ?, ?, ?, ?)
         """
         
         params = (
@@ -297,6 +360,9 @@ class DatabaseManager:
             senal_data.get('version_detector', '2.0'),
             thread_id,
             msg_id,
+            senal_data.get('timestamp_entry'),  # timestamp de la vela analizada
+            asset,
+            timeframe,
         )
         
         senal_id = self.ejecutar_insert(query, params)
@@ -1327,6 +1393,8 @@ def get_db() -> Optional[DatabaseManager]:
     detectores no repitan el mismo bloque try/except en cada módulo.
     Imprime un aviso una sola vez cuando las variables de entorno no están
     presentes, equivalente al comportamiento anterior por detector.
+    
+    También ejecuta migraciones automáticamente al crear la instancia.
     """
     global _db_warning_printed
     turso_url = os.environ.get('TURSO_DATABASE_URL')
@@ -1336,7 +1404,17 @@ def get_db() -> Optional[DatabaseManager]:
             logger.warning("⚠️  Variables Turso no configuradas - Sistema funcionará sin tracking de BD")
             _db_warning_printed = True
         return None
-    return DatabaseManager()
+    
+    db = DatabaseManager()
+    
+    # Ejecutar migraciones automáticamente (son idempotentes)
+    try:
+        db.migrate_add_telegram_thread_id()
+        db.migrate_add_timestamp_and_split_symbol()
+    except Exception as e:
+        logger.warning(f"⚠️ Error ejecutando migraciones: {e}")
+    
+    return db
 
 
 if __name__ == '__main__':

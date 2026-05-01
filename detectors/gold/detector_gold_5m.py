@@ -97,6 +97,7 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_rechazo_en_directriz,
     detectar_cuña_descendente, detectar_cuña_ascendente,
     detectar_doble_techo, detectar_doble_suelo,
+    detectar_v_reversal_alcista, detectar_v_reversal_bajista,
 )
 
 
@@ -143,8 +144,7 @@ class GoldDetector5M(BaseDetector):
 
         try:
             df, is_delayed = get_ohlcv(params['ticker_yf'], period='7d', interval='5m')
-            if is_delayed:
-                logger.warning("  ⚠️  [5M] Datos con 15 min de delay (yfinance free). Entradas de scalping pueden estar desfasadas.")
+
 
             if df.empty or len(df) < 50:
                 logger.warning(f"⚠️ Datos insuficientes para {simbolo} 5M")
@@ -345,6 +345,19 @@ class GoldDetector5M(BaseDetector):
             if _ds_5m:
                 score_buy += 4
                 logger.info(f"  🔺 [5M] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_5m:.1f} cuello=${_ds_neck_5m:.1f} — +4 pts BUY")
+
+            # ── V-Reversal (5M) — Reversión vertical ultra-rápida ───────────────
+            # Parámetros 5M: lookback=20 velas (~100 min), mínimo 3.0 ATR caída, 2.5 ATR rebote
+            v_rev_alc_5m, v_min_5m, v_precio_5m = detectar_v_reversal_alcista(
+                df, atr, lookback=20, min_caida_atr=3.0, min_rebote_atr=2.5)
+            v_rev_baj_5m, v_max_5m, v_precio_baj_5m = detectar_v_reversal_bajista(
+                df, atr, lookback=20, min_subida_atr=3.0, min_caida_atr=2.5)
+            if v_rev_alc_5m:
+                score_buy += 5
+                logger.info(f"  ⚡ [5M] V-REVERSAL ALCISTA detectado — mín ${v_min_5m:.2f} → ${v_precio_5m:.2f} — +5 pts BUY")
+            if v_rev_baj_5m:
+                score_sell += 5
+                logger.info(f"  ⚡ [5M] V-REVERSAL BAJISTA detectado — máx ${v_max_5m:.2f} → ${v_precio_baj_5m:.2f} — +5 pts SELL")
 
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo se consulta si estamos en zona de desempate (score cerca del umbral)
@@ -659,12 +672,40 @@ class GoldDetector5M(BaseDetector):
                 cancelar_buy = True
 
             simbolo_db = f"{simbolo}_5M"
+            
+            # ── Construir diagnóstico de patrones detectados ──
+            patrones_detectados = []
+            if patron_envolvente_bajista(df):
+                patrones_detectados.append("📉 Envolvente Bajista")
+            if patron_envolvente_alcista(df):
+                patrones_detectados.append("📈 Envolvente Alcista")
+            if patron_doji(df):
+                patrones_detectados.append("⚪ Doji (indecisión)")
+            if detectar_stop_hunt_bajista(df):
+                patrones_detectados.append("🎯 Stop Hunt Bajista (trampa alcista)")
+            if detectar_stop_hunt_alcista(df):
+                patrones_detectados.append("🎯 Stop Hunt Alcista (trampa bajista)")
+            if _dt_5m:
+                patrones_detectados.append(f"🔻 Doble Techo en ${_dt_nivel_5m:.1f}")
+            if _ds_5m:
+                patrones_detectados.append(f"🔺 Doble Suelo en ${_ds_nivel_5m:.1f}")
+            if v_rev_alc_5m:
+                patrones_detectados.append(f"⚡ V-Reversal Alcista (${v_min_5m:.2f}→${v_precio_5m:.2f})")
+            if v_rev_baj_5m:
+                patrones_detectados.append(f"⚡ V-Reversal Bajista (${v_max_5m:.2f}→${v_precio_baj_5m:.2f})")
+            
+            diagnostico_patrones = "\n".join(patrones_detectados) if patrones_detectados else "Sin patrones destacados"
 
             # ── SEÑALES VENTA — solo FUERTE ──
             if senal_sell_fuerte and not cancelar_sell:
                 if self.db and self.db.existe_senal_activa_tf(simbolo_db):
                     logger.info(f"  ℹ️  SELL 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
                 else:
+                    # Timestamp de la vela analizada
+                    timestamp_vela = df.index[-1]
+                    hora_estudio = timestamp_vela.strftime('%Y-%m-%d %H:%M UTC')
+                    hora_envio = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
+                    
                     msg = (f"{_titulo_sell}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
@@ -676,21 +717,30 @@ class GoldDetector5M(BaseDetector):
                            f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                           f"⏱️ <b>TF:</b> 5M  📅 {fecha}\n"
+                           f"⏱️ <b>TF:</b> 5M\n"
+                           f"📅 <b>Estudio:</b> {hora_estudio}\n"
+                           f"🕐 <b>Envío:</b> {hora_envio}\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"🔍 <b>Patrones Detectados:</b>\n{diagnostico_patrones}\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"🔒 MICRO-SCALP — Cerrar máx 30 min")
                     if _conf_sell:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                     if self.db:
                         try:
                             self._guardar_senal({
-                                'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                'timestamp': datetime.now(timezone.utc), 
+                                'timestamp_entry': timestamp_vela.isoformat(),
+                                'simbolo': simbolo_db,
+                                'asset': 'GOLD',
+                                'timeframe': '5M',
                                 'direccion': 'VENTA', 'precio_entrada': sell_limit,
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                 'score': score_sell,
                                 'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
                                                            'atr': round(atr, 2)}),
                                 'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
-                                'version_detector': '5M-MICRO-v2.0'
+                                'version_detector': '5M-MICRO-v2.1'
                             })
                         except Exception as e:
                             logger.error(f"  ⚠️ Error guardando señal: {e}")
@@ -701,6 +751,11 @@ class GoldDetector5M(BaseDetector):
                 if self.db and self.db.existe_senal_activa_tf(simbolo_db):
                     logger.info(f"  ℹ️  BUY 5M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
                 else:
+                    # Timestamp de la vela analizada
+                    timestamp_vela = df.index[-1]
+                    hora_estudio = timestamp_vela.strftime('%Y-%m-%d %H:%M UTC')
+                    hora_envio = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
+                    
                     msg = (f"{_titulo_buy}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
@@ -712,21 +767,30 @@ class GoldDetector5M(BaseDetector):
                            f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                           f"⏱️ <b>TF:</b> 5M  📅 {fecha}\n"
+                           f"⏱️ <b>TF:</b> 5M\n"
+                           f"📅 <b>Estudio:</b> {hora_estudio}\n"
+                           f"🕐 <b>Envío:</b> {hora_envio}\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
+                           f"🔍 <b>Patrones Detectados:</b>\n{diagnostico_patrones}\n"
+                           f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"🔒 MICRO-SCALP — Cerrar máx 30 min")
                     if _conf_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                     if self.db:
                         try:
                             self._guardar_senal({
-                                'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                'timestamp': datetime.now(timezone.utc), 
+                                'timestamp_entry': timestamp_vela.isoformat(),
+                                'simbolo': simbolo_db,
+                                'asset': 'GOLD',
+                                'timeframe': '5M',
                                 'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                 'score': score_buy,
                                 'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
                                                            'atr': round(atr, 2)}),
                                 'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}, DobleSuelo:{_ds_5m}",
-                                'version_detector': '5M-MICRO-v2.0'
+                                'version_detector': '5M-MICRO-v2.1'
                             })
                         except Exception as e:
                             logger.error(f"  ⚠️ Error guardando señal: {e}")
