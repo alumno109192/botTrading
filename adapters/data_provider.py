@@ -178,11 +178,12 @@ def _next_td_key() -> tuple:
     Devuelve (alias, key) con prioridad:
     1. key1 (Plan Grow 55: ∞ req/día, 55 req/min) - SIEMPRE PRIMERO
     2. keys 2-11 (Plan FREE: 800 req/día) - FALLBACK en round-robin
-    
+    3. Todas en cooldown → (None, None): el caller debe abortar, NO forzar key1
+
     Estrategia:
     - Si key1 disponible (no en cooldown) → usar key1
     - Si key1 en cooldown → rotar entre key2-key11 disponibles
-    - Si todas en cooldown → devolver la siguiente del ciclo
+    - Si todas en cooldown → devolver (None, None) para que el loop se detenga
     """
     if not _td_keys:
         return None, None
@@ -191,7 +192,7 @@ def _next_td_key() -> tuple:
     for alias, key in _td_keys:
         if alias == 'key1' and not _is_on_cooldown(alias):
             return alias, key
-    
+
     # 2️⃣ FALLBACK: key1 en cooldown → usar keys FREE (2-11) en round-robin
     with _td_cycle_lock:
         for _ in range(len(_td_keys)):
@@ -202,14 +203,9 @@ def _next_td_key() -> tuple:
             if not _is_on_cooldown(alias):
                 return alias, key
 
-    # 3️⃣ ÚLTIMA OPCIÓN: Todas en cooldown → devolver key1 (la API dirá si falla)
-    for alias, key in _td_keys:
-        if alias == 'key1':
-            return alias, key
-    
-    # Si key1 no existe, devolver la siguiente del ciclo
-    with _td_cycle_lock:
-        return next(_td_cycle)
+    # 3️⃣ TODAS EN COOLDOWN — no devolver key1 (evita bucle infinito)
+    #    El caller tiene "if not key: break" que detendrá el loop.
+    return None, None
 
 
 def _registrar_uso_key(alias: str):
