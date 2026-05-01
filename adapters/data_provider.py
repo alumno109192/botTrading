@@ -124,12 +124,12 @@ _minute_lock = threading.Lock()
 _MAX_REQ_PER_MINUTE = 50       # límite real del plan BASIC es 55; usamos 50 para margen
 
 
-def _set_key_cooldown(alias: str, seconds: int = 65):
+def _set_key_cooldown(alias: str, seconds: int = 65, reason: str = 'error API'):
     """Bloquea una key N segundos (reactivo: cuando la API ya devolvió el error)."""
     import time as _time
     with _cooldown_lock:
         _key_cooldown[alias] = _time.time() + seconds
-    print(f"  🕐 [quota] {alias}: cooldown {seconds}s por límite/minuto")
+    print(f"  🕐 [quota] {alias}: cooldown {seconds}s ({reason})")
 
 
 def _is_on_cooldown(alias: str) -> bool:
@@ -158,7 +158,7 @@ def _reserve_minute_slot(alias: str) -> bool:
         if entry['count'] >= _MAX_REQ_PER_MINUTE:
             # Cupo lleno — cooldown hasta el próximo minuto
             secs_left = 62 - (int(_time.time()) % 60)   # +2s de margen
-            _set_key_cooldown(alias, secs_left)
+            _set_key_cooldown(alias, secs_left, reason='cupo/min lleno')
             return False
         entry['count'] += 1
         return True
@@ -510,6 +510,8 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
         r = requests.get(url, timeout=15)
         if r.status_code != 200:
             print(f"  ⚠️ Twelve Data HTTP {r.status_code}: {r.text[:80]}")
+            if alias:
+                _set_key_cooldown(alias, 30, reason=f'HTTP {r.status_code}')
             return pd.DataFrame(), False
 
         data = r.json()
@@ -518,9 +520,14 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
         if data.get('status') == 'error' or 'values' not in data:
             msg = data.get('message', data.get('status', 'unknown error'))
             print(f"  ⚠️ Twelve Data error: {msg}")
-            # Límite por minuto → cooldown 65s para no seguir rotando en vano
-            if alias and 'current minute' in msg.lower():
-                _set_key_cooldown(alias, 65)
+            if alias:
+                msg_lower = msg.lower()
+                if 'current minute' in msg_lower:
+                    _set_key_cooldown(alias, 65, reason='límite/minuto')
+                elif 'current day' in msg_lower or 'daily' in msg_lower:
+                    _set_key_cooldown(alias, 3600, reason='límite diario')
+                else:
+                    _set_key_cooldown(alias, 30, reason=f'error API: {msg[:50]}')
             return pd.DataFrame(), False
 
         values = data['values']
@@ -546,6 +553,8 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
 
     except Exception as e:
         print(f"  ⚠️ Twelve Data excepción: {e}")
+        if alias:
+            _set_key_cooldown(alias, 30, reason=f'excepción: {str(e)[:50]}')
         return pd.DataFrame(), False
 
 

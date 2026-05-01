@@ -438,6 +438,41 @@ def verificar_y_notificar_reanudacion():
         _alertas_reanudacion_pendientes.pop(desc, None)
 
 
+def debe_cerrar_senales_activas(configuracion: str) -> tuple:
+    """
+    Determina si se deben cerrar las señales activas según la config y el evento próximo.
+
+    Args:
+        configuracion: "none" | "fomc" | "high_impact" | "all"
+            - "none"        → nunca cerrar automáticamente
+            - "fomc"        → cerrar solo si el evento es FOMC o Powell
+            - "high_impact" → cerrar en cualquier evento crítico (FOMC, NFP, CPI...)
+            - "all"         → cerrar en cualquier evento del calendario
+
+    Returns:
+        (debe_cerrar: bool, descripcion_evento: str)
+    """
+    if configuracion == 'none':
+        return False, ""
+
+    ahora = datetime.now(timezone.utc)
+    ventana_minutos = 30  # Solo actúa si el evento está en los próximos 30 min
+
+    for año, mes, dia, hora, minuto, desc in _EVENTOS_SORTED:
+        ts_evento = datetime(año, mes, dia, hora, minuto, tzinfo=timezone.utc)
+        delta_min = (ts_evento - ahora).total_seconds() / 60
+
+        if 0 < delta_min <= ventana_minutos:
+            if configuracion == 'fomc' and not any(k in desc for k in ('FOMC', 'Powell')):
+                continue
+            if configuracion == 'high_impact' and not es_evento_critico(desc):
+                continue
+            # "all" pasa siempre
+            return True, desc
+
+    return False, ""
+
+
 def proximos_eventos(n: int = 5) -> list:
     """
     Retorna los próximos N eventos programados a partir de ahora.

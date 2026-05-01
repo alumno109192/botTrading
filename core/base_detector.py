@@ -64,6 +64,7 @@ class BaseDetector(ABC):
         self.aviso_macro: str = ""
         self.contexto_pullback: str = ""  # contexto pullback multi-TF; se appendea en cada mensaje
         self._last_senal_id: int | None = None  # ID de la última señal guardada en BD
+        self._current_candle_ts = None             # Timestamp de la vela analizada (lo asigna cada detector)
 
         # Inicializar BD si las variables están configuradas
         import logging as _logging
@@ -88,8 +89,11 @@ class BaseDetector(ABC):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _guardar_senal(self, senal_data: dict) -> int:
-        """Proxy sobre db.guardar_senal que inyecta self.telegram_thread_id."""
+        """Proxy sobre db.guardar_senal que inyecta telegram_thread_id y timestamp_entry."""
         senal_data.setdefault('telegram_thread_id', self.telegram_thread_id)
+        # Inyectar timestamp de la vela si no viene explícito
+        if 'timestamp_entry' not in senal_data and self._current_candle_ts is not None:
+            senal_data['timestamp_entry'] = self._current_candle_ts.isoformat()
         senal_id = self.db.guardar_senal(senal_data)
         self._last_senal_id = senal_id  # lo consumirá el próximo enviar()
         return senal_id

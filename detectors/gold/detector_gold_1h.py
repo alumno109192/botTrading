@@ -899,6 +899,7 @@ class GoldDetector1H(BaseDetector):
         # ── Timestamps: separar vela estudiada vs envío del mensaje ──
         timestamp_vela = df.index[-2]  # Última vela CERRADA (para señales normales)
         timestamp_vela_live = df.index[-1]  # Vela EN CURSO (para señales LIVE)
+        self._current_candle_ts = timestamp_vela  # para _guardar_senal auto-inject
         timestamp_envio = datetime.now(timezone.utc)  # Momento de envío del mensaje
         fecha = timestamp_vela.strftime('%Y-%m-%d %H:%M')
 

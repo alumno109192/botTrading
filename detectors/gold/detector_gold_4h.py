@@ -650,6 +650,7 @@ class GoldDetector4H(BaseDetector):
             logger.warning(f"  ⛔ BUY bloqueada: R:R TP1={rr_buy_tp1} < 1.2")
 
         fecha = df.index[-2].strftime('%Y-%m-%d %H:%M')
+        self._current_candle_ts = df.index[-2]  # para _guardar_senal auto-inject
     
         # VERIFICAR SI YA SE ANALIZÓ ESTA VELA
         clave_simbolo = f"{simbolo}_4H"

@@ -862,6 +862,16 @@ def monitor_senales():
     # ISO week numbers de la última apertura/cierre notificados (evita mensajes duplicados)
     _semana_apertura_enviada: int = -1
     _semana_cierre_enviada: int = -1
+    # Eventos para los que ya se ejecutó el auto-cierre (evita cerrar 2 veces el mismo evento)
+    _autoclose_ejecutado: set = set()
+
+    # Configuración de auto-cierre por eventos macro (de .env)
+    _AUTO_CLOSE_CFG = os.environ.get('AUTO_CLOSE_ON_EVENTS', 'none').lower().strip()
+    if _AUTO_CLOSE_CFG not in ('none', 'fomc', 'high_impact', 'all'):
+        logger.warning(f"⚠️  AUTO_CLOSE_ON_EVENTS='{_AUTO_CLOSE_CFG}' no válido — usando 'none'")
+        _AUTO_CLOSE_CFG = 'none'
+    if _AUTO_CLOSE_CFG != 'none':
+        logger.info(f"⚡ Auto-cierre por eventos macro: {_AUTO_CLOSE_CFG.upper()}")
 
     while True:
         try:
@@ -912,6 +922,78 @@ def monitor_senales():
 
             ahora = ahora_utc.astimezone()   # hora local para logs existentes
             logger.info(f"\n[{ahora.strftime('%H:%M:%S')}] 🔄 Tick #{ciclo}")
+
+            # ── Auto-cierre por evento macro (configurable vía AUTO_CLOSE_ON_EVENTS) ──
+            if _AUTO_CLOSE_CFG != 'none':
+                try:
+                    from services.economic_calendar import debe_cerrar_senales_activas
+                    _cerrar, _desc_evento = debe_cerrar_senales_activas(_AUTO_CLOSE_CFG)
+                    if _cerrar and _desc_evento not in _autoclose_ejecutado:
+                        _senales_para_cerrar = db.obtener_senales_activas()
+                        if _senales_para_cerrar:
+                            logger.warning(
+                                f"⚠️  Auto-cierre por evento macro: {_desc_evento} "
+                                f"({len(_senales_para_cerrar)} señales)"
+                            )
+                            _cerradas_resumen = []
+                            for _s in _senales_para_cerrar:
+                                try:
+                                    _sid      = _s['id']
+                                    _simbolo  = _s['simbolo']
+                                    _dir      = _s['direccion']
+                                    _entrada  = float(_s['precio_entrada'])
+                                    _base     = _simbolo.split('_')[0]
+                                    _ticker   = SIMBOLO_TO_TICKER.get(_base)
+                                    _precio_cierre = _entrada  # fallback
+                                    if _ticker:
+                                        _res = _fetch_precios_ticker(_ticker, db=db)
+                                        if _res:
+                                            _precio_cierre = _res[0]
+                                    _benef = calcular_beneficio_pct(_entrada, _precio_cierre, _dir)
+                                    db.cerrar_senal(_sid, 'CERRADA_EVENTO_MACRO', _benef)
+                                    _cerradas_resumen.append(
+                                        f"  #{_sid} {_simbolo} {_dir} "
+                                        f"entry=${_entrada:.2f} close=${_precio_cierre:.2f} "
+                                        f"({_benef:+.2f}%)"
+                                    )
+                                    # Notificación individual por señal
+                                    _icono = '🟢' if _dir == 'COMPRA' else '🔴'
+                                    enviar_notificacion_telegram(
+                                        f"⚠️ <b>SEÑAL CERRADA POR EVENTO MACRO</b>\n"
+                                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                                        f"{_icono} {_simbolo} | {_dir}\n"
+                                        f"💰 Entrada: ${_entrada:.2f}\n"
+                                        f"💰 Cierre:  ${_precio_cierre:.2f}\n"
+                                        f"{'📈' if _benef >= 0 else '📉'} P&L: {_benef:+.2f}%\n"
+                                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                                        f"📌 Evento: {_desc_evento}\n"
+                                        f"⚙️ Auto-cierre: {_AUTO_CLOSE_CFG.upper()}\n"
+                                        f"🔖 <code>#{_sid}</code>",
+                                        _simbolo,
+                                        reply_to_message_id=_s.get('telegram_message_id')
+                                    )
+                                except Exception as _e_s:
+                                    logger.error(f"  ❌ Error cerrando señal {_s.get('id')}: {_e_s}")
+
+                            # Resumen agregado
+                            _lineas = "\n".join(_cerradas_resumen) if _cerradas_resumen else "  (ninguna)"
+                            enviar_notificacion_telegram(
+                                f"🚫 <b>CIERRE AUTOMÁTICO — EVENTO MACRO</b>\n"
+                                f"━━━━━━━━━━━━━━━━━━━━\n"
+                                f"⚠️ <b>Evento:</b> {_desc_evento}\n"
+                                f"📊 <b>Señales cerradas:</b> {len(_cerradas_resumen)}\n"
+                                f"━━━━━━━━━━━━━━━━━━━━\n"
+                                f"{_lineas}\n"
+                                f"━━━━━━━━━━━━━━━━━━━━\n"
+                                f"⚙️ Config: AUTO_CLOSE_ON_EVENTS={_AUTO_CLOSE_CFG.upper()}\n"
+                                f"⏰ {ahora_utc.strftime('%Y-%m-%d %H:%M UTC')}"
+                            )
+                            _autoclose_ejecutado.add(_desc_evento)
+                        else:
+                            logger.info(f"  ℹ️  Auto-cierre: {_desc_evento} — no hay señales activas")
+                            _autoclose_ejecutado.add(_desc_evento)
+                except Exception as _e_ac:
+                    logger.error(f"  ❌ Error en auto-cierre macro: {_e_ac}")
 
             senales_activas = db.obtener_senales_activas()
 

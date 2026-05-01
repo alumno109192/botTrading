@@ -729,6 +729,7 @@ class GoldDetector1D(BaseDetector):
         # LOG EN CONSOLA
         # ══════════════════════════════════
         fecha = df.index[-2].strftime('%Y-%m-%d')    
+        self._current_candle_ts = df.index[-2]  # para _guardar_senal auto-inject
         # ══════════════════════════════════════
         # VERIFICAR SI YA SE ANALIZÓ ESTA VELA
         # ══════════════════════════════════════
