@@ -124,7 +124,17 @@ _cooldown_lock = threading.Lock()
 # de hasta límite*2 req en el cruce de minuto (p.ej. 50+9=59 con límite 55).
 _key_minute_window: dict = {}  # alias → deque de timestamps float
 _minute_lock = threading.Lock()
-_MAX_REQ_PER_MINUTE = 50       # límite real del plan es 55; usamos 50 para margen
+
+# Límites por plan (con margen de seguridad)
+# key1  → Plan Grow 55  : 55 req/min ilimitado/día  → usamos 50 req/min
+# key2+ → Plan Basic 8  :  8 req/min,  800 req/día  → usamos  7 req/min, 750 req/día
+_MAX_RPM_KEY1  = 50    # Grow 55: límite real 55 req/min
+_MAX_RPM_FREE  =  7    # Basic 8: límite real  8 req/min
+_MAX_DAILY_FREE = 750  # Basic 8: límite real 800 req/día → margen 50
+
+def _get_max_rpm(alias: str) -> int:
+    """Devuelve el límite de req/min según el plan de la key."""
+    return _MAX_RPM_KEY1 if alias == 'key1' else _MAX_RPM_FREE
 
 
 def _set_key_cooldown(alias: str, seconds: int = 65, reason: str = 'error API'):
@@ -162,7 +172,8 @@ def _reserve_minute_slot(alias: str) -> bool:
         # Eliminar timestamps que ya salieron de la ventana de 60s
         while window and window[0] <= window_start:
             window.popleft()
-        if len(window) >= _MAX_REQ_PER_MINUTE:
+        max_rpm = _get_max_rpm(alias)
+        if len(window) >= max_rpm:
             # Cupo lleno — cooldown hasta que el timestamp más antiguo expire
             secs_left = int(window[0] - window_start) + 2
             _set_key_cooldown(alias, max(secs_left, 5), reason='cupo/min lleno')
@@ -180,17 +191,34 @@ def _cargar_uso_desde_bd() -> dict:
         return {}
 
 
+def _is_daily_limit_exceeded(alias: str) -> bool:
+    """
+    True si una key FREE (key2-key11) ha alcanzado el límite diario de 800 req/día.
+    key1 (Grow 55) tiene peticiones ilimitadas → siempre False.
+    Usa el cache de uso con TTL de 60s para evitar una query a BD por petición.
+    """
+    if alias == 'key1':
+        return False
+    import time as _time
+    global _uso_cache, _uso_cache_ts
+    with _uso_cache_lock:
+        if _time.time() - _uso_cache_ts > _USO_CACHE_TTL:
+            _uso_cache = _cargar_uso_desde_bd()
+            _uso_cache_ts = _time.time()
+        return _uso_cache.get(alias, 0) >= _MAX_DAILY_FREE
+
+
 def _next_td_key() -> tuple:
     """
     Devuelve (alias, key) con prioridad:
     1. key1 (Plan Grow 55: ∞ req/día, 55 req/min) - SIEMPRE PRIMERO
-    2. keys 2-11 (Plan FREE: 800 req/día) - FALLBACK en round-robin
-    3. Todas en cooldown → (None, None): el caller debe abortar, NO forzar key1
+    2. keys 2-11 (Plan Basic 8: 8 req/min, 800 req/día) - FALLBACK en round-robin
+    3. Todas bloqueadas → (None, None): el caller debe abortar, NO forzar key1
 
     Estrategia:
     - Si key1 disponible (no en cooldown) → usar key1
-    - Si key1 en cooldown → rotar entre key2-key11 disponibles
-    - Si todas en cooldown → devolver (None, None) para que el loop se detenga
+    - Si key1 en cooldown → rotar entre key2-key11 disponibles y sin cuota diaria agotada
+    - Si todas bloqueadas → devolver (None, None) para que el loop se detenga
     """
     if not _td_keys:
         return None, None
@@ -207,10 +235,14 @@ def _next_td_key() -> tuple:
             # Saltar key1 en el ciclo (ya la intentamos arriba)
             if alias == 'key1':
                 continue
-            if not _is_on_cooldown(alias):
-                return alias, key
+            if _is_on_cooldown(alias):
+                continue
+            if _is_daily_limit_exceeded(alias):
+                print(f"  🚫 [quota] {alias}: límite diario alcanzado ({_MAX_DAILY_FREE} req) — saltando")
+                continue
+            return alias, key
 
-    # 3️⃣ TODAS EN COOLDOWN — no devolver key1 (evita bucle infinito)
+    # 3️⃣ TODAS BLOQUEADAS — no devolver key1 (evita bucle infinito)
     #    El caller tiene "if not key: break" que detendrá el loop.
     return None, None
 
