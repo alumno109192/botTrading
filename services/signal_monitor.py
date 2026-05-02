@@ -591,7 +591,7 @@ def _verificar_trampa_patron(senal: dict, db: DatabaseManager, trampa_avisada: s
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🔖 <code>#{senal_id}</code>"
         )
-        enviar_notificacion_telegram(msg, simbolo)
+        enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=senal.get('telegram_message_id'))
         trampa_avisada.add(senal_id)
         logger.info(
             f"  ⚠️ [{simbolo}] TRAMPA detectada señal #{senal_id} ({direccion}): "
@@ -712,7 +712,7 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
                 f"📊 {simbolo} | {direccion}\n"
                 f"⌛ Esperó {int(antiguedad_h*60)} min sin alineación inferior"
             )
-            enviar_notificacion_telegram(msg_caduca, simbolo)
+            enviar_notificacion_telegram(msg_caduca, simbolo, reply_to_message_id=senal.get('telegram_message_id'))
             logger.info(f"  ⏰ Señal {senal_id} ({simbolo} {direccion}) caducada por timeout")
             continue
 
@@ -761,7 +761,7 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
             f"📊 <b>Score 1H:</b> {score}/21  ⏱️ <b>TF:</b> 1H+1M\n"
             f"<code>{desc_1m}</code>"
         )
-        enviar_notificacion_telegram(msg_confirm, simbolo)
+        enviar_notificacion_telegram(msg_confirm, simbolo, reply_to_message_id=senal.get('telegram_message_id'))
         logger.info(f"  ✅ Señal {senal_id} ({simbolo} {direccion}) confirmada: {desc_1m}")
 
 
