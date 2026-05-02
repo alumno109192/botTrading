@@ -2,6 +2,7 @@
 from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
 from services.cot_bias import get_cot_bias, ajustar_score_por_cot
+from services.yield_bias import get_yield_bias, ajustar_score_por_yield
 from services.open_interest import get_oi_bias, ajustar_score_por_oi
 from services.economic_calendar import obtener_aviso_macro, debe_bloquear_trading, enviar_alerta_bloqueo, verificar_y_notificar_reanudacion
 from services.news_monitor import obtener_sesgo_actual
@@ -89,6 +90,7 @@ from core.indicators import (
     detectar_hch, detectar_hch_invertido,
     detectar_triangulo,
     detectar_bandera_banderin,
+    calcular_pivots_diarios, evaluar_precio_vs_pivots,
 )
 
 
@@ -161,6 +163,13 @@ class GoldDetector1H(BaseDetector):
         df['total_range'] = df['High'] - df['Low']
         df['is_bearish']  = df['Close'] < df['Open']
         df['is_bullish']  = df['Close'] > df['Open']
+
+        # ── Pivots diarios (sesión NY anterior) ──────────────────────────────
+        try:
+            _df_1d, _ = get_ohlcv(params['ticker_yf'], period='5d', interval='1d')
+            _pivots_1h = calcular_pivots_diarios(_df_1d)
+        except Exception:
+            _pivots_1h = {}
 
         row  = df.iloc[-2]; prev = df.iloc[-3]; p2 = df.iloc[-4]
         close = row['Close']; high = row['High']; low = row['Low']; open_ = row['Open']; vol = row['Volume']
@@ -639,6 +648,15 @@ class GoldDetector1H(BaseDetector):
         # ── REBOTE EN S/R O FIBONACCI (1H) ──────────────────────────────────────
         _todos_sop_1h  = list(_sop_interm_1h) + ([_fib_precio_1h] if _fib_tend_1h == 'alcista' and _fib_nivel_1h else [])
         _todas_res_1h  = list(_res_interm_1h) + ([_fib_precio_1h] if _fib_tend_1h == 'bajista' and _fib_nivel_1h else [])
+
+        # ── Añadir niveles de Pivots diarios a S/R ──────────────────────────────
+        if _pivots_1h:
+            _piv_sop, _piv_res, _piv_info = evaluar_precio_vs_pivots(
+                close, high, low, _pivots_1h, atr, tol_mult=0.3)
+            _todos_sop_1h = list({*_todos_sop_1h, *_piv_sop})
+            _todas_res_1h = list({*_todas_res_1h, *_piv_res})
+            logger.info(f"  🎯 [1H] Pivots diarios: PP=${_pivots_1h['PP']:.2f} | {_piv_info}")
+
         _rsi_serie_1h  = df['rsi']
 
         _rebote_baj_1h, _desc_baj_1h = detectar_rebote_bajista(
@@ -660,6 +678,10 @@ class GoldDetector1H(BaseDetector):
         # ── Ajuste por COT Report (posiciones institucionales semanales) ──
         _cot_bias, _cot_ratio = get_cot_bias()
         score_buy, score_sell = ajustar_score_por_cot(score_buy, score_sell, _cot_bias)
+
+        # ── Ajuste por Yields Reales 10Y (correlación inversa con Gold) ──
+        _yield_bias, _yield_val, _yield_ma = get_yield_bias()
+        score_buy, score_sell = ajustar_score_por_yield(score_buy, score_sell, _yield_bias)
 
         # ── Ajuste por Open Interest / Volumen (fuerza de tendencia) ──
         _oi_bias = get_oi_bias()

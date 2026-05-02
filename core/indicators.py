@@ -2115,3 +2115,104 @@ def detectar_bandera_banderin(
             return tipo, precio_objetivo, round(punto_ruptura, 2)
         tipo_comp = 'banderin_bajista_prep' if es_banderin else 'bandera_bajista_prep'
         return tipo_comp, precio_objetivo, round(punto_ruptura, 2)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PIVOTS DIARIOS CLÁSICOS (Floor Pivots)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def calcular_pivots_diarios(df_diario: pd.DataFrame) -> dict:
+    """
+    Calcula los Pivot Points clásicos (Floor Pivots) usando la sesión NY anterior
+    (última vela diaria cerrada). Estos niveles son especialmente respetados por
+    traders institucionales e intradía en mercados de futuros como Gold.
+
+    Fórmulas:
+        PP  = (H + L + C) / 3
+        R1  = 2×PP − L
+        R2  = PP + (H − L)
+        R3  = H + 2×(PP − L)
+        S1  = 2×PP − H
+        S2  = PP − (H − L)
+        S3  = L − 2×(H − PP)
+
+    Args:
+        df_diario: DataFrame con columnas High, Low, Close en timeframe diario.
+                   Debe tener al menos 2 velas. Usa la penúltima vela ([-2])
+                   como sesión "ayer" (última cerrada).
+
+    Returns:
+        dict con claves: 'PP', 'R1', 'R2', 'R3', 'S1', 'S2', 'S3'
+        o dict vacío si datos insuficientes.
+    """
+    if df_diario is None or len(df_diario) < 2:
+        return {}
+
+    vela = df_diario.iloc[-2]  # última sesión cerrada
+    H = float(vela['High'])
+    L = float(vela['Low'])
+    C = float(vela['Close'])
+
+    PP = (H + L + C) / 3.0
+    R1 = 2 * PP - L
+    R2 = PP + (H - L)
+    R3 = H + 2 * (PP - L)
+    S1 = 2 * PP - H
+    S2 = PP - (H - L)
+    S3 = L - 2 * (H - PP)
+
+    return {
+        'PP': round(PP, 2),
+        'R1': round(R1, 2),
+        'R2': round(R2, 2),
+        'R3': round(R3, 2),
+        'S1': round(S1, 2),
+        'S2': round(S2, 2),
+        'S3': round(S3, 2),
+    }
+
+
+def evaluar_precio_vs_pivots(
+        close: float,
+        high: float,
+        low: float,
+        pivots: dict,
+        atr: float,
+        tol_mult: float = 0.3,
+) -> tuple:
+    """
+    Evalúa la posición del precio actual respecto a los pivots diarios.
+
+    Devuelve los niveles de soporte y resistencia más relevantes (más cercanos)
+    para integrarlos en los arrays de S/R de los detectores intradía.
+
+    Returns:
+        (niveles_soporte: list[float], niveles_resistencia: list[float], info: str)
+        donde info describe la posición (ej. "sobre PP, cerca R1")
+    """
+    if not pivots:
+        return [], [], ''
+
+    tol = atr * tol_mult
+    PP  = pivots.get('PP', 0.0)
+
+    soportes    = [pivots['S3'], pivots['S2'], pivots['S1'], PP]
+    resistencias = [PP, pivots['R1'], pivots['R2'], pivots['R3']]
+
+    # Filtrar: soportes bajo el close, resistencias sobre el close
+    sop_activos  = sorted([s for s in soportes    if s < close + tol], reverse=True)[:3]
+    res_activos  = sorted([r for r in resistencias if r > close - tol])[:3]
+
+    # Info de posición
+    zona_pp = abs(close - PP) <= tol
+    if zona_pp:
+        info = f"precio en PP ${PP:.2f}"
+    elif close > PP:
+        nivel_sup = min([r for r in res_activos if r > close], default=None, key=lambda x: x - close)
+        info = f"sobre PP ${PP:.2f}" + (f" → R={nivel_sup:.2f}" if nivel_sup else "")
+    else:
+        nivel_sop = max([s for s in sop_activos if s < close], default=None, key=lambda x: close - x)
+        info = f"bajo PP ${PP:.2f}" + (f" → S={nivel_sop:.2f}" if nivel_sop else "")
+
+    return sop_activos, res_activos, info
+

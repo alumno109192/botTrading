@@ -8,6 +8,7 @@ from services import tf_bias
 from services.dxy_bias import get_dxy_bias, ajustar_score_por_dxy
 from services.cot_bias import get_cot_bias, ajustar_score_por_cot
 from services.open_interest import get_oi_bias, ajustar_score_por_oi
+from services.yield_bias import get_yield_bias, ajustar_score_por_yield
 from services.economic_calendar import obtener_aviso_macro, debe_bloquear_trading, enviar_alerta_bloqueo, verificar_y_notificar_reanudacion
 from adapters.data_provider import get_ohlcv
 import pandas as pd
@@ -98,6 +99,7 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_cuña_descendente, detectar_cuña_ascendente,
     detectar_doble_techo, detectar_doble_suelo,
     detectar_v_reversal_alcista, detectar_v_reversal_bajista,
+    calcular_pivots_diarios, evaluar_precio_vs_pivots,
 )
 
 
@@ -183,7 +185,22 @@ class GoldDetector5M(BaseDetector):
             tol = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
             logger.info(f"  📍 Zonas auto — Resist: ${zrl:.1f}-${zrh:.1f} | Soporte: ${zsl:.1f}-${zsh:.1f}")
 
-            en_zona_resist       = (zrl <= close <= zrh)
+            # ── Pivots diarios (sesión NY anterior) ──────────────────────────────
+            try:
+                _df_1d_5m, _ = get_ohlcv(params['ticker_yf'], period='5d', interval='1d')
+                _pivots_5m = calcular_pivots_diarios(_df_1d_5m)
+            except Exception:
+                _pivots_5m = {}
+            _en_pivot_resist = False
+            _en_pivot_sop    = False
+            if _pivots_5m:
+                _piv_sop_5m, _piv_res_5m, _piv_info_5m = evaluar_precio_vs_pivots(
+                    close, float(df['High'].iloc[-2]), float(df['Low'].iloc[-2]),
+                    _pivots_5m, atr, tol_mult=0.3)
+                logger.info(f"  🎯 [5M] Pivots diarios: PP=${_pivots_5m['PP']:.2f} | {_piv_info_5m}")
+                _en_pivot_resist = any(abs(close - r) <= atr * 0.3 for r in _piv_res_5m if r > close)
+                _en_pivot_sop    = any(abs(close - s) <= atr * 0.3 for s in _piv_sop_5m if s < close)
+
             en_zona_soporte      = (zsl <= close <= zsh)
             aproximando_resist   = (zrl - tol <= close < zrl)
             aproximando_soporte  = (zsh < close <= zsh + tol)
@@ -195,6 +212,14 @@ class GoldDetector5M(BaseDetector):
                 score_sell += pa
             else:
                 score_buy += pa
+
+            # Pivots diarios: precio en nivel clave
+            if _en_pivot_resist:
+                score_sell += 2
+                logger.info(f"  🎯 [5M] Precio en PIVOT RESISTENCIA — +2 pts SELL")
+            if _en_pivot_sop:
+                score_buy += 2
+                logger.info(f"  🎯 [5M] Precio en PIVOT SOPORTE — +2 pts BUY")
 
             if rsi >= params['rsi_min_sell']:
                 score_sell += 2
@@ -409,6 +434,10 @@ class GoldDetector5M(BaseDetector):
             _cot_bias, _cot_ratio = get_cot_bias()
             score_buy, score_sell = ajustar_score_por_cot(score_buy, score_sell, _cot_bias)
 
+            # ── Ajuste por Yields reales 10Y (TIPS) ──
+            _yield_bias, _yield_val, _yield_ma = get_yield_bias()
+            score_buy, score_sell = ajustar_score_por_yield(score_buy, score_sell, _yield_bias)
+
             # ── Ajuste por Open Interest / Volumen (fuerza de tendencia) ──
             _oi_bias = get_oi_bias()
             score_buy, score_sell = ajustar_score_por_oi(score_buy, score_sell, _oi_bias)
@@ -569,20 +598,20 @@ class GoldDetector5M(BaseDetector):
                         if self.db and not self.db.existe_senal_activa_tf(_simbolo_db_5m):
                             try:
                                 senal_id = self._guardar_senal({
-                                'timestamp': datetime.now(timezone.utc),
-                                'simbolo': _simbolo_db_5m,
-                                'direccion': 'VENTA',
-                                'precio_entrada': round(close, 2),
-                                'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v,
-                                'sl': round(sl_venta, 2),
-                                'score': score_sell,
-                                'indicadores': json.dumps(_condiciones_bd),
-                                'patron_velas': 'aviso_setup_temprano',
-                                'version_detector': '5M-AVISO-v1'
-                            })
-                            logger.info(f"  ⚡ [5M] AVISO SETUP SELL — señal guardada en BD (ID {senal_id}, score {score_sell})")
-                        except Exception as _e_av:
-                            logger.error(f"  ⚠️ Error guardando aviso SELL BD: {_e_av}")
+                                    'timestamp': datetime.now(timezone.utc),
+                                    'simbolo': _simbolo_db_5m,
+                                    'direccion': 'VENTA',
+                                    'precio_entrada': round(close, 2),
+                                    'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v,
+                                    'sl': round(sl_venta, 2),
+                                    'score': score_sell,
+                                    'indicadores': json.dumps(_condiciones_bd),
+                                    'patron_velas': 'aviso_setup_temprano',
+                                    'version_detector': '5M-AVISO-v1'
+                                })
+                                logger.info(f"  ⚡ [5M] AVISO SETUP SELL — señal guardada en BD (ID {senal_id}, score {score_sell})")
+                            except Exception as _e_av:
+                                logger.error(f"  ⚠️ Error guardando aviso SELL BD: {_e_av}")
                         
                         # ── Enviar mensaje DESPUÉS (incluirá ID automáticamente) ──
                         _msg_aviso = (
@@ -610,20 +639,20 @@ class GoldDetector5M(BaseDetector):
                         if self.db and not self.db.existe_senal_activa_tf(_simbolo_db_5m):
                             try:
                                 senal_id = self._guardar_senal({
-                                'timestamp': datetime.now(timezone.utc),
-                                'simbolo': _simbolo_db_5m,
-                                'direccion': 'COMPRA',
-                                'precio_entrada': round(close, 2),
-                                'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
-                                'sl': round(sl_compra, 2),
-                                'score': score_buy,
-                                'indicadores': json.dumps(_condiciones_bd),
-                                'patron_velas': 'aviso_setup_temprano',
-                                'version_detector': '5M-AVISO-v1'
-                            })
-                            logger.info(f"  ⚡ [5M] AVISO SETUP BUY — señal guardada en BD (ID {senal_id}, score {score_buy})")
-                        except Exception as _e_av:
-                            logger.error(f"  ⚠️ Error guardando aviso BUY BD: {_e_av}")
+                                    'timestamp': datetime.now(timezone.utc),
+                                    'simbolo': _simbolo_db_5m,
+                                    'direccion': 'COMPRA',
+                                    'precio_entrada': round(close, 2),
+                                    'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
+                                    'sl': round(sl_compra, 2),
+                                    'score': score_buy,
+                                    'indicadores': json.dumps(_condiciones_bd),
+                                    'patron_velas': 'aviso_setup_temprano',
+                                    'version_detector': '5M-AVISO-v1'
+                                })
+                                logger.info(f"  ⚡ [5M] AVISO SETUP BUY — señal guardada en BD (ID {senal_id}, score {score_buy})")
+                            except Exception as _e_av:
+                                logger.error(f"  ⚠️ Error guardando aviso BUY BD: {_e_av}")
                         
                         # ── Enviar mensaje DESPUÉS (incluirá ID automáticamente) ──
                         _msg_aviso = (
