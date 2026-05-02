@@ -1608,6 +1608,132 @@ def detectar_pullback_activo(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ICHIMOKU KINKO HYO
+# ══════════════════════════════════════════════════════════════════════════════
+
+def calcular_ichimoku(
+        df: pd.DataFrame,
+        tenkan_period: int = 9,
+        kijun_period: int = 26,
+        senkou_b_period: int = 52,
+) -> pd.DataFrame:
+    """
+    Calcula las 5 líneas del sistema Ichimoku Kinko Hyo.
+
+    Componentes:
+      - tenkan_sen:  (max{tenkan_period} + min{tenkan_period}) / 2  — línea de conversión
+      - kijun_sen:   (max{kijun_period}  + min{kijun_period})  / 2  — línea base
+      - senkou_a:    (tenkan_sen + kijun_sen) / 2, desplazado +kijun_period  — borde A del Kumo
+      - senkou_b:    (max{senkou_b_period} + min{senkou_b_period}) / 2, desplazado +kijun_period  — borde B del Kumo
+      - chikou_span: Close desplazado -kijun_period  — span de rezago
+
+    NOTA sobre el desplazamiento:
+      El Kumo "oficial" se proyecta 26 velas al futuro. Para comparar contra el precio
+      actual usamos el Kumo NO desplazado (span_a_actual, span_b_actual) que representa
+      la nube calculada sobre las velas ya cerradas alineadas al momento presente.
+
+    Returns:
+        DataFrame con columnas añadidas:
+        ['tenkan', 'kijun', 'senkou_a', 'senkou_b', 'chikou']
+    """
+    df = df.copy()
+    high = df['High']
+    low  = df['Low']
+
+    df['tenkan'] = (high.rolling(tenkan_period).max() + low.rolling(tenkan_period).min()) / 2
+    df['kijun']  = (high.rolling(kijun_period).max()  + low.rolling(kijun_period).min())  / 2
+
+    # Senkou A y B desplazados al futuro para visualización, pero guardamos también
+    # los valores no desplazados para comparación con precio actual
+    df['senkou_a'] = ((df['tenkan'] + df['kijun']) / 2).shift(kijun_period)
+    df['senkou_b'] = ((high.rolling(senkou_b_period).max() + low.rolling(senkou_b_period).min()) / 2).shift(kijun_period)
+
+    # Versiones sin desplazar (para evaluar el Kumo "actual")
+    df['kumo_a'] = (df['tenkan'] + df['kijun']) / 2
+    df['kumo_b'] = (high.rolling(senkou_b_period).max() + low.rolling(senkou_b_period).min()) / 2
+
+    df['chikou'] = df['Close'].shift(-kijun_period)
+
+    return df
+
+
+def detectar_precio_vs_kumo(
+        df: pd.DataFrame,
+        atr: float,
+) -> tuple:
+    """
+    Evalúa la posición del precio respecto al Kumo (nube Ichimoku) en la última
+    vela cerrada. Usa las líneas kumo_a y kumo_b (sin desplazamiento futuro) para
+    comparar con el precio actual.
+
+    Returns:
+        (posicion: str, kumo_color: str, grosor_atr: float, senyal: int)
+
+        posicion:
+          'sobre_kumo'   → precio claramente sobre la nube → sesgo ALCISTA
+          'bajo_kumo'    → precio claramente bajo la nube  → sesgo BAJISTA
+          'dentro_kumo'  → precio dentro de la nube        → indecisión
+          'sin_datos'    → datos insuficientes
+
+        kumo_color:
+          'verde'  → kumo_a > kumo_b (fase alcista)
+          'rojo'   → kumo_a < kumo_b (fase bajista)
+          'neutro' → kumo_a ≈ kumo_b
+
+        grosor_atr: grosor del Kumo expresado en múltiplos de ATR
+
+        senyal: puntuación sugerida para el score
+          +2 → precio sobre Kumo verde
+          -2 → precio bajo Kumo rojo
+           0 → dentro del Kumo o señales contradictorias
+    """
+    needed = ['kumo_a', 'kumo_b']
+    if not all(c in df.columns for c in needed):
+        return 'sin_datos', 'neutro', 0.0, 0
+
+    row = df.iloc[-2]  # última vela cerrada
+    close = float(row['Close'])
+
+    kumo_a = float(row['kumo_a']) if not pd.isna(row['kumo_a']) else None
+    kumo_b = float(row['kumo_b']) if not pd.isna(row['kumo_b']) else None
+
+    if kumo_a is None or kumo_b is None:
+        return 'sin_datos', 'neutro', 0.0, 0
+
+    kumo_top    = max(kumo_a, kumo_b)
+    kumo_bottom = min(kumo_a, kumo_b)
+    grosor      = kumo_top - kumo_bottom
+    grosor_atr  = round(grosor / atr, 2) if atr > 0 else 0.0
+
+    # Color del Kumo
+    if kumo_a > kumo_b + atr * 0.05:
+        kumo_color = 'verde'
+    elif kumo_b > kumo_a + atr * 0.05:
+        kumo_color = 'rojo'
+    else:
+        kumo_color = 'neutro'
+
+    # Posición del precio
+    margen = atr * 0.1
+    if close > kumo_top + margen:
+        posicion = 'sobre_kumo'
+    elif close < kumo_bottom - margen:
+        posicion = 'bajo_kumo'
+    else:
+        posicion = 'dentro_kumo'
+
+    # Puntuación
+    if posicion == 'sobre_kumo' and kumo_color == 'verde':
+        senyal = 2    # señal BUY
+    elif posicion == 'bajo_kumo' and kumo_color == 'rojo':
+        senyal = -2   # señal SELL
+    else:
+        senyal = 0    # indecisión o contradicción
+
+    return posicion, kumo_color, grosor_atr, senyal
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # CABEZA Y HOMBROS (HCH) / HCH INVERTIDO
 # ══════════════════════════════════════════════════════════════════════════════
 

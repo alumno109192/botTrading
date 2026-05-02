@@ -94,6 +94,7 @@ from core.indicators import (
     detectar_hch, detectar_hch_invertido,
     detectar_triangulo,
     detectar_bandera_banderin,
+    calcular_ichimoku, detectar_precio_vs_kumo,
 )
 
 # ══════════════════════════════════════
@@ -266,6 +267,7 @@ class GoldDetector1D(BaseDetector):
         df['macd'], df['macd_signal'], df['macd_hist'] = calcular_macd(df['Close'])
         df['obv'] = calcular_obv(df)
         df['adx'], df['di_plus'], df['di_minus'] = calcular_adx(df)
+        df = calcular_ichimoku(df)  # añade kumo_a, kumo_b, tenkan, kijun
     
         # OBV promedio para divergencias
         df['obv_ema'] = calcular_ema(df['obv'], 20)
@@ -442,8 +444,17 @@ class GoldDetector1D(BaseDetector):
         score_sell += 1 if (shooting_star and vol_alto_rechazo)       else 0
         score_sell += 1 if (divergencia_bajista and rsi_sobrecompra)  else 0
         score_sell += 1 if bajo_ema200             else 0
-    
-        # Nuevos puntos (indicadores alta prioridad)
+
+        # ── Ichimoku Kumo (filtro de tendencia) ────────────────────────────
+        _ichi_pos, _ichi_color, _ichi_grosor, _ichi_senyal = detectar_precio_vs_kumo(df, atr)
+        if _ichi_senyal == -2:   # bajo Kumo rojo → refuerza SELL
+            score_sell += 2
+            logger.info(f"  ☁️ [1D] Ichimoku: precio BAJO Kumo {_ichi_color} (grosor {_ichi_grosor:.1f}×ATR) — +2 pts SELL")
+        elif _ichi_senyal == 2:  # sobre Kumo verde → penaliza SELL
+            score_sell = max(0, score_sell - 1)
+            logger.info(f"  ☁️ [1D] Ichimoku: precio SOBRE Kumo {_ichi_color} — -1 pt SELL (tendencia alcista)")
+        elif _ichi_pos == 'dentro_kumo':
+            logger.info(f"  ☁️ [1D] Ichimoku: precio DENTRO del Kumo (indecisión) — sin ajuste")
         score_sell += 2 if bb_toca_superior        else 0  # Bollinger superior
         score_sell += 2 if evening_star            else 0  # Patrón Evening Star
         score_sell += 2 if macd_cruce_bajista      else 0  # MACD cruce
@@ -552,8 +563,14 @@ class GoldDetector1D(BaseDetector):
         score_buy += 1 if (hammer and vol_alto_rebote)              else 0
         score_buy += 1 if (divergencia_alcista and rsi_sobreventa)  else 0
         score_buy += 1 if sobre_ema200             else 0
-    
-        # Nuevos puntos (indicadores alta prioridad)
+
+        # ── Ichimoku Kumo (filtro de tendencia) ────────────────────────────
+        if _ichi_senyal == 2:    # sobre Kumo verde → refuerza BUY
+            score_buy += 2
+            logger.info(f"  ☁️ [1D] Ichimoku: precio SOBRE Kumo {_ichi_color} (grosor {_ichi_grosor:.1f}×ATR) — +2 pts BUY")
+        elif _ichi_senyal == -2: # bajo Kumo rojo → penaliza BUY
+            score_buy = max(0, score_buy - 1)
+            logger.info(f"  ☁️ [1D] Ichimoku: precio BAJO Kumo {_ichi_color} — -1 pt BUY (tendencia bajista)")
         score_buy += 2 if bb_toca_inferior        else 0  # Bollinger inferior
         score_buy += 2 if morning_star            else 0  # Patrón Morning Star
         score_buy += 2 if macd_cruce_alcista      else 0  # MACD cruce
