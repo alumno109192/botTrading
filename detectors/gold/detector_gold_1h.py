@@ -880,6 +880,71 @@ class GoldDetector1H(BaseDetector):
         if rechazo_resist_live:
             score_sell = min(score_sell + 3, 23)
 
+        # ── Snapshot completo de condiciones para backtesting/estudio ─────────
+        _condiciones_bd = {
+            # Indicadores numéricos
+            'rsi': round(float(rsi), 1), 'rsi_prev': round(float(rsi_prev), 1),
+            'atr': round(float(atr), 2), 'atr_media': round(float(atr_media), 2),
+            'adx': round(float(adx), 1), 'di_plus': round(float(di_plus), 1), 'di_minus': round(float(di_minus), 1),
+            'macd': round(float(macd), 4), 'macd_hist': round(float(macd_hist), 4),
+            'vol': round(float(vol), 0), 'vol_avg': round(float(vol_avg), 0),
+            'score_sell': score_sell, 'score_buy': score_buy,
+            # Zonas S/R
+            'zrl': round(zrl, 2), 'zrh': round(zrh, 2), 'zsl': round(zsl, 2), 'zsh': round(zsh, 2),
+            # Condiciones SELL
+            'en_zona_resist': bool(en_zona_resist), 'en_zona_resist_any': bool(en_zona_resist_any),
+            'vela_rechazo': bool(vela_rechazo), 'shooting_star': bool(shooting_star),
+            'bearish_engulfing': bool(bearish_engulfing), 'bearish_marubozu': bool(bearish_marubozu),
+            'doji_resist': bool(doji_resist), 'vol_alto_rechazo': bool(vol_alto_rechazo),
+            'rsi_alto_girando': bool(rsi_alto_girando), 'rsi_sobrecompra': bool(rsi_sobrecompra),
+            'divergencia_bajista': bool(divergencia_bajista),
+            'emas_bajistas': bool(emas_bajistas), 'bajo_ema200': bool(bajo_ema200),
+            'estructura_bajista': bool(estructura_bajista),
+            'intento_rotura_fallido': bool(intento_rotura_fallido),
+            'vol_decreciente': bool(vol_decreciente), 'bb_toca_superior': bool(bb_toca_superior),
+            'evening_star': bool(evening_star), 'macd_cruce_bajista': bool(macd_cruce_bajista),
+            'macd_negativo': bool(macd_negativo), 'macd_divergencia_bajista': bool(macd_divergencia_bajista),
+            'adx_bajista': bool(adx_bajista), 'adx_lateral': bool(adx_lateral),
+            'obv_divergencia_bajista': bool(obv_divergencia_bajista), 'obv_decreciente': bool(obv_decreciente),
+            'canal_alcista_roto': bool(canal_alcista_roto), 'retest_canal_sell': bool(retest_canal_sell),
+            'rechazo_resist_live': bool(rechazo_resist_live), 'rup_sop_1h': bool(_rup_sop_1h),
+            'en_resist_sr_interm': bool(_en_resist_sr_1h and not en_zona_resist),
+            'cuña_desc': str(_cuña_desc_1h) if _cuña_desc_1h else None,
+            'cuña_asc': str(_cuña_asc_1h) if _cuña_asc_1h else None,
+            'dt_detectado': bool(_dt_1h), 'v_rev_bajista': bool(v_rev_baj_1h),
+            'rebote_bajista': bool(_rebote_baj_1h),
+            'fib_nivel': float(_fib_nivel_1h) if _fib_nivel_1h else None,
+            'fib_tend': str(_fib_tend_1h) if _fib_nivel_1h else None,
+            # Condiciones BUY
+            'en_zona_soporte': bool(en_zona_soporte), 'en_zona_soporte_any': bool(en_zona_soporte_any),
+            'vela_rebote': bool(vela_rebote), 'hammer': bool(hammer),
+            'bullish_engulfing': bool(bullish_engulfing), 'bullish_marubozu': bool(bullish_marubozu),
+            'doji_soporte': bool(doji_soporte), 'vol_alto_rebote': bool(vol_alto_rebote),
+            'rsi_bajo_girando': bool(rsi_bajo_girando), 'rsi_sobreventa': bool(rsi_sobreventa),
+            'divergencia_alcista': bool(divergencia_alcista),
+            'emas_alcistas': bool(emas_alcistas), 'sobre_ema200': bool(sobre_ema200),
+            'estructura_alcista': bool(estructura_alcista),
+            'intento_caida_fallido': bool(intento_caida_fallido),
+            'vol_decreciente_sell': bool(vol_decreciente_sell), 'bb_toca_inferior': bool(bb_toca_inferior),
+            'morning_star': bool(morning_star), 'macd_cruce_alcista': bool(macd_cruce_alcista),
+            'macd_positivo': bool(macd_positivo), 'macd_divergencia_alcista': bool(macd_divergencia_alcista),
+            'adx_alcista': bool(adx_alcista),
+            'obv_divergencia_alcista': bool(obv_divergencia_alcista), 'obv_creciente': bool(obv_creciente),
+            'canal_bajista_roto': bool(canal_bajista_roto), 'retest_canal_buy': bool(retest_canal_buy),
+            'rebote_soporte_live': bool(rebote_soporte_live), 'rup_res_1h': bool(_rup_res_1h),
+            'en_sop_sr_interm': bool(_en_sop_sr_1h and not en_zona_soporte),
+            'ds_detectado': bool(_ds_1h), 'v_rev_alcista': bool(v_rev_alc_1h),
+            'rebote_alcista': bool(_rebote_alc_1h),
+            # Contexto macro/multi-TF
+            'dxy_bias': str(dxy_bias) if dxy_bias else None,
+            'cot_bias': str(_cot_bias) if _cot_bias else None,
+            'oi_bias': str(_oi_bias) if _oi_bias else None,
+            'news_sesgo': str(_sesgo_news), 'news_score': round(float(_sesgo_score), 2),
+            'htf_4h': str(_dir_4h), 'htf_1d': str(_dir_1d), 'htf_1w': str(_dir_1w),
+            'n_confirm_sell': int(_n_confirm_sell), 'n_confirm_buy': int(_n_confirm_buy),
+            'pullback_alcista': bool(pullback_alcista), 'pullback_bajista': bool(pullback_bajista),
+        }
+
         _umbral_max = self.umbral_adaptativo(12, atr, atr_media)
         _umbral_fue = self.umbral_adaptativo(9,  atr, atr_media)
         _umbral_med = self.umbral_adaptativo(6,  atr, atr_media)
@@ -1051,7 +1116,7 @@ class GoldDetector1H(BaseDetector):
                         'direccion': 'COMPRA', 'precio_entrada': close_live,
                         'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
                         'score': score_buy,
-                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                        'indicadores': json.dumps(_condiciones_bd),
                         'patron_velas': f"ReboteVivo:True, Low={low_live:.2f}",
                         'version_detector': 'GOLD 1H-v2.1'
                     })
@@ -1101,7 +1166,7 @@ class GoldDetector1H(BaseDetector):
                         'direccion': 'VENTA', 'precio_entrada': close_live,
                         'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
                         'score': score_sell,
-                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                        'indicadores': json.dumps(_condiciones_bd),
                         'patron_velas': f"RechazoVivo:True, High={high_live:.2f}",
                         'version_detector': 'GOLD 1H-v2.1'
                     })
@@ -1137,7 +1202,7 @@ class GoldDetector1H(BaseDetector):
                         'direccion': 'VENTA', 'precio_entrada': sell_limit,
                         'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                         'score': score_sell,
-                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                        'indicadores': json.dumps(_condiciones_bd),
                         'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
                         'version_detector': 'GOLD 1H-v2.0',
                         'estado': 'PENDIENTE_CONFIRM'
@@ -1173,7 +1238,7 @@ class GoldDetector1H(BaseDetector):
                         'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                         'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                         'score': score_buy,
-                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                        'indicadores': json.dumps(_condiciones_bd),
                         'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
                         'version_detector': 'GOLD 1H-v2.0',
                         'estado': 'PENDIENTE_CONFIRM'
@@ -1235,7 +1300,7 @@ class GoldDetector1H(BaseDetector):
                                     'direccion': 'VENTA', 'precio_entrada': sell_limit,
                                     'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                     'score': score_sell,
-                                    'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                                    'indicadores': json.dumps(_condiciones_bd),
                                     'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
                                     'version_detector': 'GOLD 1H-v2.0'
                                 })
@@ -1298,7 +1363,7 @@ class GoldDetector1H(BaseDetector):
                                     'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                                     'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                     'score': score_buy,
-                                    'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                                    'indicadores': json.dumps(_condiciones_bd),
                                     'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
                                     'version_detector': 'GOLD 1H-v2.0'
                                 })
@@ -1378,7 +1443,7 @@ class GoldDetector1H(BaseDetector):
                                 'direccion': 'VENTA', 'precio_entrada': entry_rt,
                                 'tp1': tp1_rt_sell, 'tp2': tp2_rt_sell, 'tp3': tp3_rt_sell,
                                 'sl': sl_rt_sell, 'score': score_sell,
-                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                                'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Retest canal alcista roto, línea ${linea_soporte_canal:.2f}",
                                 'version_detector': 'GOLD 1H-v2.0-RETEST'
                             })
@@ -1454,7 +1519,7 @@ class GoldDetector1H(BaseDetector):
                                 'direccion': 'COMPRA', 'precio_entrada': entry_rt,
                                 'tp1': tp1_rt_buy, 'tp2': tp2_rt_buy, 'tp3': tp3_rt_buy,
                                 'sl': sl_rt_buy, 'score': score_buy,
-                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'atr': round(atr, 2), 'adx': round(adx, 2)}),
+                                'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Retest canal bajista roto, línea ${linea_resist_canal:.2f}",
                                 'version_detector': 'GOLD 1H-v2.0-RETEST'
                             })
