@@ -2216,3 +2216,73 @@ def evaluar_precio_vs_pivots(
 
     return sop_activos, res_activos, info
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MEJORAS DE CONTEXTO (aceleración RSI, micro-volatilidad, momentum reciente)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def calcular_aceleracion_rsi(rsi_series: pd.Series, n: int = 3) -> tuple:
+    """
+    Detecta si el RSI lleva al menos n velas consecutivas moviéndose en la
+    misma dirección (aceleración sostenida, no solo un giro puntual).
+
+    Usa las últimas n+1 velas cerradas (sin incluir la vela viva).
+
+    Returns:
+        (bajando_n: bool, subiendo_n: bool)
+        bajando_n=True  → RSI ha bajado n velas seguidas  → momentum bajista sostenido
+        subiendo_n=True → RSI ha subido n velas seguidas  → momentum alcista sostenido
+    """
+    if len(rsi_series) < n + 2:
+        return False, False
+    # n+1 valores comenzando en el pasado, excluyendo la vela viva (índice -1)
+    vals = rsi_series.iloc[-(n + 2):-1].values  # shape: (n+1,)
+    bajando_n  = bool(all(vals[i] > vals[i + 1] for i in range(n)))
+    subiendo_n = bool(all(vals[i] < vals[i + 1] for i in range(n)))
+    return bajando_n, subiendo_n
+
+
+def calcular_micro_volatilidad(df: pd.DataFrame,
+                                periodo_corto: int = 5,
+                                periodo_largo: int = 20) -> float:
+    """
+    Ratio ATR_{periodo_corto} / ATR_{periodo_largo} en la última vela cerrada.
+
+    Interpreta el contexto de volatilidad local:
+      > 1.5 → expansión activa (rupturas y patrones son más fiables)
+      < 0.8 → mercado dormido / compresión (señales tienen más riesgo de fakeout)
+      ~1.0  → volatilidad normal
+
+    Returns:
+        float — ratio (1.0 si datos insuficientes o ATR_largo == 0)
+    """
+    if len(df) < periodo_largo + 2:
+        return 1.0
+    atr_c = calcular_atr(df, periodo_corto).iloc[-2]
+    atr_l = calcular_atr(df, periodo_largo).iloc[-2]
+    if atr_l <= 0:
+        return 1.0
+    return round(float(atr_c / atr_l), 3)
+
+
+def calcular_momentum_reciente(df: pd.DataFrame, n: int = 3) -> int:
+    """
+    Evalúa si las últimas n velas cerradas son todas alcistas o todas bajistas
+    (momentum intraday persistente).
+
+    Returns:
+        +1 → las últimas n velas cerradas son todas alcistas (close > open)
+        -1 → las últimas n velas cerradas son todas bajistas (close < open)
+         0 → mixto / insuficientes datos
+    """
+    if len(df) < n + 2:
+        return 0
+    # Últimas n velas cerradas (excluye la vela viva en índice -1)
+    closes = df['Close'].iloc[-(n + 1):-1].values
+    opens  = df['Open'].iloc[-(n + 1):-1].values
+    if all(c > o for c, o in zip(closes, opens)):
+        return 1
+    if all(c < o for c, o in zip(closes, opens)):
+        return -1
+    return 0
+

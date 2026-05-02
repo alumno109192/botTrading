@@ -96,6 +96,7 @@ from core.indicators import (
     detectar_hch, detectar_hch_invertido,
     detectar_triangulo,
     detectar_bandera_banderin,
+    calcular_aceleracion_rsi, calcular_micro_volatilidad, calcular_momentum_reciente,
 )
 
 # ══════════════════════════════════════
@@ -254,6 +255,11 @@ class GoldDetector4H(BaseDetector):
 
         rsi_alto_girando = (rsi >= rsms) and (rsi < rsi_prev)
         rsi_sobrecompra  = rsi >= 70
+        # Contexto: aceleración RSI, micro-volatilidad, momentum intraday (compartidos sell/buy)
+        _rsi_baj_3, _rsi_sub_3 = calcular_aceleracion_rsi(df['rsi'])
+        _micro_vol    = calcular_micro_volatilidad(df)
+        _momentum_rec = calcular_momentum_reciente(df)
+        rsi_acelerando_bajada = rsi_alto_girando and _rsi_baj_3
 
         lookback = 5
         price_new_high      = high > float(df['High'].iloc[-lookback-2:-2].max())
@@ -349,6 +355,7 @@ class GoldDetector4H(BaseDetector):
         score_sell += 2 if vela_rechazo            else 0
         score_sell += 2 if vol_alto_rechazo        else 0
         score_sell += 1 if rsi_alto_girando        else 0
+        score_sell += 1 if rsi_acelerando_bajada    else 0   # RSI bajando 3 velas consecutivas
         score_sell += 1 if rsi_sobrecompra         else 0
         score_sell += 1 if divergencia_bajista     else 0
         score_sell += 1 if emas_bajistas           else 0
@@ -436,6 +443,7 @@ class GoldDetector4H(BaseDetector):
         vela_rebote       = hammer or bullish_engulfing or bullish_marubozu or doji_soporte
 
         rsi_bajo_girando = (rsi <= rsmb) and (rsi > rsi_prev)
+        rsi_acelerando_subida = rsi_bajo_girando and _rsi_sub_3
         rsi_sobreventa   = rsi <= 30
 
         price_new_low       = low < float(df['Low'].iloc[-lookback-2:-2].min())
@@ -482,6 +490,7 @@ class GoldDetector4H(BaseDetector):
         score_buy += 2 if vela_rebote              else 0
         score_buy += 2 if vol_alto_rebote          else 0
         score_buy += 1 if rsi_bajo_girando         else 0
+        score_buy += 1 if rsi_acelerando_subida     else 0   # RSI subiendo 3 velas consecutivas
         score_buy += 1 if rsi_sobreventa           else 0
         score_buy += 1 if divergencia_alcista      else 0
         score_buy += 1 if emas_alcistas            else 0
@@ -669,6 +678,25 @@ class GoldDetector4H(BaseDetector):
             'cot_bias': str(_cot_bias) if _cot_bias else None,
             'oi_bias': str(_oi_bias) if _oi_bias else None,
         }
+
+        # ── Micro-volatilidad y momentum reciente ─────────────────────────────
+        if _micro_vol > 1.5:
+            if score_sell > score_buy:
+                score_sell = min(score_sell + 1, 23)
+                logger.info(f"  📈 [4H] Micro-vol {_micro_vol:.2f} (expansión) — +1 SELL")
+            elif score_buy > score_sell:
+                score_buy = min(score_buy + 1, 23)
+                logger.info(f"  📈 [4H] Micro-vol {_micro_vol:.2f} (expansión) — +1 BUY")
+        elif _micro_vol < 0.8:
+            score_sell = max(0, score_sell - 1)
+            score_buy  = max(0, score_buy  - 1)
+            logger.info(f"  😴 [4H] Micro-vol {_micro_vol:.2f} (dormido) — -1 ambos scores")
+        if _momentum_rec == -1 and en_zona_resist:
+            score_sell = min(score_sell + 1, 23)
+            logger.info(f"  🔻 [4H] Momentum bajista en resistencia — +1 SELL")
+        elif _momentum_rec == 1 and en_zona_soporte:
+            score_buy = min(score_buy + 1, 23)
+            logger.info(f"  🔺 [4H] Momentum alcista en soporte — +1 BUY")
 
         _umbral_max = self.umbral_adaptativo(14, atr, atr_media)
         _umbral_fue = self.umbral_adaptativo(12, atr, atr_media)

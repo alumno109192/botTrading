@@ -101,6 +101,7 @@ from core.indicators import (calcular_rsi, calcular_atr, calcular_adx,
     detectar_doble_techo, detectar_doble_suelo,
     detectar_v_reversal_alcista, detectar_v_reversal_bajista,
     detectar_doble_techo, detectar_doble_suelo,
+    calcular_aceleracion_rsi, calcular_micro_volatilidad, calcular_momentum_reciente,
 )
 
 # ══════════════════════════════════════
@@ -234,13 +235,18 @@ class GoldDetector15M(BaseDetector):
                 score_buy += pa_score
         
             # 2. RSI (más sensible en scalping)
+            _rsi_baj_3, _rsi_sub_3 = calcular_aceleracion_rsi(df['rsi'])
+            _micro_vol    = calcular_micro_volatilidad(df)
+            _momentum_rec = calcular_momentum_reciente(df)
             if rsi >= params['rsi_min_sell']:
                 score_sell += 2
+                if _rsi_baj_3: score_sell += 1   # RSI bajando 3 velas consecutivas
             elif rsi >= 60:
                 score_sell += 1
         
             if rsi <= params['rsi_max_buy']:
                 score_buy += 2
+                if _rsi_sub_3: score_buy += 1    # RSI subiendo 3 velas consecutivas
             elif rsi <= 40:
                 score_buy += 1
         
@@ -473,6 +479,24 @@ class GoldDetector15M(BaseDetector):
                 logger.info(f"  ⚠️ [15M] Volumen bajo ({vol:.0f} < {vol_medio * params['vol_mult']:.0f}) — scores penalizados -3")
 
             # Recalcular umbrales tras ajuste DXY y filtro de volumen (con umbral adaptativo)
+            # ── Micro-volatilidad y momentum reciente ─────────────────────────────
+            if _micro_vol > 1.5:
+                if score_sell > score_buy:
+                    score_sell = min(score_sell + 1, 23)
+                    logger.info(f"  📈 [15M] Micro-vol {_micro_vol:.2f} (expansión) — +1 SELL")
+                elif score_buy > score_sell:
+                    score_buy = min(score_buy + 1, 23)
+                    logger.info(f"  📈 [15M] Micro-vol {_micro_vol:.2f} (expansión) — +1 BUY")
+            elif _micro_vol < 0.8:
+                score_sell = max(0, score_sell - 1)
+                score_buy  = max(0, score_buy  - 1)
+                logger.info(f"  😴 [15M] Micro-vol {_micro_vol:.2f} (dormido) — -1 ambos scores")
+            if _momentum_rec == -1 and (en_zona_resist or aproximando_resistencia):
+                score_sell = min(score_sell + 1, 23)
+                logger.info(f"  🔻 [15M] Momentum bajista en resistencia — +1 SELL")
+            elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
+                score_buy = min(score_buy + 1, 23)
+                logger.info(f"  🔺 [15M] Momentum alcista en soporte — +1 BUY")
             _umbral_fue = self.umbral_adaptativo(8, atr, atr_media)
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
