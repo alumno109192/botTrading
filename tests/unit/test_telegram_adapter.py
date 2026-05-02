@@ -33,7 +33,7 @@ class TestEnviarTelegram:
         with patch('adapters.telegram.requests.post',
                    return_value=_make_response(200)) as mock_post:
             resultado = enviar_telegram('Hola mundo')
-        assert resultado is True
+        assert resultado is not None
         assert mock_post.call_count == 1
 
     def test_fallo_primer_intento_exito_segundo(self):
@@ -42,23 +42,23 @@ class TestEnviarTelegram:
         with patch('adapters.telegram.requests.post', side_effect=responses):
             with patch('adapters.telegram.time.sleep'):  # no esperar en tests
                 resultado = enviar_telegram('Test retry')
-        assert resultado is True
+        assert resultado is not None
 
     def test_fallo_todos_los_intentos_retorna_false(self):
-        """Tres intentos fallidos → retorna False."""
+        """Tres intentos fallidos → retorna None."""
         with patch('adapters.telegram.requests.post',
                    return_value=_make_response(500)):
             with patch('adapters.telegram.time.sleep'):
                 resultado = enviar_telegram('Test triple fallo')
-        assert resultado is False
+        assert resultado is None
 
     def test_excepcion_de_red_reintenta_y_falla(self):
-        """ConnectionError en cada intento → retorna False."""
+        """ConnectionError en cada intento → retorna None."""
         with patch('adapters.telegram.requests.post',
                    side_effect=ConnectionError('sin red')):
             with patch('adapters.telegram.time.sleep'):
                 resultado = enviar_telegram('Test conexion')
-        assert resultado is False
+        assert resultado is None
 
     def test_excepcion_primer_intento_exito_segundo(self):
         """Excepción en el primero, éxito en el segundo."""
@@ -66,7 +66,7 @@ class TestEnviarTelegram:
         with patch('adapters.telegram.requests.post', side_effect=responses):
             with patch('adapters.telegram.time.sleep'):
                 resultado = enviar_telegram('Test exception then ok')
-        assert resultado is True
+        assert resultado is not None
 
     def test_thread_id_incluido_en_payload(self):
         """Cuando se provee thread_id debe añadirse al payload."""

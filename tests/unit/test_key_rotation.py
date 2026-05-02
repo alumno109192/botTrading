@@ -23,7 +23,7 @@ def _reset_module_state(dp):
     with dp._cooldown_lock:
         dp._key_cooldown.clear()
     with dp._minute_lock:
-        dp._key_minute_count.clear()
+        dp._key_minute_window.clear()
 
 
 def _set_cooldown(dp, alias: str, seconds: int = 60):
