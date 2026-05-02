@@ -796,6 +796,7 @@ class GoldDetector1H(BaseDetector):
 • Esperar confirmación HTF bajista
 
 ━━━━━━━━━━━━━━━━━━━━
+ℹ️ <i>Alerta única — no se repetirá mientras el pullback esté activo</i>
 ⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 """
                         enviar_telegram(mensaje_alerta)
@@ -847,6 +848,7 @@ class GoldDetector1H(BaseDetector):
 • Esperar confirmación HTF alcista
 
 ━━━━━━━━━━━━━━━━━━━━
+ℹ️ <i>Alerta única — no se repetirá mientras el pullback esté activo</i>
 ⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 """
                         enviar_telegram(mensaje_alerta)
