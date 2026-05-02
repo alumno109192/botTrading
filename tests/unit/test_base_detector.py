@@ -134,22 +134,26 @@ else:
 
 @pytest.fixture
 def detector():
-    return _StubDetector(
-        simbolo='XAUUSD',
-        tf_label='1D',
-        params=PARAMS_1D,
-        telegram_thread_id=None,
-    )
+    with patch('adapters.database.get_db', return_value=None):
+        det = _StubDetector(
+            simbolo='XAUUSD',
+            tf_label='1D',
+            params=PARAMS_1D,
+            telegram_thread_id=None,
+        )
+    return det
 
 
 @pytest.fixture
 def detector_4h():
-    return _StubDetector(
-        simbolo='XAUUSD',
-        tf_label='4H',
-        params=PARAMS_4H,
-        telegram_thread_id=42,
-    )
+    with patch('adapters.database.get_db', return_value=None):
+        det = _StubDetector(
+            simbolo='XAUUSD',
+            tf_label='4H',
+            params=PARAMS_4H,
+            telegram_thread_id=42,
+        )
+    return det
 
 
 @pytest.fixture
