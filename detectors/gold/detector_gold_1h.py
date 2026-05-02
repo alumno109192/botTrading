@@ -67,6 +67,9 @@ SIMBOLOS = {
 
 alertas_enviadas = {}
 ultimo_analisis  = {}
+# Estado previo de pullback por símbolo — permite edge-trigger (solo dispara al
+# activarse, no mientras persiste). Se resetea al resolverse el pullback.
+_estado_pullback: dict = {}  # clave → bool (True = pullback activo en ciclo anterior)
 
 # Instancia singleton — persiste alertas_enviadas entre ciclos
 _detector_instance: 'GoldDetector1H | None' = None
@@ -754,9 +757,14 @@ class GoldDetector1H(BaseDetector):
         if pullback_alcista:
             score_sell = max(0, score_sell - 4)
             logger.warning(f"  ⚠️ PULLBACK alcista — canal roto bajista pero HTF (1D/1W/4H) es BULLISH → penalizar SELL")
-            
-            # ── Alerta crítica: verificar si hay señales SELL activas en conflicto ──
-            if self.db:
+
+            # ── Alerta crítica: solo al activarse el pullback (edge-trigger) ──
+            # No se repite mientras el pullback persiste; se resetea al resolverse.
+            clave_alerta = f"pullback_alcista_{simbolo}"
+            estaba_activo = _estado_pullback.get(clave_alerta, False)
+            _estado_pullback[clave_alerta] = True
+
+            if not estaba_activo and self.db:
                 try:
                     senales_activas = self.db.obtener_senales_activas()
                     sell_activas = [s for s in senales_activas 
@@ -764,17 +772,13 @@ class GoldDetector1H(BaseDetector):
                                     and simbolo in s['simbolo']]
                     
                     if sell_activas:
-                        # Cache de alerta para no spamear (enviar máximo 1 vez cada 30 min)
-                        clave_alerta = f"pullback_alcista_{simbolo}"
-                        ultimo_envio = self.alertas_enviadas.get(clave_alerta, 0)
-                        if time.time() - ultimo_envio > 1800:  # 30 min
-                            _htf_desc = []
-                            if _dir_4h == tf_bias.BIAS_BULLISH: _htf_desc.append("4H↗️")
-                            if _dir_1d == tf_bias.BIAS_BULLISH: _htf_desc.append("1D↗️")
-                            if _dir_1w == tf_bias.BIAS_BULLISH: _htf_desc.append("1W↗️")
-                            _htf_str = " + ".join(_htf_desc) if _htf_desc else "HTF alcista"
-                            
-                            mensaje_alerta = f"""
+                        _htf_desc = []
+                        if _dir_4h == tf_bias.BIAS_BULLISH: _htf_desc.append("4H↗️")
+                        if _dir_1d == tf_bias.BIAS_BULLISH: _htf_desc.append("1D↗️")
+                        if _dir_1w == tf_bias.BIAS_BULLISH: _htf_desc.append("1W↗️")
+                        _htf_str = " + ".join(_htf_desc) if _htf_desc else "HTF alcista"
+                        
+                        mensaje_alerta = f"""
 🚨 <b>ALERTA CRÍTICA - PULLBACK ALCISTA</b>
 
 ⚠️ {simbolo} 1H detecta <b>CONFLICTO</b>:
@@ -794,17 +798,24 @@ class GoldDetector1H(BaseDetector):
 ━━━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 """
-                            enviar_telegram(mensaje_alerta)
-                            self.alertas_enviadas[clave_alerta] = time.time()
-                            logger.info(f"  🚨 Alerta PULLBACK alcista enviada — {len(sell_activas)} señales SELL en riesgo")
+                        enviar_telegram(mensaje_alerta)
+                        logger.info(f"  🚨 Alerta PULLBACK alcista enviada — {len(sell_activas)} señales SELL en riesgo")
                 except Exception as e:
                     logger.error(f"  ❌ Error verificando señales activas para alerta pullback: {e}")
+        else:
+            # Pullback resuelto → resetear para que la próxima activación vuelva a notificar
+            _estado_pullback.pop(f"pullback_alcista_{simbolo}", None)
         if pullback_bajista:
             score_buy  = max(0, score_buy  - 4)
             logger.warning(f"  ⚠️ PULLBACK bajista — canal roto alcista pero HTF (1D/1W/4H) es BEARISH → penalizar BUY")
-            
-            # ── Alerta crítica: verificar si hay señales BUY activas en conflicto ──
-            if self.db:
+
+            # ── Alerta crítica: solo al activarse el pullback (edge-trigger) ──
+            # No se repite mientras el pullback persiste; se resetea al resolverse.
+            clave_alerta = f"pullback_bajista_{simbolo}"
+            estaba_activo = _estado_pullback.get(clave_alerta, False)
+            _estado_pullback[clave_alerta] = True
+
+            if not estaba_activo and self.db:
                 try:
                     senales_activas = self.db.obtener_senales_activas()
                     buy_activas = [s for s in senales_activas 
@@ -812,17 +823,13 @@ class GoldDetector1H(BaseDetector):
                                    and simbolo in s['simbolo']]
                     
                     if buy_activas:
-                        # Cache de alerta para no spamear (enviar máximo 1 vez cada 30 min)
-                        clave_alerta = f"pullback_bajista_{simbolo}"
-                        ultimo_envio = self.alertas_enviadas.get(clave_alerta, 0)
-                        if time.time() - ultimo_envio > 1800:  # 30 min
-                            _htf_desc = []
-                            if _dir_4h == tf_bias.BIAS_BEARISH: _htf_desc.append("4H↘️")
-                            if _dir_1d == tf_bias.BIAS_BEARISH: _htf_desc.append("1D↘️")
-                            if _dir_1w == tf_bias.BIAS_BEARISH: _htf_desc.append("1W↘️")
-                            _htf_str = " + ".join(_htf_desc) if _htf_desc else "HTF bajista"
-                            
-                            mensaje_alerta = f"""
+                        _htf_desc = []
+                        if _dir_4h == tf_bias.BIAS_BEARISH: _htf_desc.append("4H↘️")
+                        if _dir_1d == tf_bias.BIAS_BEARISH: _htf_desc.append("1D↘️")
+                        if _dir_1w == tf_bias.BIAS_BEARISH: _htf_desc.append("1W↘️")
+                        _htf_str = " + ".join(_htf_desc) if _htf_desc else "HTF bajista"
+                        
+                        mensaje_alerta = f"""
 🚨 <b>ALERTA CRÍTICA - PULLBACK BAJISTA</b>
 
 ⚠️ {simbolo} 1H detecta <b>CONFLICTO</b>:
@@ -842,11 +849,13 @@ class GoldDetector1H(BaseDetector):
 ━━━━━━━━━━━━━━━━━━━━
 ⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 """
-                            enviar_telegram(mensaje_alerta)
-                            self.alertas_enviadas[clave_alerta] = time.time()
-                            logger.info(f"  🚨 Alerta PULLBACK bajista enviada — {len(buy_activas)} señales BUY en riesgo")
+                        enviar_telegram(mensaje_alerta)
+                        logger.info(f"  🚨 Alerta PULLBACK bajista enviada — {len(buy_activas)} señales BUY en riesgo")
                 except Exception as e:
                     logger.error(f"  ❌ Error verificando señales activas para alerta pullback: {e}")
+        else:
+            # Pullback resuelto → resetear para que la próxima activación vuelva a notificar
+            _estado_pullback.pop(f"pullback_bajista_{simbolo}", None)
         if _sell_confirmado_htf:
             _htf_labels = " | ".join(filter(None, [
                 f"4H(${_linea_canal_4h_sop:.0f})" if canal_sell_confirmado_4h else "",
