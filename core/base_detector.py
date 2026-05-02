@@ -88,12 +88,40 @@ class BaseDetector(ABC):
     # Helper BD — inyecta telegram_thread_id automáticamente
     # ─────────────────────────────────────────────────────────────────────────
 
+    # Umbrales de score por TF para derivar nivel cuando el detector no lo
+    # especifica explícitamente. Valores conservadores basados en los umbrales
+    # estáticos de cada detector.
+    _NIVEL_THRESHOLDS: dict = {
+        '1D':  {'MAXIMA': 10, 'FUERTE': 8,  'MEDIA': 6,  'ALERTA': 4},
+        '4H':  {'MAXIMA': 14, 'FUERTE': 12, 'MEDIA': 9,  'ALERTA': 5},
+        '1H':  {'MAXIMA': 14, 'FUERTE': 12, 'MEDIA': 9,  'ALERTA': 5},
+        '15M': {'MAXIMA': 12, 'FUERTE': 10, 'MEDIA': 7,  'ALERTA': 4},
+        '5M':  {'MAXIMA': 10, 'FUERTE': 8,  'MEDIA': 6,  'ALERTA': 3},
+    }
+
+    @classmethod
+    def _derivar_nivel(cls, score: float, tf_label: str) -> str:
+        """Clasifica un score numérico en ALERTA/MEDIA/FUERTE/MAXIMA según el TF."""
+        tf = tf_label.upper()
+        thresholds = cls._NIVEL_THRESHOLDS.get(tf, cls._NIVEL_THRESHOLDS['1H'])
+        if score >= thresholds['MAXIMA']:
+            return 'MAXIMA'
+        if score >= thresholds['FUERTE']:
+            return 'FUERTE'
+        if score >= thresholds['MEDIA']:
+            return 'MEDIA'
+        return 'ALERTA'
+
     def _guardar_senal(self, senal_data: dict) -> int:
-        """Proxy sobre db.guardar_senal que inyecta telegram_thread_id y timestamp_entry."""
+        """Proxy sobre db.guardar_senal que inyecta telegram_thread_id, timestamp_entry y nivel."""
         senal_data.setdefault('telegram_thread_id', self.telegram_thread_id)
         # Inyectar timestamp de la vela si no viene explícito
         if 'timestamp_entry' not in senal_data and self._current_candle_ts is not None:
             senal_data['timestamp_entry'] = self._current_candle_ts.isoformat()
+        # Derivar nivel automáticamente si el detector no lo provee explícitamente
+        if 'nivel' not in senal_data:
+            score = senal_data.get('score', 0) or 0
+            senal_data['nivel'] = self._derivar_nivel(score, self.tf_label)
         senal_id = self.db.guardar_senal(senal_data)
         self._last_senal_id = senal_id  # lo consumirá el próximo enviar()
         return senal_id

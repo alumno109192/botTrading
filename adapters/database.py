@@ -260,6 +260,21 @@ class DatabaseManager:
                 else:
                     logger.warning(f"⚠️ migrate_add_telegram_thread_id: {e}")
     
+    def migrate_add_nivel(self) -> None:
+        """Migración idempotente: añade columna nivel a senales.
+
+        nivel almacena la clasificación de calidad de la señal:
+        ALERTA | MEDIA | FUERTE | MAXIMA
+        """
+        try:
+            self.ejecutar_query("ALTER TABLE senales ADD COLUMN nivel TEXT")
+            logger.info("✅ Migración: columna nivel añadida a senales")
+        except Exception as e:
+            if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+                logger.debug("  nivel ya existía en senales")
+            else:
+                logger.warning(f"⚠️ migrate_add_nivel: {e}")
+
     def migrate_add_timestamp_and_split_symbol(self) -> None:
         """Migración idempotente: añade timestamp_entry, asset y timeframe a senales."""
         columnas_nuevas = [
@@ -341,8 +356,8 @@ class DatabaseManager:
             tp1, tp2, tp3, sl, score,
             indicadores, patron_velas, version_detector,
             estado, telegram_thread_id, telegram_message_id,
-            timestamp_entry, asset, timeframe
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}', ?, ?, ?, ?, ?)
+            timestamp_entry, asset, timeframe, nivel
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}', ?, ?, ?, ?, ?, ?)
         """
         
         params = (
@@ -363,6 +378,7 @@ class DatabaseManager:
             senal_data.get('timestamp_entry'),  # timestamp de la vela analizada
             asset,
             timeframe,
+            senal_data.get('nivel'),             # ALERTA | MEDIA | FUERTE | MAXIMA
         )
         
         senal_id = self.ejecutar_insert(query, params)
@@ -788,6 +804,47 @@ class DatabaseManager:
         
         return stats
     
+    def obtener_kpis_performance(self) -> Dict:
+        """Calcula KPIs de performance agrupados por nivel, timeframe y asset.
+
+        Solo considera señales cerradas (estado != ACTIVA).
+        KPIs calculados: total, wins, win_rate, avg_pnl, profit_factor.
+        """
+        estados_cerrado = "estado NOT IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'CANCELADA')"
+
+        def _run_group(group_col: str) -> List[Dict]:
+            query = f"""
+            SELECT
+                {group_col} AS grupo,
+                COUNT(*) AS total,
+                SUM(CASE WHEN estado IN ('TP1','TP2','TP3') THEN 1 ELSE 0 END) AS wins,
+                SUM(CASE WHEN estado = 'SL' THEN 1 ELSE 0 END) AS losses,
+                ROUND(
+                    100.0 * SUM(CASE WHEN estado IN ('TP1','TP2','TP3') THEN 1 ELSE 0 END)
+                    / NULLIF(COUNT(*), 0), 2
+                ) AS win_rate,
+                ROUND(AVG(CASE WHEN beneficio_final_pct IS NOT NULL
+                    THEN beneficio_final_pct ELSE NULL END), 4) AS avg_pnl,
+                ROUND(
+                    SUM(CASE WHEN beneficio_final_pct > 0 THEN beneficio_final_pct ELSE 0 END)
+                    / NULLIF(ABS(SUM(CASE WHEN beneficio_final_pct < 0
+                        THEN beneficio_final_pct ELSE 0 END)), 0),
+                2) AS profit_factor
+            FROM senales
+            WHERE {estados_cerrado}
+              AND {group_col} IS NOT NULL
+            GROUP BY {group_col}
+            ORDER BY win_rate DESC
+            """
+            result = self.ejecutar_query(query)
+            return [dict(row) for row in result.rows] if result.rows else []
+
+        return {
+            'por_nivel':    _run_group('nivel'),
+            'por_timeframe': _run_group('timeframe'),
+            'por_asset':    _run_group('asset'),
+        }
+
     def obtener_win_rate_por_simbolo(self) -> List[Dict]:
         """Win rate separado por cada símbolo"""
         query = """
@@ -1411,6 +1468,7 @@ def get_db() -> Optional[DatabaseManager]:
     try:
         db.migrate_add_telegram_thread_id()
         db.migrate_add_timestamp_and_split_symbol()
+        db.migrate_add_nivel()
     except Exception as e:
         logger.warning(f"⚠️ Error ejecutando migraciones: {e}")
     
