@@ -601,6 +601,67 @@ class GoldDetector4H(BaseDetector):
 
         # ── Umbral adaptativo: elevar umbrales si ATR está en alta volatilidad ──
         atr_media = float(df['atr'].rolling(20).mean().iloc[-2])
+
+        # ── Snapshot completo de condiciones para backtesting/estudio ─────────
+        _condiciones_bd = {
+            # Indicadores numéricos
+            'rsi': round(float(rsi), 1), 'atr': round(float(atr), 2), 'atr_media': round(float(atr_media), 2),
+            'adx': round(float(adx), 1), 'di_plus': round(float(di_plus), 1), 'di_minus': round(float(di_minus), 1),
+            'macd': round(float(macd), 4), 'macd_hist': round(float(macd_hist), 4),
+            'vol': round(float(vol), 0), 'vol_avg': round(float(vol_avg), 0),
+            'score_sell': score_sell, 'score_buy': score_buy,
+            # Zonas S/R
+            'zrl': round(zrl, 2), 'zrh': round(zrh, 2), 'zsl': round(zsl, 2), 'zsh': round(zsh, 2),
+            # Condiciones SELL
+            'en_zona_resist': bool(en_zona_resist), 'en_resist_sr_interm': bool(_en_resist_sr_mult and not en_zona_resist),
+            'vela_rechazo': bool(vela_rechazo), 'shooting_star': bool(shooting_star),
+            'bearish_engulfing': bool(bearish_engulfing), 'bearish_marubozu': bool(bearish_marubozu),
+            'doji_resist': bool(doji_resist), 'vol_alto_rechazo': bool(vol_alto_rechazo),
+            'rsi_alto_girando': bool(rsi_alto_girando), 'rsi_sobrecompra': bool(rsi_sobrecompra),
+            'divergencia_bajista': bool(divergencia_bajista),
+            'emas_bajistas': bool(emas_bajistas), 'bajo_ema200': bool(bajo_ema200),
+            'estructura_bajista': bool(estructura_bajista),
+            'intento_rotura_fallido': bool(intento_rotura_fallido),
+            'vol_decreciente': bool(vol_decreciente), 'bb_toca_superior': bool(bb_toca_superior),
+            'evening_star': bool(evening_star), 'macd_cruce_bajista': bool(macd_cruce_bajista),
+            'macd_negativo': bool(macd_negativo), 'macd_divergencia_bajista': bool(macd_divergencia_bajista),
+            'adx_bajista': bool(adx_bajista), 'adx_lateral': bool(adx_lateral),
+            'obv_divergencia_bajista': bool(obv_divergencia_bajista), 'obv_decreciente': bool(obv_decreciente),
+            'canal_alcista_roto': bool(canal_alcista_roto_4h), 'en_resist_canal_bajista': bool(en_resist_canal_bajista),
+            'fallo_cont_bajista': bool(fallo_continuacion_bajista), 'rotura_bajista': bool(rotura_bajista),
+            'dt_detectado': bool(dt_detectado), 'rup_sop_4h': bool(_rup_sop_4h),
+            'cuña_desc': str(_cuña_desc_4h) if _cuña_desc_4h else None,
+            'cuña_asc': str(_cuña_asc_4h) if _cuña_asc_4h else None,
+            'fib_nivel': float(_fib_nivel) if _fib_nivel else None,
+            'fib_tend': str(_fib_tendencia) if _fib_nivel else None,
+            'rebote_bajista': bool(_rebote_baj),
+            'pullback_bajista_4h': bool(_pb and _pb_tend == 'bajista'),
+            # Condiciones BUY
+            'en_zona_soporte': bool(en_zona_soporte), 'en_sop_sr_interm': bool(_en_sop_sr_mult and not en_zona_soporte),
+            'vela_rebote': bool(vela_rebote), 'hammer': bool(hammer),
+            'bullish_engulfing': bool(bullish_engulfing), 'bullish_marubozu': bool(bullish_marubozu),
+            'doji_soporte': bool(doji_soporte), 'vol_alto_rebote': bool(vol_alto_rebote),
+            'rsi_bajo_girando': bool(rsi_bajo_girando), 'rsi_sobreventa': bool(rsi_sobreventa),
+            'divergencia_alcista': bool(divergencia_alcista),
+            'emas_alcistas': bool(emas_alcistas), 'sobre_ema200': bool(sobre_ema200),
+            'estructura_alcista': bool(estructura_alcista),
+            'intento_caida_fallido': bool(intento_caida_fallido),
+            'vol_decreciente_sell': bool(vol_decreciente_sell), 'bb_toca_inferior': bool(bb_toca_inferior),
+            'morning_star': bool(morning_star), 'macd_cruce_alcista': bool(macd_cruce_alcista),
+            'macd_positivo': bool(macd_positivo), 'macd_divergencia_alcista': bool(macd_divergencia_alcista),
+            'adx_alcista': bool(adx_alcista),
+            'obv_divergencia_alcista': bool(obv_divergencia_alcista), 'obv_creciente': bool(obv_creciente),
+            'canal_bajista_roto': bool(canal_bajista_roto_4h), 'en_sop_canal_alcista': bool(en_soporte_canal_alcista),
+            'fallo_cont_alcista': bool(fallo_continuacion_alcista), 'rotura_alcista': bool(rotura_alcista),
+            'ds_detectado': bool(ds_detectado), 'rup_res_4h': bool(_rup_res_4h),
+            'rebote_alcista': bool(_rebote_alc),
+            'pullback_alcista_4h': bool(_pb and _pb_tend == 'alcista'),
+            # Contexto macro
+            'dxy_bias': str(dxy_bias) if dxy_bias else None,
+            'cot_bias': str(_cot_bias) if _cot_bias else None,
+            'oi_bias': str(_oi_bias) if _oi_bias else None,
+        }
+
         _umbral_max = self.umbral_adaptativo(14, atr, atr_media)
         _umbral_fue = self.umbral_adaptativo(12, atr, atr_media)
         _umbral_med = self.umbral_adaptativo(9,  atr, atr_media)
@@ -755,8 +816,7 @@ class GoldDetector4H(BaseDetector):
                         'direccion': 'VENTA', 'precio_entrada': sell_limit,
                         'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                         'score': score_sell,
-                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
-                                                   'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                        'indicadores': json.dumps(_condiciones_bd),
                         'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
                         'version_detector': 'GOLD 4H-v2.0'
                     })
@@ -789,8 +849,7 @@ class GoldDetector4H(BaseDetector):
                         'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                         'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                         'score': score_buy,
-                        'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
-                                                   'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                        'indicadores': json.dumps(_condiciones_bd),
                         'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
                         'version_detector': 'GOLD 4H-v2.0'
                     })
@@ -843,8 +902,7 @@ class GoldDetector4H(BaseDetector):
                                     'direccion': 'VENTA', 'precio_entrada': sell_limit,
                                     'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                     'score': score_sell,
-                                    'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
-                                                               'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                                    'indicadores': json.dumps(_condiciones_bd),
                                     'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
                                     'version_detector': 'GOLD 4H-v2.0'
                                 })
@@ -896,8 +954,7 @@ class GoldDetector4H(BaseDetector):
                                     'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                                     'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                     'score': score_buy,
-                                    'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
-                                                               'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                                    'indicadores': json.dumps(_condiciones_bd),
                                     'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
                                     'version_detector': 'GOLD 4H-v2.0'
                                 })
@@ -977,8 +1034,7 @@ class GoldDetector4H(BaseDetector):
                             'direccion': 'COMPRA', 'precio_entrada': close,
                             'tp1': tp1_break_buy, 'tp2': tp2_break_buy, 'tp3': tp3_break_buy,
                             'sl': sl_break_buy, 'score': score_buy,
-                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
-                                                       'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                            'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"Rotura Alcista: resistencia_rota={round(zrh, 2)}",
                             'version_detector': 'GOLD 4H-v2.0'
                         })
@@ -1018,8 +1074,7 @@ class GoldDetector4H(BaseDetector):
                             'direccion': 'VENTA', 'precio_entrada': close,
                             'tp1': tp1_break_sell, 'tp2': tp2_break_sell, 'tp3': tp3_break_sell,
                             'sl': sl_break_sell, 'score': score_sell,
-                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
-                                                       'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                            'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"Rotura Bajista: soporte_roto={round(zsl, 2)}",
                             'version_detector': 'GOLD 4H-v2.0'
                         })
@@ -1064,8 +1119,7 @@ class GoldDetector4H(BaseDetector):
                             'direccion': 'VENTA', 'precio_entrada': entrada_dt,
                             'tp1': tp1_dt, 'tp2': tp2_dt, 'tp3': tp3_dt, 'sl': sl_dt,
                             'score': score_sell,
-                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
-                                                       'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                            'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"Doble Techo: techo={dt_nivel_techo} neckline={dt_neckline}",
                             'version_detector': 'GOLD 4H-v2.0'
                         })
@@ -1105,8 +1159,7 @@ class GoldDetector4H(BaseDetector):
                             'direccion': 'COMPRA', 'precio_entrada': entrada_ds,
                             'tp1': tp1_ds, 'tp2': tp2_ds, 'tp3': tp3_ds, 'sl': sl_ds,
                             'score': score_buy,
-                            'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 2),
-                                                       'macd': round(macd, 2), 'atr': round(atr, 2)}),
+                            'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"Doble Suelo: suelo={ds_nivel_suelo} neckline={ds_neckline}",
                             'version_detector': 'GOLD 4H-v2.0'
                         })

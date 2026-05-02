@@ -477,6 +477,41 @@ class GoldDetector15M(BaseDetector):
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
+            # ── Snapshot completo de condiciones para backtesting/estudio ─────
+            _condiciones_bd = {
+                # Indicadores numéricos
+                'rsi': round(float(rsi), 1), 'atr': round(float(atr), 2), 'atr_media': round(float(atr_media), 2),
+                'adx': round(float(adx), 1),
+                'ema_fast': round(float(ema_fast.iloc[-1]), 2), 'ema_slow': round(float(ema_slow.iloc[-1]), 2),
+                'ema_trend': round(float(ema_trend.iloc[-1]), 2),
+                'vol': round(float(vol), 0), 'vol_medio': round(float(vol_medio), 0),
+                'score_sell': score_sell, 'score_buy': score_buy,
+                # Zonas S/R
+                'zrl': round(zrl, 2), 'zrh': round(zrh, 2), 'zsl': round(zsl, 2), 'zsh': round(zsh, 2),
+                # Condiciones de zona
+                'en_zona_resist': bool(en_zona_resist), 'en_zona_soporte': bool(en_zona_soporte),
+                'aproximando_resist': bool(aproximando_resistencia), 'aproximando_soporte': bool(aproximando_soporte),
+                # Patrones de velas
+                'envolvente_bajista': bool(patron_envolvente_bajista(df)),
+                'envolvente_alcista': bool(patron_envolvente_alcista(df)),
+                'stop_hunt_bajista': bool(detectar_stop_hunt_bajista(df)),
+                'stop_hunt_alcista': bool(detectar_stop_hunt_alcista(df)),
+                'v_rev_alcista': bool(v_rev_alc), 'v_rev_bajista': bool(v_rev_baj),
+                # Canal / estructura
+                'canal_alc_roto': bool(canal_alc_roto_15m), 'canal_baj_roto': bool(canal_baj_roto_15m),
+                'en_resist_canal_baj': bool(en_resist_canal_baj_15m), 'en_sop_canal_alc': bool(en_sop_canal_alc_15m),
+                'rup_sop': bool(_rup_sop_15m), 'rup_res': bool(_rup_res_15m),
+                'retest_resist': bool(_retest_res_15m), 'retest_sop': bool(_retest_sop_15m),
+                'rec_dir_baj': bool(_rec_dir_baj_15m), 'rec_dir_alc': bool(_rec_dir_alc_15m),
+                'cuña_desc': str(_cuña_desc_15m) if _cuña_desc_15m else None,
+                'cuña_asc': str(_cuña_asc_15m) if _cuña_asc_15m else None,
+                'dt_detectado': bool(_dt_15m), 'ds_detectado': bool(_ds_15m),
+                # Contexto macro
+                'dxy_bias': str(dxy_bias) if dxy_bias else None,
+                'cot_bias': str(_cot_bias) if _cot_bias else None,
+                'oi_bias': str(_oi_bias) if _oi_bias else None,
+            }
+
             # ── Filtro de sesión: fuera de 08-21 UTC solo FUERTE (TF corto = ruido nocturno) ──
             if not self.en_sesion_optima():
                 logger.info(f"  🌙 [15M] Fuera sesión óptima — señal suprimida (08-21 UTC)")
@@ -712,8 +747,7 @@ class GoldDetector15M(BaseDetector):
                                 'direccion': 'VENTA', 'precio_entrada': sell_limit,
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                 'score': score_sell,
-                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
-                                                           'atr': round(atr, 2)}),
+                                'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
                                 'version_detector': '15M-SCALP-v2.1'
                             })
@@ -760,8 +794,7 @@ class GoldDetector15M(BaseDetector):
                                 'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                 'score': score_buy,
-                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
-                                                           'atr': round(atr, 2)}),
+                                'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}",
                                 'version_detector': '15M-SCALP-v2.1'
                             })

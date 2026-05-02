@@ -424,6 +424,41 @@ class GoldDetector5M(BaseDetector):
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
+            # ── Snapshot completo de condiciones para backtesting/estudio ─────
+            _condiciones_bd = {
+                # Indicadores numéricos
+                'rsi': round(float(rsi), 1), 'atr': round(float(atr), 2), 'atr_media': round(float(atr_media), 2),
+                'adx': round(float(adx), 1),
+                'ema_fast': round(float(ema_fast.iloc[-1]), 2), 'ema_slow': round(float(ema_slow.iloc[-1]), 2),
+                'ema_trend': round(float(ema_trend.iloc[-1]), 2),
+                'vol_actual': round(float(vol_actual), 0), 'vol_medio': round(float(vol_medio), 0),
+                'score_sell': score_sell, 'score_buy': score_buy,
+                # Zonas S/R
+                'zrl': round(zrl, 2), 'zrh': round(zrh, 2), 'zsl': round(zsl, 2), 'zsh': round(zsh, 2),
+                # Condiciones de zona
+                'en_zona_resist': bool(en_zona_resist), 'en_zona_soporte': bool(en_zona_soporte),
+                'aproximando_resist': bool(aproximando_resist), 'aproximando_soporte': bool(aproximando_soporte),
+                # Patrones de velas
+                'envolvente_bajista': bool(patron_envolvente_bajista(df)),
+                'envolvente_alcista': bool(patron_envolvente_alcista(df)),
+                'stop_hunt_bajista': bool(detectar_stop_hunt_bajista(df)),
+                'stop_hunt_alcista': bool(detectar_stop_hunt_alcista(df)),
+                'v_rev_alcista_5m': bool(v_rev_alc_5m), 'v_rev_bajista_5m': bool(v_rev_baj_5m),
+                'dt_5m': bool(_dt_5m), 'ds_5m': bool(_ds_5m),
+                # Canal / estructura
+                'canal_alc_roto': bool(canal_alc_roto_5m), 'canal_baj_roto': bool(canal_baj_roto_5m),
+                'en_resist_canal_baj': bool(en_resist_canal_baj_5m), 'en_sop_canal_alc': bool(en_sop_canal_alc_5m),
+                'rup_sop': bool(_rup_sop_5m), 'rup_res': bool(_rup_res_5m),
+                'retest_resist': bool(_retest_res_5m), 'retest_sop': bool(_retest_sop_5m),
+                'rec_dir_baj': bool(_rec_dir_baj_5m), 'rec_dir_alc': bool(_rec_dir_alc_5m),
+                'cuña_desc': str(_cuña_desc_5m) if _cuña_desc_5m else None,
+                'cuña_asc': str(_cuña_asc_5m) if _cuña_asc_5m else None,
+                # Contexto macro
+                'dxy_bias': str(dxy_bias) if dxy_bias else None,
+                'cot_bias': str(_cot_bias) if _cot_bias else None,
+                'oi_bias': str(_oi_bias) if _oi_bias else None,
+            }
+
             # ── Filtro de sesión: fuera de 08-21 UTC bloquear todo (TF corto = ruido nocturno) ──
             if not self.en_sesion_optima():
                 logger.info(f"  🌙 [5M] Fuera sesión óptima — señales suprimidas (08-21 UTC)")
@@ -541,7 +576,7 @@ class GoldDetector5M(BaseDetector):
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v,
                                 'sl': round(sl_venta, 2),
                                 'score': score_sell,
-                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1), 'atr': round(atr, 2)}),
+                                'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': 'aviso_setup_temprano',
                                 'version_detector': '5M-AVISO-v1'
                             })
@@ -582,7 +617,7 @@ class GoldDetector5M(BaseDetector):
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
                                 'sl': round(sl_compra, 2),
                                 'score': score_buy,
-                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1), 'atr': round(atr, 2)}),
+                                'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': 'aviso_setup_temprano',
                                 'version_detector': '5M-AVISO-v1'
                             })
@@ -737,8 +772,7 @@ class GoldDetector5M(BaseDetector):
                                 'direccion': 'VENTA', 'precio_entrada': sell_limit,
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                 'score': score_sell,
-                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
-                                                           'atr': round(atr, 2)}),
+                                'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
                                 'version_detector': '5M-MICRO-v2.1'
                             })
@@ -787,8 +821,7 @@ class GoldDetector5M(BaseDetector):
                                 'direccion': 'COMPRA', 'precio_entrada': buy_limit,
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                 'score': score_buy,
-                                'indicadores': json.dumps({'rsi': round(rsi, 1), 'adx': round(adx, 1),
-                                                           'atr': round(atr, 2)}),
+                                'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}, DobleSuelo:{_ds_5m}",
                                 'version_detector': '5M-MICRO-v2.1'
                             })
