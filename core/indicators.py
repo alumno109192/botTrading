@@ -1605,3 +1605,387 @@ def detectar_pullback_activo(
             precio_nivel  = p
 
     return (True, tendencia_principal, nivel_cercano, precio_nivel, round(profundidad, 3))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CABEZA Y HOMBROS (HCH) / HCH INVERTIDO
+# ══════════════════════════════════════════════════════════════════════════════
+
+def detectar_hch(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 80,
+        wing: int = 3,
+        tol_hombros: float = 0.6,
+) -> tuple:
+    """
+    Detecta patrón Cabeza y Hombros (HCH) — reversión BAJISTA.
+
+    Estructura:
+      - Hombro Izquierdo (HI): swing high
+      - Cabeza (C): swing high MAYOR que HI y HD
+      - Hombro Derecho (HD): swing high similar a HI (±tol_hombros×ATR)
+      - Neckline: línea que une los dos valles entre HI-C y C-HD
+      - Confirmación: último cierre bajo la neckline
+
+    Returns:
+        (detectado: bool, neckline: float, cabeza: float)
+        detectado=True → señal SELL
+    """
+    if len(df) < lookback + wing + 3:
+        return False, 0.0, 0.0
+
+    highs  = df['High'].iloc[-(lookback + wing):-1]
+    lows   = df['Low'].iloc[-(lookback + wing):-1]
+    n      = len(highs)
+
+    # ── 1. Swing highs ───────────────────────────────────────────────────────
+    sh_idx, sh_val = [], []
+    for i in range(wing, n - wing):
+        v = float(highs.iloc[i])
+        if all(v >= float(highs.iloc[i - j]) for j in range(1, wing + 1)) and \
+           all(v >= float(highs.iloc[i + j]) for j in range(1, wing + 1)):
+            sh_idx.append(i)
+            sh_val.append(v)
+
+    if len(sh_idx) < 3:
+        return False, 0.0, 0.0
+
+    tol = atr * tol_hombros
+
+    # ── 2. Buscar patrón HI-C-HD en los últimos swing highs ─────────────────
+    found = False
+    neckline = cabeza_nivel = 0.0
+    for k in range(len(sh_idx) - 3, -1, -1):
+        hi_i, hi_v = sh_idx[k],     sh_val[k]
+        c_i,  c_v  = sh_idx[k + 1], sh_val[k + 1]
+        hd_i, hd_v = sh_idx[k + 2], sh_val[k + 2]
+
+        # Cabeza debe ser el pico más alto
+        if not (c_v > hi_v and c_v > hd_v):
+            continue
+        # Hombros similares
+        if abs(hi_v - hd_v) > tol:
+            continue
+
+        # Valles entre HI-C y C-HD como neckline
+        valle_1 = float(lows.iloc[hi_i:c_i + 1].min())
+        valle_2 = float(lows.iloc[c_i:hd_i + 1].min())
+        neckline = (valle_1 + valle_2) / 2.0
+
+        # Confirmación: cierre actual bajo neckline
+        close_act = float(df['Close'].iloc[-1])
+        if close_act < neckline - atr * 0.1:
+            cabeza_nivel = c_v
+            found = True
+            break
+
+    if not found:
+        return False, 0.0, 0.0
+    return True, round(neckline, 2), round(cabeza_nivel, 2)
+
+
+def detectar_hch_invertido(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 80,
+        wing: int = 3,
+        tol_hombros: float = 0.6,
+) -> tuple:
+    """
+    Detecta patrón HCH Invertido (Inverse H&S) — reversión ALCISTA.
+
+    Estructura:
+      - Hombro Izquierdo (HI): swing low
+      - Cabeza (C): swing low MENOR que HI y HD
+      - Hombro Derecho (HD): swing low similar a HI (±tol_hombros×ATR)
+      - Neckline: línea que une los dos picos entre HI-C y C-HD
+      - Confirmación: último cierre sobre la neckline
+
+    Returns:
+        (detectado: bool, neckline: float, cabeza: float)
+        detectado=True → señal BUY
+    """
+    if len(df) < lookback + wing + 3:
+        return False, 0.0, 0.0
+
+    highs  = df['High'].iloc[-(lookback + wing):-1]
+    lows   = df['Low'].iloc[-(lookback + wing):-1]
+    n      = len(lows)
+
+    # ── 1. Swing lows ────────────────────────────────────────────────────────
+    sl_idx, sl_val = [], []
+    for i in range(wing, n - wing):
+        v = float(lows.iloc[i])
+        if all(v <= float(lows.iloc[i - j]) for j in range(1, wing + 1)) and \
+           all(v <= float(lows.iloc[i + j]) for j in range(1, wing + 1)):
+            sl_idx.append(i)
+            sl_val.append(v)
+
+    if len(sl_idx) < 3:
+        return False, 0.0, 0.0
+
+    tol = atr * tol_hombros
+
+    # ── 2. Buscar patrón HI-C-HD en los últimos swing lows ──────────────────
+    found = False
+    neckline = cabeza_nivel = 0.0
+    for k in range(len(sl_idx) - 3, -1, -1):
+        hi_i, hi_v = sl_idx[k],     sl_val[k]
+        c_i,  c_v  = sl_idx[k + 1], sl_val[k + 1]
+        hd_i, hd_v = sl_idx[k + 2], sl_val[k + 2]
+
+        # Cabeza debe ser el valle más profundo
+        if not (c_v < hi_v and c_v < hd_v):
+            continue
+        # Hombros similares
+        if abs(hi_v - hd_v) > tol:
+            continue
+
+        # Picos entre HI-C y C-HD como neckline
+        pico_1 = float(highs.iloc[hi_i:c_i + 1].max())
+        pico_2 = float(highs.iloc[c_i:hd_i + 1].max())
+        neckline = (pico_1 + pico_2) / 2.0
+
+        # Confirmación: cierre actual sobre neckline
+        close_act = float(df['Close'].iloc[-1])
+        if close_act > neckline + atr * 0.1:
+            cabeza_nivel = c_v
+            found = True
+            break
+
+    if not found:
+        return False, 0.0, 0.0
+    return True, round(neckline, 2), round(cabeza_nivel, 2)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TRIÁNGULOS (ASCENDENTE / DESCENDENTE / SIMÉTRICO)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def detectar_triangulo(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 60,
+        wing: int = 3,
+        min_toques: int = 2,
+        max_amplitud_pct: float = 0.04,
+) -> tuple:
+    """
+    Detecta triángulos técnicos en compresión de precio.
+
+    Tipos:
+      - 'ascendente'  → resistencia plana + soporte ascendente → ruptura alcista probable
+      - 'descendente' → soporte plano + resistencia descendente → ruptura bajista probable
+      - 'simetrico'   → ambas líneas convergen simétricamente → ruptura según tendencia
+      - 'no_detectado'
+
+    Criterios:
+      1. Regresión lineal sobre swing highs y swing lows (mín. min_toques cada uno)
+      2. Convergencia (las dos líneas se acercan)
+      3. Amplitud actual < max_amplitud_pct × precio
+      4. Precio dentro del triángulo
+      5. Ruptura: cierre fuera de cualquiera de las dos líneas (±0.1×ATR)
+
+    Returns:
+        (tipo: str, precio_techo: float, precio_suelo: float)
+        tipo: 'ruptura_alcista' | 'ruptura_bajista' |
+              'compresion_ascendente' | 'compresion_descendente' | 'compresion_simetrico' |
+              'no_detectado'
+    """
+    if len(df) < lookback + wing + 3:
+        return 'no_detectado', 0.0, 0.0
+
+    highs  = df['High'].iloc[-(lookback + wing):-1]
+    lows   = df['Low'].iloc[-(lookback + wing):-1]
+    n      = len(highs)
+
+    # ── 1. Pivots ─────────────────────────────────────────────────────────────
+    sh_idx, sh_val = [], []
+    sl_idx, sl_val = [], []
+    for i in range(wing, n - wing):
+        vh = float(highs.iloc[i])
+        vl = float(lows.iloc[i])
+        if all(vh >= float(highs.iloc[i - j]) for j in range(1, wing + 1)) and \
+           all(vh >= float(highs.iloc[i + j]) for j in range(1, wing + 1)):
+            sh_idx.append(i)
+            sh_val.append(vh)
+        if all(vl <= float(lows.iloc[i - j]) for j in range(1, wing + 1)) and \
+           all(vl <= float(lows.iloc[i + j]) for j in range(1, wing + 1)):
+            sl_idx.append(i)
+            sl_val.append(vl)
+
+    if len(sh_idx) < min_toques or len(sl_idx) < min_toques:
+        return 'no_detectado', 0.0, 0.0
+
+    m_h, b_h = np.polyfit(sh_idx, sh_val, 1)
+    m_l, b_l = np.polyfit(sl_idx, sl_val, 1)
+
+    # ── 2. Convergencia: las líneas deben acercarse ──────────────────────────
+    # (diferencia de pendientes opuesta en signo o la superior baja y/o inferior sube)
+    converge = (m_h - m_l) < 0  # techo baja más rápido que suelo (o suelo sube)
+    if not converge:
+        return 'no_detectado', 0.0, 0.0
+
+    # ── 3. Precios proyectados en la última vela ─────────────────────────────
+    last_i = n - 1
+    precio_techo_act = m_h * last_i + b_h
+    precio_suelo_act = m_l * last_i + b_l
+    amplitud = precio_techo_act - precio_suelo_act
+
+    if amplitud <= 0:
+        return 'no_detectado', 0.0, 0.0
+
+    precio_ref = float(df['Close'].iloc[-2])
+    if amplitud / precio_ref > max_amplitud_pct:
+        return 'no_detectado', 0.0, 0.0
+
+    # ── 4. Precio dentro del triángulo ───────────────────────────────────────
+    close_act  = float(df['Close'].iloc[-1])
+    close_prv  = float(df['Close'].iloc[-2])
+    en_triangulo = (precio_suelo_act - atr * 0.3 <= close_prv <= precio_techo_act + atr * 0.3)
+    if not en_triangulo:
+        return 'no_detectado', 0.0, 0.0
+
+    # ── 5. Clasificar tipo de triángulo ──────────────────────────────────────
+    plano_tol = atr * 0.1 / max(abs(last_i), 1)   # pendiente "plana" por vela
+    techo_plano  = abs(m_h) < plano_tol
+    suelo_plano  = abs(m_l) < plano_tol
+    suelo_sube   = m_l > plano_tol
+    techo_baja   = m_h < -plano_tol
+
+    if techo_plano and suelo_sube:
+        subtipo = 'ascendente'
+    elif suelo_plano and techo_baja:
+        subtipo = 'descendente'
+    else:
+        subtipo = 'simetrico'
+
+    # ── 6. Ruptura ────────────────────────────────────────────────────────────
+    if close_act > precio_techo_act + atr * 0.1:
+        return 'ruptura_alcista', round(precio_techo_act, 2), round(precio_suelo_act, 2)
+    if close_act < precio_suelo_act - atr * 0.1:
+        return 'ruptura_bajista', round(precio_techo_act, 2), round(precio_suelo_act, 2)
+
+    return f'compresion_{subtipo}', round(precio_techo_act, 2), round(precio_suelo_act, 2)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BANDERA Y BANDERÍN (FLAG & PENNANT)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def detectar_bandera_banderin(
+        df: pd.DataFrame,
+        atr: float,
+        lookback: int = 60,
+        impulso_velas: int = 8,
+        consolidacion_velas: int = 20,
+        impulso_min_atr: float = 3.0,
+        retroceso_max: float = 0.5,
+) -> tuple:
+    """
+    Detecta patrones de bandera y banderín (Flag & Pennant).
+
+    Estructura:
+      1. Impulso: movimiento fuerte (≥ impulso_min_atr × ATR) en impulso_velas velas
+      2. Consolidación: fase de compresión posterior (≤ consolidacion_velas velas)
+         - Bandera: canal paralelo en contra del impulso (retroceso < retroceso_max × impulso)
+         - Banderín: triángulo convergente tras el impulso
+      3. Ruptura: cierre que continúa la dirección del impulso
+
+    Returns:
+        (tipo: str, precio_objetivo: float, nivel_entrada: float)
+        tipo: 'bandera_alcista' | 'bandera_bajista' |
+              'banderin_alcista' | 'banderin_bajista' |
+              'no_detectado'
+        precio_objetivo: proyección del mástil (impulso) desde el punto de ruptura
+    """
+    min_velas = impulso_velas + consolidacion_velas + 3
+    if len(df) < min_velas:
+        return 'no_detectado', 0.0, 0.0
+
+    # ── 1. Detectar el impulso (mastil) ──────────────────────────────────────
+    # Ventana de búsqueda: desde consolidacion_velas+1 atrás hasta impulso_velas antes del fin
+    inicio_busq = -(consolidacion_velas + impulso_velas + 2)
+    fin_busq    = -(consolidacion_velas)
+
+    sub_impulso = df.iloc[inicio_busq:fin_busq]
+    if len(sub_impulso) < impulso_velas:
+        return 'no_detectado', 0.0, 0.0
+
+    # Buscar ventana de impulso_velas con el mayor movimiento direccional
+    mejor_impulso = 0.0
+    mejor_dir     = 0
+    mejor_inicio  = 0
+    mejor_fin     = 0
+
+    for i in range(len(sub_impulso) - impulso_velas + 1):
+        seg = sub_impulso.iloc[i:i + impulso_velas]
+        mov = float(seg['Close'].iloc[-1]) - float(seg['Close'].iloc[0])
+        if abs(mov) > abs(mejor_impulso):
+            mejor_impulso = mov
+            mejor_dir     = 1 if mov > 0 else -1
+            mejor_inicio  = i
+            mejor_fin     = i + impulso_velas
+
+    if abs(mejor_impulso) < atr * impulso_min_atr:
+        return 'no_detectado', 0.0, 0.0
+
+    mastil_alto  = float(sub_impulso.iloc[mejor_inicio:mejor_fin]['High'].max())
+    mastil_bajo  = float(sub_impulso.iloc[mejor_inicio:mejor_fin]['Low'].min())
+    mastil_size  = mastil_alto - mastil_bajo
+
+    # ── 2. Fase de consolidación ──────────────────────────────────────────────
+    sub_cons = df.iloc[-consolidacion_velas - 1:-1]
+    if len(sub_cons) < 4:
+        return 'no_detectado', 0.0, 0.0
+
+    cons_high = float(sub_cons['High'].max())
+    cons_low  = float(sub_cons['Low'].min())
+    cons_rango = cons_high - cons_low
+
+    # El rango de consolidación debe ser menor que el mástil
+    if cons_rango >= mastil_size * 0.7:
+        return 'no_detectado', 0.0, 0.0
+
+    # Retroceso no debe superar retroceso_max del mástil
+    if mejor_dir == 1:
+        retroceso = (mastil_alto - cons_low) / mastil_size if mastil_size > 0 else 1.0
+        punto_ruptura = cons_high
+    else:
+        retroceso = (cons_high - mastil_bajo) / mastil_size if mastil_size > 0 else 1.0
+        punto_ruptura = cons_low
+
+    if retroceso > retroceso_max:
+        return 'no_detectado', 0.0, 0.0
+
+    # ── 3. Distinguir bandera vs banderín ─────────────────────────────────────
+    # Banderín: rango de la consolidación se comprime (primeras velas > últimas velas)
+    mitad = len(sub_cons) // 2
+    rango_primera_mitad = float(sub_cons.iloc[:mitad]['High'].max()) - \
+                          float(sub_cons.iloc[:mitad]['Low'].min())
+    rango_segunda_mitad = float(sub_cons.iloc[mitad:]['High'].max()) - \
+                          float(sub_cons.iloc[mitad:]['Low'].min())
+    es_banderin = rango_segunda_mitad < rango_primera_mitad * 0.7
+
+    # ── 4. Ruptura ────────────────────────────────────────────────────────────
+    close_act = float(df['Close'].iloc[-1])
+
+    if mejor_dir == 1:
+        ruptura_ok = close_act > punto_ruptura + atr * 0.1
+        precio_objetivo = round(punto_ruptura + mastil_size, 2)
+        if ruptura_ok:
+            tipo = 'banderin_alcista' if es_banderin else 'bandera_alcista'
+            return tipo, precio_objetivo, round(punto_ruptura, 2)
+        # Sin ruptura aún → compresión activa
+        tipo_comp = 'banderin_alcista_prep' if es_banderin else 'bandera_alcista_prep'
+        return tipo_comp, precio_objetivo, round(punto_ruptura, 2)
+
+    else:
+        ruptura_ok = close_act < punto_ruptura - atr * 0.1
+        precio_objetivo = round(punto_ruptura - mastil_size, 2)
+        if ruptura_ok:
+            tipo = 'banderin_bajista' if es_banderin else 'bandera_bajista'
+            return tipo, precio_objetivo, round(punto_ruptura, 2)
+        tipo_comp = 'banderin_bajista_prep' if es_banderin else 'bandera_bajista_prep'
+        return tipo_comp, precio_objetivo, round(punto_ruptura, 2)

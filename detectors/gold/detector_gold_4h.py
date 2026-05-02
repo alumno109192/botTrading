@@ -92,6 +92,9 @@ from core.indicators import (
     detectar_cuña_descendente, detectar_cuña_ascendente,
     detectar_precio_en_fibonacci, detectar_rebote_alcista, detectar_rebote_bajista,
     calcular_fibonacci, detectar_pullback_activo,
+    detectar_hch, detectar_hch_invertido,
+    detectar_triangulo,
+    detectar_bandera_banderin,
 )
 
 # ══════════════════════════════════════

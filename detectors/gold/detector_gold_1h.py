@@ -86,6 +86,9 @@ from core.indicators import (
     calcular_fibonacci,
     detectar_doble_techo, detectar_doble_suelo,
     detectar_v_reversal_alcista, detectar_v_reversal_bajista,
+    detectar_hch, detectar_hch_invertido,
+    detectar_triangulo,
+    detectar_bandera_banderin,
 )
 
 
