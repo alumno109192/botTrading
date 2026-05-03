@@ -250,11 +250,11 @@ def _next_td_key() -> tuple:
     return None, None
 
 
-def _registrar_uso_key(alias: str):
-    """Registra uso en BD para estadísticas (best-effort, no bloquea la petición)."""
+def _registrar_uso_key(alias: str, exito: bool = True):
+    """Registra cada intento de uso en BD (best-effort, no bloquea la petición)."""
     try:
         from adapters.database import DatabaseManager
-        total = DatabaseManager().incrementar_uso_key(alias)
+        total = DatabaseManager().incrementar_uso_key(alias, exito=exito)
         if total % 100 == 0:
             print(f"  📊 [quota] {alias}: {total} peticiones hoy")
     except Exception:
@@ -582,6 +582,7 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
         if r.status_code != 200:
             print(f"  ⚠️ Twelve Data HTTP {r.status_code}: {r.text[:80]}")
             if alias:
+                _registrar_uso_key(alias, exito=False)
                 _set_key_cooldown(alias, 30, reason=f'HTTP {r.status_code}')
             return pd.DataFrame(), False
 
@@ -592,6 +593,7 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
             msg = data.get('message', data.get('status', 'unknown error'))
             print(f"  ⚠️ Twelve Data error: {msg}")
             if alias:
+                _registrar_uso_key(alias, exito=False)
                 msg_lower = msg.lower()
                 if 'current minute' in msg_lower:
                     _set_key_cooldown(alias, 65, reason='límite/minuto')
@@ -615,6 +617,7 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
             # Respuesta válida pero sin velas (holiday, plan sin acceso, etc.)
             # Poner cooldown corto para forzar rotación y no ciclar en key1
             if alias:
+                _registrar_uso_key(alias, exito=False)
                 _set_key_cooldown(alias, 15, reason='values vacío')
             return pd.DataFrame(), False
 
@@ -638,6 +641,7 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
     except Exception as e:
         print(f"  ⚠️ Twelve Data excepción: {e}")
         if alias:
+            _registrar_uso_key(alias, exito=False)
             _set_key_cooldown(alias, 30, reason=f'excepción: {str(e)[:50]}')
         return pd.DataFrame(), False
 

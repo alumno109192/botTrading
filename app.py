@@ -87,6 +87,7 @@ threads_detectores = {}
 # Inicializar tabla de cuotas de API keys (best-effort, no bloquea arranque)
 try:
     DatabaseManager().init_api_key_usage_table()
+    DatabaseManager().migrate_add_api_key_usage_exito_columns()
     DatabaseManager().init_ohlcv_table()
     DatabaseManager().init_canal_roto_table()
     DatabaseManager().init_macro_events_log_table()
