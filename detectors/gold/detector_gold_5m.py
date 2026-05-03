@@ -656,6 +656,7 @@ class GoldDetector5M(BaseDetector):
                         
                         if not senal_id:
                             logger.info(f"  ⚡ [5M] AVISO SETUP SELL enviado (score {score_sell}) — BD ya tiene señal activa")
+                if score_buy >= _UMBRAL_AVISO and not ya_enviada('aviso_buy'):
                     rr_buy_tp1 = rr(buy_limit, sl_compra, tp1_c)
                     if rr_buy_tp1 < _RR_MINIMO_SETUP:
                         logger.warning(f"  ⚠️ [5M] SETUP BUY bloqueado — R:R {rr_buy_tp1}:1 < {_RR_MINIMO_SETUP}:1 mínimo")
