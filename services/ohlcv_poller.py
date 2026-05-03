@@ -23,11 +23,11 @@ logger = logging.getLogger('bottrading')
 # poll_secs: frecuencia de polling por target (respetar cuota API)
 # max_dias_bd: 4H necesita 95d (540 velas) para EMA de 400p, 1D necesita 400d
 POLL_TARGETS = [
-    # ── OPCIÓN A: añadir 1m al poller ─────────────────────────────────────────
-    # Descomentar la siguiente línea Y en data_provider.py activar el bloque
-    # "OPCIÓN A" (ir a BD para 1m) en lugar de "OPCIÓN B" (TD directo).
-    # Coste: 1 req/min de key1 (~960 req/día, dentro del límite Grow 55).
-    # {'ticker_yf': 'GC=F', 'interval': '1m', 'poll_secs': 60, 'max_dias_bd': 1},
+    # ── OPCIÓN A: poller 1m — ACTIVA ─────────────────────────────────────────
+    # Refresca BD cada 60s con las últimas velas 1m. data_provider.py las sirve
+    # desde BD sin consumir quota en cada llamada del detector 5m.
+    # Para desactivar: comentar la línea siguiente y activar OPCIÓN B en data_provider.py.
+    {'ticker_yf': 'GC=F', 'interval': '1m', 'poll_secs': 60, 'max_dias_bd': 1},
     # ── fin OPCIÓN A ───────────────────────────────────────────────────────────
     {'ticker_yf': 'GC=F', 'interval': '5m', 'poll_secs':   60, 'max_dias_bd':   8},
     {'ticker_yf': 'GC=F', 'interval': '4h', 'poll_secs': 1800, 'max_dias_bd':  95},
