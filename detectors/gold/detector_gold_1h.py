@@ -1466,7 +1466,7 @@ class GoldDetector1H(BaseDetector):
                 rr1 = rr(entry_rt, sl_rt_sell, tp1_rt_sell)
                 rr2 = rr(entry_rt, sl_rt_sell, tp2_rt_sell)
                 rr3 = rr(entry_rt, sl_rt_sell, tp3_rt_sell)
-                if rr1 >= 1.5:   # R:R mínimo más estricto para este setup
+                if rr1 >= 1.5 and score_sell >= 2:   # R:R mínimo + al menos 2 confirmaciones técnicas
                     _htf_conf_sell_lines = "\n".join(filter(None, [
                         f"📈 <b>4H también roto</b> — soporte ${_linea_canal_4h_sop:.0f}" if canal_sell_confirmado_4h else "",
                         f"📈 <b>1D también roto</b> — soporte ${_linea_canal_1d_sop:.0f}" if canal_sell_confirmado_1d else "",
@@ -1505,7 +1505,7 @@ class GoldDetector1H(BaseDetector):
                     self.enviar(msg)
                     self.marcar_enviada(f"{clave_vela}_RETEST_SELL")
                 else:
-                    logger.warning(f"  ⛔ Retest SELL bloqueado: R:R {rr1}:1 < 1.5 mínimo")
+                    logger.warning(f"  ⛔ Retest SELL bloqueado: R:R {rr1}:1 < 1.5 o score {score_sell} < 2")
 
         if retest_canal_buy and not self.ya_enviada(f"{clave_vela}_RETEST_BUY"):
             if pullback_bajista:
@@ -1542,7 +1542,7 @@ class GoldDetector1H(BaseDetector):
                 rr1 = rr(entry_rt, sl_rt_buy, tp1_rt_buy)
                 rr2 = rr(entry_rt, sl_rt_buy, tp2_rt_buy)
                 rr3 = rr(entry_rt, sl_rt_buy, tp3_rt_buy)
-                if rr1 >= 1.5:
+                if rr1 >= 1.5 and score_buy >= 2:   # R:R mínimo + al menos 2 confirmaciones técnicas
                     _htf_conf_buy_lines = "\n".join(filter(None, [
                         f"📈 <b>4H también roto</b> — resist ${_linea_canal_4h_res:.0f}" if canal_buy_confirmado_4h else "",
                         f"📈 <b>1D también roto</b> — resist ${_linea_canal_1d_res:.0f}" if canal_buy_confirmado_1d else "",
@@ -1581,7 +1581,7 @@ class GoldDetector1H(BaseDetector):
                     self.enviar(msg)
                     self.marcar_enviada(f"{clave_vela}_RETEST_BUY")
                 else:
-                    logger.warning(f"  ⛔ Retest BUY bloqueado: R:R {rr1}:1 < 1.5 mínimo")
+                    logger.warning(f"  ⛔ Retest BUY bloqueado: R:R {rr1}:1 < 1.5 o score {score_buy} < 2")
 
         # ── CANCELACIONES ───────────────────────────────────────────
         if cancelar_sell and not self.ya_enviada(f"{clave_vela}_CANCEL_SELL"):
