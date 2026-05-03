@@ -283,12 +283,13 @@ def _guardar_en_db(ticker_yf: str, interval: str, df: pd.DataFrame):
         print(f"  ⚠️ [data_provider] Error guardando en BD: {e}")
 
 
-def _get_from_db(ticker_yf: str, period: str, interval: str):
+def _get_from_db(ticker_yf: str, period: str, interval: str, force: bool = False):
     """
     Intenta servir datos OHLCV desde la BD local.
     - Para 5m, 15m, 1h: lee velas 5m almacenadas y resamplea si es necesario.
     - Para 4h, 1d: lee directamente el intervalo almacenado.
-    Retorna (DataFrame, is_delayed) o (None, None) si los datos no existen o están obsoletos.
+    - force=True: omite el umbral de frescura (fallback de emergencia cuando todas las keys fallan).
+    Retorna (DataFrame, is_delayed) o (None, None) si los datos no existen o son insuficientes.
     """
     try:
         from adapters.database import DatabaseManager
@@ -304,10 +305,12 @@ def _get_from_db(ticker_yf: str, period: str, interval: str):
         return None, None
 
     # Comprobar frescura: última vela dentro del umbral permitido
-    ultima_ts = pd.to_datetime(rows[-1]['ts'], format='ISO8601', utc=True)
-    umbral = _DB_STALE.get(db_interval, timedelta(minutes=10))
-    if (datetime.now(timezone.utc) - ultima_ts) > umbral:
-        return None, None
+    # force=True omite este check (modo emergencia: todas las keys agotadas)
+    if not force:
+        ultima_ts = pd.to_datetime(rows[-1]['ts'], format='ISO8601', utc=True)
+        umbral = _DB_STALE.get(db_interval, timedelta(minutes=10))
+        if (datetime.now(timezone.utc) - ultima_ts) > umbral:
+            return None, None
 
     # Construir DataFrame
     df = pd.DataFrame(rows)
@@ -467,12 +470,15 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
             print(f"  ⚠️ [DIRECT] Twelve Data {alias} falló — rotando a siguiente key")
 
         # Si todas las keys de TD fallaron, intentar BD como último recurso
-        print(f"  ❌ [DIRECT] Todas las keys TD fallaron para {ticker_yf} {interval} — intentando BD")
-        df_db, delayed_db = _get_from_db(ticker_yf, period, interval)
+        # force=True: aceptar datos aunque excedan el umbral de frescura normal
+        logger.warning(f"  ❌ [DIRECT] Todas las keys TD fallaron para {ticker_yf} {interval} — intentando BD (modo emergencia)")
+        df_db, delayed_db = _get_from_db(ticker_yf, period, interval, force=True)
         if df_db is not None and not df_db.empty:
-            print(f"  ♻️ [DIRECT] Fallback BD — {ticker_yf} {interval} ({len(df_db)} velas, datos previos)")
+            ultima = df_db.index[-1]
+            antiguedad = datetime.now(timezone.utc) - ultima
+            logger.warning(f"  ♻️ [DIRECT] Fallback BD (emergencia) — {ticker_yf} {interval} ({len(df_db)} velas, última: {str(ultima)[:16]} UTC, antigüedad: {str(antiguedad).split('.')[0]})")
             return df_db, True  # is_delayed=True: datos de BD, no tiempo real
-        print(f"  ❌ [DIRECT] BD también vacía para {ticker_yf} {interval}")
+        logger.warning(f"  ❌ [DIRECT] BD también vacía para {ticker_yf} {interval}")
         return pd.DataFrame(), False
 
     # ══════════════════════════════════════════════════════════════════════════════
