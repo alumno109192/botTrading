@@ -442,8 +442,13 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
                 _set_key_cooldown(alias, 10, reason='fallo sin cooldown previo')
             print(f"  ⚠️ [DIRECT] Twelve Data {alias} falló — rotando a siguiente key")
 
-        # Si todas las keys de TD fallaron, devolver error
-        print(f"  ❌ [DIRECT] Todas las keys TD fallaron para {ticker_yf} {interval}")
+        # Si todas las keys de TD fallaron, intentar BD como último recurso
+        print(f"  ❌ [DIRECT] Todas las keys TD fallaron para {ticker_yf} {interval} — intentando BD")
+        df_db, delayed_db = _get_from_db(ticker_yf, period, interval)
+        if df_db is not None and not df_db.empty:
+            print(f"  ♻️ [DIRECT] Fallback BD — {ticker_yf} {interval} ({len(df_db)} velas, datos previos)")
+            return df_db, True  # is_delayed=True: datos de BD, no tiempo real
+        print(f"  ❌ [DIRECT] BD también vacía para {ticker_yf} {interval}")
         return pd.DataFrame(), False
 
     # ══════════════════════════════════════════════════════════════════════════════
