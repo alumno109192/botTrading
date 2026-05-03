@@ -430,13 +430,23 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
     # MODO DIRECT FETCH: Consulta directa a TwelveData (plan ilimitado)
     # ══════════════════════════════════════════════════════════════════════════════
     if DIRECT_FETCH_MODE and interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
-        # 1m: no hay poller para este intervalo y TwelveData puede no incluirlo
-        # en el plan actual → ir directo a BD para no poner keys en cooldown
-        if interval == '1m':
-            df_db, _ = _get_from_db(ticker_yf, period, interval)
-            if df_db is not None and not df_db.empty:
-                return df_db, True
-            return pd.DataFrame(), False
+        # ── OPCIÓN A (poller 1m en BD) ─────────────────────────────────────────
+        # Si el poller de 1m está activo (ver POLL_TARGETS en ohlcv_poller.py),
+        # descomentar el bloque siguiente y comentar el bloque "OPCIÓN B".
+        # Los datos llegarán de BD sin consumir quota en cada llamada.
+        #
+        # if interval == '1m':
+        #     df_db, _ = _get_from_db(ticker_yf, period, interval)
+        #     if df_db is not None and not df_db.empty:
+        #         return df_db, True
+        #     return pd.DataFrame(), False
+        # ── fin OPCIÓN A ───────────────────────────────────────────────────────
+
+        # ── OPCIÓN B (TD directo para 1m) ─────────────────────────────────────
+        # Plan Grow 55 soporta XAU/USD 1min (verificado 2026-05-03).
+        # Si el plan dejara de soportarlo, activar OPCIÓN A y añadir el target
+        # 1m al poller en ohlcv_poller.py.
+        # ── fin OPCIÓN B ───────────────────────────────────────────────────────
 
         for _ in range(len(_td_keys)):
             alias, key = _next_td_key()
