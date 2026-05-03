@@ -430,6 +430,14 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
     # MODO DIRECT FETCH: Consulta directa a TwelveData (plan ilimitado)
     # ══════════════════════════════════════════════════════════════════════════════
     if DIRECT_FETCH_MODE and interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
+        # 1m: no hay poller para este intervalo y TwelveData puede no incluirlo
+        # en el plan actual → ir directo a BD para no poner keys en cooldown
+        if interval == '1m':
+            df_db, _ = _get_from_db(ticker_yf, period, interval)
+            if df_db is not None and not df_db.empty:
+                return df_db, True
+            return pd.DataFrame(), False
+
         for _ in range(len(_td_keys)):
             alias, key = _next_td_key()
             if not key:
