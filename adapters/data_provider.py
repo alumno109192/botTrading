@@ -133,7 +133,7 @@ _minute_lock = threading.Lock()
 # key2+ → Plan Basic 8  :  8 req/min,  800 req/día  → usamos  7 req/min, 750 req/día
 _MAX_RPM_KEY1  = 50    # Grow 55: límite real 55 req/min
 _MAX_RPM_FREE  =  7    # Basic 8: límite real  8 req/min
-_MAX_DAILY_FREE = 750  # Basic 8: límite real 800 req/día → margen 50
+_MAX_DAILY_FREE = 790  # Basic 8: límite real 800 req/día → margen 10 para no rozar el techo
 
 def _get_max_rpm(alias: str) -> int:
     """Devuelve el límite de req/min según el plan de la key."""
@@ -596,7 +596,16 @@ def _get_twelve_data(ticker_yf: str, period: str, interval: str, api_key: str,
                 if 'current minute' in msg_lower:
                     _set_key_cooldown(alias, 65, reason='límite/minuto')
                 elif 'current day' in msg_lower or 'daily' in msg_lower:
-                    _set_key_cooldown(alias, 3600, reason='límite diario')
+                    # Cooldown hasta la próxima medianoche UTC (reset del contador de TwelveData)
+                    _now = datetime.now(timezone.utc)
+                    _midnight = (_now + timedelta(days=1)).replace(
+                        hour=0, minute=2, second=0, microsecond=0)
+                    _secs_hasta_midnight = int((_midnight - _now).total_seconds())
+                    _set_key_cooldown(alias, _secs_hasta_midnight, reason='límite diario → hasta medianoche UTC')
+                    # Marcar en caché interno para que _is_daily_limit_exceeded no reintente
+                    with _uso_cache_lock:
+                        _uso_cache[alias] = _MAX_DAILY_FREE
+                    logger.warning(f"  🚫 [quota] {alias}: límite diario TwelveData agotado — cooldown {_secs_hasta_midnight}s (hasta medianoche UTC)")
                 else:
                     _set_key_cooldown(alias, 30, reason=f'error API: {msg[:50]}')
             return pd.DataFrame(), False
