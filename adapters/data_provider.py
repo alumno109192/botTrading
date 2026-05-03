@@ -22,12 +22,15 @@ Configuración .env:
 """
 import os
 import itertools
+import logging
 import threading
 import pandas as pd
 import requests
 from collections import deque
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
+
+logger = logging.getLogger('bottrading')
 
 load_dotenv(override=True)
 
@@ -361,10 +364,12 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
 
     _keys_cooldown = 0
     _keys_api_fail = 0
+    _keys_bloqueadas = 0
 
     for _ in range(len(_td_keys)):
         alias, key = _next_td_key()
         if not key:
+            _keys_bloqueadas = len(_td_keys) - _keys_cooldown - _keys_api_fail
             break
         # Proactivo: reservar slot de minuto antes de llamar a la API
         if not _reserve_minute_slot(alias):
@@ -385,19 +390,21 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
             db.guardar_velas(ticker_yf, interval, rows)
             db.purgar_velas_antiguas(ticker_yf, interval, dias_max=8)
             db.purgar_velas_corruptas(ticker_yf, interval)
-            print(f"  💾 [poller] {ticker_yf} {interval} ({alias}) — {len(df)} velas → BD")
+            logger.info(f"  [poller] {ticker_yf} {interval} ({alias}) — {len(df)} velas -> BD")
             return True
         _keys_api_fail += 1
         # Garantía: forzar cooldown mínimo si _get_twelve_data no lo puso
         if not _is_on_cooldown(alias):
             _set_key_cooldown(alias, 10, reason='fallo poller sin cooldown previo')
-        print(f"  ⚠️ [poller] {alias} error API para {ticker_yf} {interval}")
+        logger.warning(f"  [poller] {alias} error API para {ticker_yf} {interval}")
 
-    # Explicar por qué falló para facilitar diagnóstico
-    if _keys_cooldown > 0 and _keys_api_fail == 0:
-        print(f"  ⏳ [poller] {ticker_yf} {interval} — todas las keys en cooldown/minuto ({_keys_cooldown}), reintentando en 60s")
+    # Diagnosticar motivo del fallo
+    if _keys_bloqueadas > 0 and _keys_cooldown == 0 and _keys_api_fail == 0:
+        logger.warning(f"  [poller] {ticker_yf} {interval} — todas las keys ya bloqueadas al inicio del ciclo, reintentando en 60s")
+    elif _keys_cooldown > 0 and _keys_api_fail == 0:
+        logger.warning(f"  [poller] {ticker_yf} {interval} — {_keys_cooldown} keys en cooldown/minuto, reintentando en 60s")
     elif _keys_api_fail > 0:
-        print(f"  ❌ [poller] {ticker_yf} {interval} — {_keys_api_fail} keys con error API, {_keys_cooldown} en cooldown")
+        logger.warning(f"  [poller] {ticker_yf} {interval} — {_keys_api_fail} keys con error API, {_keys_cooldown} en cooldown")
     return False
 
 
