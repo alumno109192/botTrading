@@ -203,6 +203,7 @@ class GoldDetector5M(BaseDetector):
                 _en_pivot_resist = any(abs(close - r) <= atr * 0.3 for r in _piv_res_5m if r > close)
                 _en_pivot_sop    = any(abs(close - s) <= atr * 0.3 for s in _piv_sop_5m if s < close)
 
+            en_zona_resist       = (zrl <= close <= zrh)
             en_zona_soporte      = (zsl <= close <= zsh)
             aproximando_resist   = (zrl - tol <= close < zrl)
             aproximando_soporte  = (zsh < close <= zsh + tol)
