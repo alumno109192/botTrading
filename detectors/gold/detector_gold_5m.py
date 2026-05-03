@@ -169,7 +169,8 @@ class GoldDetector5M(BaseDetector):
             close = df['Close'].iloc[-1]
 
             rsi_len = params['rsi_length']
-            rsi = calcular_rsi(df['Close'], rsi_len).iloc[-1]
+            rsi_series = calcular_rsi(df['Close'], rsi_len)
+            rsi = rsi_series.iloc[-1]
 
             ema_fast  = df['Close'].ewm(span=params['ema_fast_len']).mean()
             ema_slow  = df['Close'].ewm(span=params['ema_slow_len']).mean()
@@ -222,7 +223,7 @@ class GoldDetector5M(BaseDetector):
                 score_buy += 2
                 logger.info(f"  🎯 [5M] Precio en PIVOT SOPORTE — +2 pts BUY")
 
-            _rsi_baj_3, _rsi_sub_3 = calcular_aceleracion_rsi(df['rsi'])
+            _rsi_baj_3, _rsi_sub_3 = calcular_aceleracion_rsi(rsi_series)
             _micro_vol    = calcular_micro_volatilidad(df)
             _momentum_rec = calcular_momentum_reciente(df)
             if rsi >= params['rsi_min_sell']:
