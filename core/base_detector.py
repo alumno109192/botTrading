@@ -191,12 +191,15 @@ class BaseDetector(ABC):
         resist_pivot = min(candidatos_resist) if candidatos_resist else float(highs.max())
         support_pivot = max(candidatos_sop) if candidatos_sop else float(lows.min())
 
+        # Precisión dinámica según precio: Gold (~3000) → 2 dec, Forex (~1.17) → 5 dec
+        _decimales = 2 if close > 100 else 5
+
         # Resistencia: zona centrada en el swing high (más banda bajo el pivot, donde venden)
-        zrh = round(resist_pivot + zone_width * 0.25, 2)
-        zrl = round(resist_pivot - zone_width * 0.75, 2)
+        zrh = round(resist_pivot + zone_width * 0.25, _decimales)
+        zrl = round(resist_pivot - zone_width * 0.75, _decimales)
         # Soporte: zona centrada en el swing low (más banda sobre el pivot, donde compran)
-        zsh = round(support_pivot + zone_width * 0.75, 2)
-        zsl = round(support_pivot - zone_width * 0.25, 2)
+        zsh = round(support_pivot + zone_width * 0.75, _decimales)
+        zsl = round(support_pivot - zone_width * 0.25, _decimales)
 
         return zrl, zrh, zsl, zsh
 
