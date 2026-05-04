@@ -26,7 +26,7 @@ def enviar_telegram(mensaje):
     return _enviar_telegram_base(mensaje + sufijo, TELEGRAM_THREAD_ID)
 
 from adapters.database import get_db
-from core.base_detector import BaseDetector
+from core.base_detector_gold import GoldBaseDetector as BaseDetector
 import logging
 logger = logging.getLogger('bottrading')
 

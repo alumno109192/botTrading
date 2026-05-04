@@ -31,7 +31,7 @@ def enviar_telegram(mensaje):
 
 # Inicializar base de datos solo si las variables están configuradas
 from adapters.database import get_db
-from core.base_detector import BaseDetector
+from core.base_detector_gold import GoldBaseDetector as BaseDetector
 import logging
 logger = logging.getLogger('bottrading')
 

@@ -20,7 +20,7 @@ from services.economic_calendar import (
 )
 from adapters.data_provider import get_ohlcv
 from adapters.database import get_db
-from core.base_detector import BaseDetector
+from core.base_detector_eurusd import EURUSDBaseDetector as BaseDetector
 from core.indicators import (
     calcular_rsi, calcular_atr, calcular_adx,
     patron_envolvente_alcista, patron_envolvente_bajista, patron_doji,
