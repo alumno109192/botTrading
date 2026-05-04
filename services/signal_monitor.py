@@ -33,6 +33,9 @@ THREAD_ID_SWING     = _parse_thread_id(os.environ.get('THREAD_ID_SWING'))      #
 THREAD_ID_INTRADAY  = _parse_thread_id(os.environ.get('THREAD_ID_INTRADAY'))   # 1H
 THREAD_ID_SCALPING  = _parse_thread_id(os.environ.get('THREAD_ID_SCALPING'))   # 15M / 5M
 
+# Tiempo máximo que una señal puede estar en estado PENDIENTE_CONFIRMACION
+_TIMEOUT_PENDIENTE_CONFIRM_HORAS = 4
+
 def obtener_thread_id(simbolo: str):
     """Devuelve el message_thread_id de Telegram según el timeframe del símbolo."""
     sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
