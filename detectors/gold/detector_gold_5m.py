@@ -646,8 +646,7 @@ class GoldDetector5M(BaseDetector):
                             f"💰 Precio:  ${round(close, 2)}\n"
                             f"🛑 SL ref:  ${round(sl_venta, 2)}  ({round(sl_venta - close, 1):+.1f} pts)\n"
                             f"🎯 TP1 ref: ${tp1_v}  ({round(close - tp1_v, 1):+.1f} pts)  R:R {rr_sell_tp1}:1\n"
-                            f"🎯 TP2 ref: ${tp2_v}  ({round(close - tp2_v, 1):+.1f} pts)\n"
-                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"🎯 TP2 ref: ${tp2_v}  ({round(close - tp2_v, 1):+.1f} pts)\n"                            f"🎯 TP3 ref: ${tp3_v}  ({round(close - tp3_v, 1):+.1f} pts)\n"                            f"━━━━━━━━━━━━━━━━━━━━\n"
                             f"📊 Score: {score_sell}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
                             f"⏱️ 5M  📅 {fecha}"
                         )
@@ -689,6 +688,7 @@ class GoldDetector5M(BaseDetector):
                             f"🛑 SL ref:  ${round(sl_compra, 2)}  ({round(sl_compra - close, 1):+.1f} pts)\n"
                             f"🎯 TP1 ref: ${tp1_c}  ({round(tp1_c - close, 1):+.1f} pts)  R:R {rr_buy_tp1}:1\n"
                             f"🎯 TP2 ref: ${tp2_c}  ({round(tp2_c - close, 1):+.1f} pts)\n"
+                            f"🎯 TP3 ref: ${tp3_c}  ({round(tp3_c - close, 1):+.1f} pts)\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
                             f"📊 Score: {score_buy}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
                             f"⏱️ 5M  📅 {fecha}"
