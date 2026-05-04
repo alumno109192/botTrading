@@ -40,7 +40,7 @@ logger = logging.getLogger('bottrading')
 # ══════════════════════════════════════
 # CONFIGURACIÓN
 # ══════════════════════════════════════
-TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_EURUSD_SWING') or 0) or None
+TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_SWING') or 0) or None
 CHECK_INTERVAL     = 3600   # 1 hora entre análisis (vela 4H)
 
 # ══════════════════════════════════════

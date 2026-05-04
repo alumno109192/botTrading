@@ -40,7 +40,7 @@ logger = logging.getLogger('bottrading')
 # ══════════════════════════════════════
 # CONFIGURACIÓN
 # ══════════════════════════════════════
-TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_EURUSD_INTRADAY') or 0) or None
+TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_INTRADAY') or 0) or None
 CHECK_INTERVAL     = 60   # 1 minuto entre análisis
 
 # ══════════════════════════════════════
