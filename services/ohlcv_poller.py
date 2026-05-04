@@ -23,7 +23,8 @@ logger = logging.getLogger('bottrading')
 # poll_secs: frecuencia de polling por target (respetar cuota API)
 # max_dias_bd: 4H necesita 95d (540 velas) para EMA de 400p, 1D necesita 400d
 POLL_TARGETS = [
-    # ── OPCIÓN A: poller 1m — ACTIVA ─────────────────────────────────────────
+    # ── GOLD ─────────────────────────────────────────────────────────────────
+    # OPCIÓN A: poller 1m — ACTIVA
     # Refresca BD cada 60s con las últimas velas 1m. data_provider.py las sirve
     # desde BD sin consumir quota en cada llamada del detector 5m.
     # Para desactivar: comentar la línea siguiente y activar OPCIÓN B en data_provider.py.
@@ -31,7 +32,11 @@ POLL_TARGETS = [
     # ── fin OPCIÓN A ───────────────────────────────────────────────────────────
     {'ticker_yf': 'GC=F', 'interval': '5m', 'poll_secs':   60, 'max_dias_bd':   8},
     {'ticker_yf': 'GC=F', 'interval': '4h', 'poll_secs': 1800, 'max_dias_bd':  95},
-    {'ticker_yf': 'GC=F', 'interval': '1d', 'poll_secs': 3600, 'max_dias_bd': 400},  # 1 req/hora
+    {'ticker_yf': 'GC=F', 'interval': '1d', 'poll_secs': 3600, 'max_dias_bd': 400},
+    # ── EUR/USD ───────────────────────────────────────────────────────────────
+    {'ticker_yf': 'EURUSD=X', 'interval': '5m', 'poll_secs':   60, 'max_dias_bd':   8},
+    {'ticker_yf': 'EURUSD=X', 'interval': '4h', 'poll_secs': 1800, 'max_dias_bd':  95},
+    {'ticker_yf': 'EURUSD=X', 'interval': '1d', 'poll_secs': 3600, 'max_dias_bd': 400},
 ]
 
 CHECK_INTERVAL = 60   # segundos entre ciclos del bucle principal

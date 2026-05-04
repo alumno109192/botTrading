@@ -24,6 +24,10 @@ import numpy as np
 from abc import ABC, abstractmethod
 
 import adapters.telegram as _telegram_mod
+# ── MT5 / VT Markets ─────────────────────────────────────────────────────────
+# Descomentar la línea siguiente para activar la ejecución automática de órdenes.
+# Requiere MT5_AUTO_TRADE=true en .env y MetaTrader5 instalado (solo Windows).
+# from adapters.mt5_broker import broker as _mt5_broker
 from core.indicators import (
     calcular_rsi, calcular_ema, calcular_atr,
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
@@ -397,6 +401,29 @@ class BaseDetector(ABC):
                      if self.contexto_pullback else "")
         message_id = _telegram_mod.enviar_telegram(mensaje + sufijo + sufijo_pb,
                                                    self.telegram_thread_id)
+
+        # ── Hook MT5 — ejecución automática en VT Markets ─────────────────────
+        # Descomentar el bloque siguiente cuando se quiera operar en demo/real.
+        # senal_data se construye aquí con los datos mínimos que necesita MT5Broker.
+        # La clase filtra por timeframe, score y MT5_MIN_SCORE antes de operar.
+        #
+        # if senal_id and self.db:
+        #     try:
+        #         _senal_row = self.db.ejecutar_query(
+        #             "SELECT direccion, entry, sl, tp1, score, timeframe, simbolo "
+        #             "FROM senales WHERE id = ?",
+        #             (senal_id,),
+        #             fetchone=True
+        #         )
+        #         if _senal_row:
+        #             _mt5_broker.abrir_operacion(dict(_senal_row))
+        #     except Exception as _e:
+        #         import logging as _log
+        #         _log.getLogger('bottrading').warning(
+        #             f"MT5 hook: error al intentar abrir operación — {_e}"
+        #         )
+        # ── Fin hook MT5 ───────────────────────────────────────────────────────
+
         # Guardar message_id en BD para poder hacer reply en alertas TP/SL
         if message_id and senal_id and self.db:
             try:

@@ -63,14 +63,16 @@ POLYGON_API_KEY       = os.environ.get('POLYGON_API_KEY')
 
 # Mapa de tickers → símbolo Twelve Data
 _TICKER_MAP_TWELVE = {
-    'GC=F':  'XAU/USD',   # Gold Spot
-    'SI=F':  'XAG/USD',   # Silver Spot
+    'GC=F':     'XAU/USD',   # Gold Spot
+    'SI=F':     'XAG/USD',   # Silver Spot
+    'EURUSD=X': 'EUR/USD',   # Euro / Dólar
 }
 
 # Mapa de tickers → símbolo Polygon.io Forex/Metals
 _TICKER_MAP_POLYGON = {
-    'GC=F':  'C:XAUUSD',   # Gold Spot
-    'SI=F':  'C:XAGUSD',   # Silver Spot
+    'GC=F':     'C:XAUUSD',   # Gold Spot
+    'SI=F':     'C:XAGUSD',   # Silver Spot
+    'EURUSD=X': 'C:EURUSD',   # Euro / Dólar
 }
 
 # Intervalos soportados por fuentes externas (incluye 4h y 1d para Twelve Data)

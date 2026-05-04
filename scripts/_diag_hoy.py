@@ -177,7 +177,7 @@ df['obv']     = calcular_obv(df)
 df['obv_ema'] = calcular_ema(df['obv'], 20)
 df['body']       = (df['Close'] - df['Open']).abs()
 df['upper_wick'] = df['High'] - df[['Close','Open']].max(axis=1)
-df['lower_wick'] = df[['Close','Open']].min(axis1=1) - df['Low']
+df['lower_wick'] = df[['Close','Open']].min(axis=1) - df['Low']
 
 # Velas de hoy UTC (índice -2 es la última cerrada)
 from datetime import date as _date
