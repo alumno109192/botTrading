@@ -278,11 +278,11 @@ class GoldDetector5M(BaseDetector):
 
             # Stop Hunt / Falsa Ruptura (patrón de alta fiabilidad en Gold)
             if detectar_stop_hunt_bajista(df):
-                score_sell += 3
-                logger.info(f"  🎯 [5M] Stop Hunt BAJISTA detectado — +3 pts SELL")
+                score_sell += 4  # +1 vs antes: patrón más fiable en XAUUSD_5M (0% SL histórico)
+                logger.info(f"  🎯 [5M] Stop Hunt BAJISTA detectado — +4 pts SELL")
             if detectar_stop_hunt_alcista(df):
-                score_buy += 3
-                logger.info(f"  🎯 [5M] Stop Hunt ALCISTA detectado — +3 pts BUY")
+                score_buy += 4  # +1 vs antes: patrón más fiable en XAUUSD_5M (57% TP3 histórico)
+                logger.info(f"  🎯 [5M] Stop Hunt ALCISTA detectado — +4 pts BUY")
 
             # ── Canal roto / directriz (patrón de rotura 5M) ──────────────────
             _lkb5 = params.get('sr_lookback', 100)
@@ -301,11 +301,11 @@ class GoldDetector5M(BaseDetector):
                 score_buy += 2
                 logger.info(f"  🔺 [5M] CANAL BAJISTA ROTO — línea resist ${linea_res_canal_5m:.2f}")
             if en_resist_canal_baj_5m:
-                score_sell += 3
-                logger.info(f"  📐 [5M] PRECIO EN DIRECTRIZ BAJISTA — ${linea_res_precio_5m:.2f}")
+                # ELIMINADO del scoring: 18% SL / 0% TP3 en histórico — se registra pero no puntúa
+                logger.info(f"  📐 [5M] PRECIO EN DIRECTRIZ BAJISTA — ${linea_res_precio_5m:.2f} (solo contexto)")
             if en_sop_canal_alc_5m:
-                score_buy += 3
-                logger.info(f"  📐 [5M] PRECIO EN DIRECTRIZ ALCISTA — ${linea_sop_precio_5m:.2f}")
+                # ELIMINADO del scoring: 4.5% SL / 0% TP3 en histórico — se registra pero no puntúa
+                logger.info(f"  📐 [5M] PRECIO EN DIRECTRIZ ALCISTA — ${linea_sop_precio_5m:.2f} (solo contexto)")
 
             # ── Ruptura horizontal directa (sin retest) 5M ─────────────────
             _lkb5_h = params.get('sr_lookback', 100)
@@ -373,11 +373,11 @@ class GoldDetector5M(BaseDetector):
             _ds_5m, _ds_nivel_5m, _ds_neck_5m = detectar_doble_suelo(
                 df, atr, lookback=60, tol_mult=0.6)
             if _dt_5m:
-                score_sell += 4
-                logger.info(f"  🔻 [5M] DOBLE TECHO (M) detectado — techo=${_dt_nivel_5m:.1f} cuello=${_dt_neck_5m:.1f} — +4 pts SELL")
+                score_sell += 2  # -2 vs antes: 36% SL / 64% TP histórico — patrón ok pero en 5M demasiado ruido
+                logger.info(f"  🔻 [5M] DOBLE TECHO (M) detectado — techo=${_dt_nivel_5m:.1f} cuello=${_dt_neck_5m:.1f} — +2 pts SELL")
             if _ds_5m:
-                score_buy += 4
-                logger.info(f"  🔺 [5M] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_5m:.1f} cuello=${_ds_neck_5m:.1f} — +4 pts BUY")
+                score_buy += 2  # -2 vs antes: 27% SL / 7% TP histórico — muy poco fiable en 5M
+                logger.info(f"  🔺 [5M] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_5m:.1f} cuello=${_ds_neck_5m:.1f} — +2 pts BUY")
 
             # ── V-Reversal (5M) — Reversión vertical ultra-rápida ───────────────
             # Parámetros 5M: lookback=20 velas (~100 min), mínimo 3.0 ATR caída, 2.5 ATR rebote
@@ -386,16 +386,16 @@ class GoldDetector5M(BaseDetector):
             v_rev_baj_5m, v_max_5m, v_precio_baj_5m = detectar_v_reversal_bajista(
                 df, atr, lookback=20, min_subida_atr=3.0, min_caida_atr=2.5)
             if v_rev_alc_5m:
-                score_buy += 5
-                logger.info(f"  ⚡ [5M] V-REVERSAL ALCISTA detectado — mín ${v_min_5m:.2f} → ${v_precio_5m:.2f} — +5 pts BUY")
+                score_buy += 1  # -4 vs antes: mide momentum ya ocurrido → señal tardía (38% SL histórico)
+                logger.info(f"  ⚡ [5M] V-REVERSAL ALCISTA detectado — mín ${v_min_5m:.2f} → ${v_precio_5m:.2f} — +1 pts BUY")
             if v_rev_baj_5m:
-                score_sell += 5
-                logger.info(f"  ⚡ [5M] V-REVERSAL BAJISTA detectado — máx ${v_max_5m:.2f} → ${v_precio_baj_5m:.2f} — +5 pts SELL")
+                score_sell += 1  # -4 vs antes: mide momentum ya ocurrido → señal tardía (25% SL histórico)
+                logger.info(f"  ⚡ [5M] V-REVERSAL BAJISTA detectado — máx ${v_max_5m:.2f} → ${v_precio_baj_5m:.2f} — +1 pts SELL")
 
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo se consulta si estamos en zona de desempate (score cerca del umbral)
             # Evita llamadas innecesarias a la API y mantiene el intervalo bajo
-            _umbral_conf = 10  # igual que _umbral_fue antes del ajuste DXY/vol
+            _umbral_conf = 12  # igual que _umbral_fue antes del ajuste DXY/vol
             _necesita_conf_sell = 5 <= score_sell < _umbral_conf
             _necesita_conf_buy  = 5 <= score_buy  < _umbral_conf
             if _necesita_conf_sell or _necesita_conf_buy:
@@ -431,8 +431,8 @@ class GoldDetector5M(BaseDetector):
             max_score = 30  # +2 posibles del confirmador 1M
 
             # Umbrales 5M — solo FUERTE llega a Telegram
-            senal_sell_fuerte = score_sell >= 10
-            senal_buy_fuerte  = score_buy  >= 10
+            senal_sell_fuerte = score_sell >= 12
+            senal_buy_fuerte  = score_buy  >= 12
 
             # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
             dxy_bias = get_dxy_bias()
@@ -475,7 +475,7 @@ class GoldDetector5M(BaseDetector):
             elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
                 score_buy = min(score_buy + 1, 23)
                 logger.info(f"  🔺 [5M] Momentum alcista en soporte — +1 BUY")
-            _umbral_fue = self.umbral_adaptativo(10, atr, atr_media)
+            _umbral_fue = self.umbral_adaptativo(12, atr, atr_media)
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
@@ -631,7 +631,7 @@ class GoldDetector5M(BaseDetector):
             # Guarda señal en BD para que el monitor de P&L haga seguimiento TP/SL.
             # Anti-spam: cooldown 30 min por dirección (no por vela) — evita spam.
             # ⚠️ FILTRO R:R MÍNIMO 1.5:1 para evitar señales poco rentables
-            _UMBRAL_AVISO = 10
+            _UMBRAL_AVISO = 12
             _RR_MINIMO_SETUP = 1.5
             _simbolo_db_5m = f"{simbolo}_5M"
             if self.en_sesion_optima():
