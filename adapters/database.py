@@ -476,6 +476,31 @@ class DatabaseManager:
             return True
         return False
 
+    def existe_senal_cerrada_reciente(self, simbolo: str, direccion: str, horas: int = 24) -> dict | None:
+        """
+        Busca la señal cerrada (SL o TP) más reciente en la misma dirección y símbolo.
+        Se usa para detectar oportunidades de re-entrada tras un cierre.
+
+        Returns:
+            dict con {id, estado, precio_entrada, tp1, sl, score} si existe, None si no.
+        """
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
+        query = """
+        SELECT id, estado, precio_entrada, tp1, sl, score
+        FROM senales
+        WHERE simbolo = ?
+        AND direccion = ?
+        AND estado IN ('SL', 'TP1', 'TP2', 'TP3', 'BREAKEVEN')
+        AND timestamp > ?
+        ORDER BY timestamp DESC
+        LIMIT 1
+        """
+        result = self.ejecutar_query(query, (simbolo, direccion, cutoff))
+        if result.rows:
+            return result.rows[0]
+        return None
+
     def existe_senal_activa_tf(self, simbolo: str) -> bool:
         """
         Bloquea nueva señal si ya existe UNA ACTIVA para este símbolo,

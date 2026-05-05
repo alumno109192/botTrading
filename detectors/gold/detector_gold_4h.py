@@ -836,6 +836,67 @@ class GoldDetector4H(BaseDetector):
 
         simbolo_db = f"{simbolo}_4H"
 
+        # ── CIERRE SUGERIDO: señal fuerte contra el trade activo ─────────────────
+        # Si hay una VENTA activa pero el análisis detecta una señal BUY FUERTE+,
+        # avisar al usuario para que considere cerrar la VENTA.
+        if cancelar_buy and senal_sell_fuerte and not self.ya_enviada(f"{clave_vela}_CIERRE_SELL"):
+            nivel_cs = "🔥 SEÑAL SELL MÁXIMA" if senal_sell_maxima else "🔴 SEÑAL SELL FUERTE"
+            msg_cierre = (
+                f"🚨 <b>REVISIÓN — CIERRE SUGERIDO (ORO 4H)</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ Tienes una <b>COMPRA 4H ACTIVA</b>, pero el análisis detecta:\n"
+                f"  {nivel_cs} (score {score_sell}/21)\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💰 Precio actual: ${round(close, 2)}\n"
+                f"📐 Zona de resistencia: ${round(zrl, 2)}–${round(zrh, 2)}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💡 <b>Opciones:</b>\n"
+                f"  • Mover SL a breakeven para proteger capital\n"
+                f"  • Cerrar parcial (33%) si estás en profit\n"
+                f"  • Cerrar total si el precio está en resistencia clave\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"ℹ️ El bot NO cierra operaciones automáticamente"
+            )
+            self.enviar(msg_cierre)
+            self.marcar_enviada(f"{clave_vela}_CIERRE_SELL")
+            logger.info(f"  🚨 [4H] Cierre sugerido: COMPRA activa vs SELL {score_sell}pts")
+
+        if cancelar_sell and senal_buy_fuerte and not self.ya_enviada(f"{clave_vela}_CIERRE_BUY"):
+            nivel_cb = "🔥 SEÑAL BUY MÁXIMA" if senal_buy_maxima else "🟢 SEÑAL BUY FUERTE"
+            msg_cierre = (
+                f"🚨 <b>REVISIÓN — CIERRE SUGERIDO (ORO 4H)</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ Tienes una <b>VENTA 4H ACTIVA</b>, pero el análisis detecta:\n"
+                f"  {nivel_cb} (score {score_buy}/21)\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💰 Precio actual: ${round(close, 2)}\n"
+                f"📐 Zona de soporte: ${round(zsl, 2)}–${round(zsh, 2)}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💡 <b>Opciones:</b>\n"
+                f"  • Mover SL a breakeven para proteger capital\n"
+                f"  • Cerrar parcial (33%) si estás en profit\n"
+                f"  • Cerrar total si el precio está en soporte clave\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"ℹ️ El bot NO cierra operaciones automáticamente"
+            )
+            self.enviar(msg_cierre)
+            self.marcar_enviada(f"{clave_vela}_CIERRE_BUY")
+            logger.info(f"  🚨 [4H] Cierre sugerido: VENTA activa vs BUY {score_buy}pts")
+
+        # ── Re-entrada: ¿hubo un cierre reciente (SL/TP) en la misma dirección? ────
+        _rentry_sell = self.db.existe_senal_cerrada_reciente(simbolo_db, 'VENTA',  horas=24) if self.db else None
+        _rentry_buy  = self.db.existe_senal_cerrada_reciente(simbolo_db, 'COMPRA', horas=24) if self.db else None
+        _sfx_sell = (
+            f"\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"♻️ <b>RE-ENTRADA</b> — Trade #{_rentry_sell['id']} cerrado ({_rentry_sell['estado']})\n"
+            f"   Entrada anterior: ${_rentry_sell['precio_entrada']:.2f} | TP1: ${_rentry_sell['tp1']:.2f}"
+        ) if _rentry_sell else ""
+        _sfx_buy = (
+            f"\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"♻️ <b>RE-ENTRADA</b> — Trade #{_rentry_buy['id']} cerrado ({_rentry_buy['estado']})\n"
+            f"   Entrada anterior: ${_rentry_buy['precio_entrada']:.2f} | TP1: ${_rentry_buy['tp1']:.2f}"
+        ) if _rentry_buy else ""
+
         # ── SEÑAL ACCIONABLE (antes de entrar en zona — pon la orden limit ahora) ──
         if aproximando_resistencia and not en_zona_resist and not cancelar_sell and senal_sell_alerta and not self.ya_enviada(f"{clave_vela}_PREP_SELL"):
             nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
@@ -854,7 +915,8 @@ class GoldDetector4H(BaseDetector):
                    f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1  (+${round(sell_limit - tp3_v, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                   f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
+                   f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING"
+                   + _sfx_sell)
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                 try:
                     self._guardar_senal({
@@ -887,7 +949,8 @@ class GoldDetector4H(BaseDetector):
                    f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_limit, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
-                   f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
+                   f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING"
+                   + _sfx_buy)
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                 try:
                     self._guardar_senal({
