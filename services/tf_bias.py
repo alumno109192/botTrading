@@ -78,17 +78,16 @@ def obtener_sesgo(simbolo: str, tf: str):
 
 def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple:
     """
-    Informa sobre la confluencia de TFs superiores para la dirección propuesta.
+    Verifica la confluencia de TFs superiores para la dirección propuesta.
 
-    Opción C — Filtro suave (solo informativo):
-    - Las señales NUNCA se bloquean por los TFs superiores.
-    - La descripción devuelta indica cuántos TFs confirman / contradicen.
-    - Si la mayoría es contraria se añade un aviso ⚠️ en la descripción, pero
-      la señal sigue siendo permitida para que el trader decida.
-    - Si no hay datos de TFs superiores → permitir con aviso.
+    Filtro real (bloquea señales contra TF superior):
+    - Si el TF inmediatamente superior tiene sesgo CONTRARIO confirmado → bloquea.
+    - Si no hay datos de TFs superiores → permite con aviso.
+    - Si hay mayoría contraria (pero sin TF inmediato) → permite con aviso.
 
     Returns:
-        (True, str descripcion_para_telegram)  — siempre True (nunca bloquea)
+        (True, str)   — señal permitida
+        (False, str)  — señal bloqueada por TF superior contrario
     """
     with _lock:
         sesgo_simbolo = _bias_store.get(simbolo, {})
@@ -111,7 +110,6 @@ def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple
             if entrada is None:
                 sin_datos.append(tf)
             else:
-                # Expirar sesgos más viejos que TTL_SESGO_HORAS
                 edad_horas = (datetime.now() - entrada['ts']).total_seconds() / 3600
                 if edad_horas > TTL_SESGO_HORAS:
                     sin_datos.append(tf)
@@ -127,9 +125,16 @@ def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple
         if len(confirmados) == 0 and len(contrarios) == 0:
             return True, f"⏳ TFs superiores sin datos — señal permitida\n{desc}"
 
-        # Opción C: nunca bloquear, pero avisar cuando contrarios igualan o superan
-        # a los confirmados (incluye empate, donde la señal no tiene mayoría a favor)
-        if len(contrarios) >= len(confirmados):
+        # ── BLOQUEO REAL: si el TF inmediatamente superior es contrario → bloquear ──
+        tf_inmediato = tfs_superiores[-1]  # el más cercano (ej: 4H cuando estamos en 1H)
+        entrada_inmediato = sesgo_simbolo.get(tf_inmediato)
+        if entrada_inmediato:
+            edad = (datetime.now() - entrada_inmediato['ts']).total_seconds() / 3600
+            if edad <= TTL_SESGO_HORAS and entrada_inmediato['bias'] not in (direccion, BIAS_NEUTRAL):
+                return False, f"🚫 {tf_inmediato} contrario ({entrada_inmediato['bias']}, score {entrada_inmediato['score']})\n{desc}"
+
+        # TF inmediato alineado o sin datos pero mayoría contraria → advertir, no bloquear
+        if len(contrarios) > len(confirmados):
             return True, f"⚠️ Señal CONTRA mayoría de TFs superiores\n{desc}"
 
         return True, desc
