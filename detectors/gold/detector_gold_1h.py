@@ -1111,15 +1111,15 @@ class GoldDetector1H(BaseDetector):
         _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
         tf_bias.publicar_sesgo(simbolo, '1H', _sesgo_dir, max(score_sell, score_buy))
         _conf_sell = ""; _conf_buy = ""
-        if senal_sell_media:  # confluencia aplica desde MEDIA (antes solo FUERTE)
-            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BEARISH)
+        if senal_sell_media:
+            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BEARISH, score=score_sell)
             if not _ok:
                 logger.info(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
                 senal_sell_maxima = senal_sell_fuerte = senal_sell_media = False
             else:
                 _conf_sell = _desc
-        if senal_buy_media:  # confluencia aplica desde MEDIA (antes solo FUERTE)
-            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BULLISH)
+        if senal_buy_media:
+            _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BULLISH, score=score_buy)
             if not _ok:
                 logger.info(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
                 senal_buy_maxima = senal_buy_fuerte = senal_buy_media = False

@@ -76,19 +76,23 @@ def obtener_sesgo(simbolo: str, tf: str):
         return _bias_store.get(simbolo, {}).get(tf)
 
 
-def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple:
+def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str, score: int = 0) -> tuple:
     """
     Verifica la confluencia de TFs superiores para la dirección propuesta.
 
-    Filtro real (bloquea señales contra TF superior):
-    - Si el TF inmediatamente superior tiene sesgo CONTRARIO confirmado → bloquea.
-    - Si no hay datos de TFs superiores → permite con aviso.
-    - Si hay mayoría contraria (pero sin TF inmediato) → permite con aviso.
+    Regla:
+    - TF inmediato contrario + score < FUERTE (11) → bloquear
+      (señal mediocre contra tendencia = ruido)
+    - TF inmediato contrario + score >= FUERTE (11) → permitir con aviso
+      (pullback válido dentro de tendencia: está en soporte/resistencia clave
+       con patrón confirmado y score alto)
+    - Sin datos en TFs superiores → permitir con aviso.
 
     Returns:
         (True, str)   — señal permitida
         (False, str)  — señal bloqueada por TF superior contrario
     """
+    SCORE_PULLBACK_MINIMO = 11  # mínimo para contra-tendencia (FUERTE+)
     with _lock:
         sesgo_simbolo = _bias_store.get(simbolo, {})
 
@@ -125,13 +129,18 @@ def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str) -> tuple
         if len(confirmados) == 0 and len(contrarios) == 0:
             return True, f"⏳ TFs superiores sin datos — señal permitida\n{desc}"
 
-        # ── BLOQUEO REAL: si el TF inmediatamente superior es contrario → bloquear ──
-        tf_inmediato = tfs_superiores[-1]  # el más cercano (ej: 4H cuando estamos en 1H)
+        # Verificar TF inmediatamente superior
+        tf_inmediato = tfs_superiores[-1]
         entrada_inmediato = sesgo_simbolo.get(tf_inmediato)
         if entrada_inmediato:
             edad = (datetime.now() - entrada_inmediato['ts']).total_seconds() / 3600
             if edad <= TTL_SESGO_HORAS and entrada_inmediato['bias'] not in (direccion, BIAS_NEUTRAL):
-                return False, f"🚫 {tf_inmediato} contrario ({entrada_inmediato['bias']}, score {entrada_inmediato['score']})\n{desc}"
+                if score >= SCORE_PULLBACK_MINIMO:
+                    # Pullback válido: score alto indica soporte/resistencia clave + patrón confirmado
+                    return True, f"🔄 Pullback contra {tf_inmediato} ({entrada_inmediato['bias']}) — score {score} suficiente\n{desc}"
+                else:
+                    # Señal mediocre contra tendencia → bloquear
+                    return False, f"🚫 {tf_inmediato} contrario ({entrada_inmediato['bias']}, score TF={entrada_inmediato['score']}) — score 1H={score} insuficiente para pullback\n{desc}"
 
         # TF inmediato alineado o sin datos pero mayoría contraria → advertir, no bloquear
         if len(contrarios) > len(confirmados):
