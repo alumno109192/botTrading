@@ -1352,8 +1352,10 @@ class GoldDetector1H(BaseDetector):
                         self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
                     else:
                         # Precio saltó directo a la zona sin pre-alerta → señal completa con DB
-                        if self.db and self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
-                            logger.warning(f"  ⚠️  Señal VENTA 1H duplicada — ya existe ACTIVA/PENDIENTE en BD"); return
+                        if self.db and (
+                            self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1) or
+                            self.db.existe_senal_reciente_opuesta(simbolo_db, "VENTA", horas=1)):
+                            logger.warning(f"  ⚠️  Señal VENTA 1H bloqueada — conflicto en BD"); return
                         msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>     ${close:.2f}\n"
@@ -1415,8 +1417,10 @@ class GoldDetector1H(BaseDetector):
                         self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
                     else:
                         # Precio saltó directo a la zona sin pre-alerta → señal completa con DB
-                        if self.db and self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
-                            logger.warning(f"  ⚠️  Señal COMPRA 1H duplicada — ya existe ACTIVA/PENDIENTE en BD"); return
+                        if self.db and (
+                            self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1) or
+                            self.db.existe_senal_reciente_opuesta(simbolo_db, "COMPRA", horas=1)):
+                            logger.warning(f"  ⚠️  Señal COMPRA 1H bloqueada — conflicto en BD"); return
                         msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>    ${close:.2f}\n"
