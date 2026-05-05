@@ -39,7 +39,7 @@ TELEGRAM_TOKEN   = os.environ.get('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID')
 TELEGRAM_THREAD_ID = int(os.environ.get('THREAD_ID_SWING') or 0) or None
 
-CHECK_INTERVAL = 4 * 60  # cada 4 minutos (balance óptimo para timeframe 4H)
+CHECK_INTERVAL = 60 * 60  # cada 1 hora (una sola pasada por vela 4H — evita señales duplicadas)
 
 # ══════════════════════════════════════
 # PARÁMETROS — ESPECÍFICOS GOLD 4H
@@ -214,7 +214,7 @@ class GoldDetector4H(BaseDetector):
 
         # Parámetros de zona (calculados automáticamente)
         zrl, zrh, zsl, zsh = self.calcular_zonas_sr(df, atr, params['sr_lookback'], params['sr_zone_mult'])
-        tol  = round(atr * 0.75, 2)  # tolerancia dinámica: 75% del ATR (aumentado de 0.4 para capturar rebotes en canal)
+        tol  = round(atr * 0.45, 2)  # tolerancia dinámica: 45% del ATR (reducida de 0.75 para evitar señales fuera de zona)
         lop  = params['limit_offset_pct']
         cd   = params['cancelar_dist']
         av   = params['anticipar_velas']
@@ -757,10 +757,10 @@ class GoldDetector4H(BaseDetector):
             ultimo_score_sell = self.ultimo_analisis[clave_simbolo]['score_sell']
             ultimo_score_buy = self.ultimo_analisis[clave_simbolo]['score_buy']
         
-            if (ultima_fecha == fecha and 
-                abs(ultimo_score_sell - score_sell) <= 1 and 
-                abs(ultimo_score_buy - score_buy) <= 1):
-                logger.info(f"  ℹ️  Vela {fecha} ya analizada - Sin cambios significativos")
+            if (ultima_fecha == fecha and
+                ultimo_score_sell == score_sell and
+                ultimo_score_buy == score_buy):
+                logger.info(f"  ℹ️  Vela {fecha} ya analizada - Sin cambios")
                 return
     
         self.ultimo_analisis[clave_simbolo] = {
@@ -791,13 +791,14 @@ class GoldDetector4H(BaseDetector):
             if senal_buy_alerta: logger.info(f"  ⏳ BUY ignorada: precio lejos de soporte")
             senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
 
-        # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
-        if senal_sell_alerta and senal_buy_alerta:
+        # ── EXCLUSIÓN MUTUA: una sola dirección por vela (todos los niveles) ──
+        if (senal_sell_alerta or senal_sell_media or senal_sell_fuerte or senal_sell_maxima) and \
+           (senal_buy_alerta  or senal_buy_media  or senal_buy_fuerte  or senal_buy_maxima):
             if score_sell >= score_buy:
-                senal_buy_alerta = False
+                senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
                 logger.info(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
             else:
-                senal_sell_alerta = False
+                senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
                 logger.info(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
 
         # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 4H) ──
@@ -846,7 +847,7 @@ class GoldDetector4H(BaseDetector):
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
-            if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=2):
+            if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                 try:
                     self._guardar_senal({
                         'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
@@ -879,7 +880,7 @@ class GoldDetector4H(BaseDetector):
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
-            if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=2):
+            if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                 try:
                     self._guardar_senal({
                         'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
@@ -916,7 +917,7 @@ class GoldDetector4H(BaseDetector):
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
                         self.enviar(msg); self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
                     else:
-                        if self.db and self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=2):
+                        if self.db and self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                             logger.info(f"  ℹ️  Señal VENTA duplicada - No se guarda"); return
                         msg = (f"{nivel} — <b>ORO (XAUUSD) 🔒 SWING</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -968,7 +969,7 @@ class GoldDetector4H(BaseDetector):
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
                         self.enviar(msg); self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
                     else:
-                        if self.db and self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=2):
+                        if self.db and self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                             logger.info(f"  ℹ️  Señal COMPRA duplicada - No se guarda"); return
                         msg = (f"{nivel} — <b>ORO (XAUUSD) 🔒 SWING</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -1064,7 +1065,7 @@ class GoldDetector4H(BaseDetector):
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
-                if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=2):
+                if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                     try:
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
@@ -1104,7 +1105,7 @@ class GoldDetector4H(BaseDetector):
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
-                if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=2):
+                if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                     try:
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
@@ -1149,7 +1150,7 @@ class GoldDetector4H(BaseDetector):
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
-                if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=2):
+                if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                     try:
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
@@ -1189,7 +1190,7 @@ class GoldDetector4H(BaseDetector):
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
-                if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=2):
+                if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                     try:
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,

@@ -421,7 +421,7 @@ class DatabaseManager:
         FROM senales
         WHERE simbolo = ?
         AND direccion = ?
-        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'TP1', 'TP2', 'TP3', 'SL')
         AND timestamp > ?
         """
 
