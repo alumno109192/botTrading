@@ -1102,6 +1102,10 @@ class GoldDetector1H(BaseDetector):
             else:
                 senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
                 logger.info(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
+        # Sincronizar _prep_* con el resultado de la exclusión mutua
+        # para que los bloques LIVE no ignoren la dirección suprimida
+        _prep_sell_alerta = _prep_sell_alerta and senal_sell_alerta
+        _prep_buy_alerta  = _prep_buy_alerta  and senal_buy_alerta
 
         # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 1H) ──
         _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
