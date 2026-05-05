@@ -999,9 +999,9 @@ class GoldDetector1H(BaseDetector):
         }
 
         _umbral_max = self.umbral_adaptativo(12, atr, atr_media)
-        _umbral_fue = self.umbral_adaptativo(9,  atr, atr_media)
-        _umbral_med = self.umbral_adaptativo(6,  atr, atr_media)
-        _umbral_ale = self.umbral_adaptativo(5,  atr, atr_media)
+        _umbral_fue = self.umbral_adaptativo(11, atr, atr_media)  # subido de 9
+        _umbral_med = self.umbral_adaptativo(8,  atr, atr_media)  # subido de 6
+        _umbral_ale = self.umbral_adaptativo(6,  atr, atr_media)  # subido de 5
         senal_sell_maxima = score_sell >= _umbral_max
         senal_sell_fuerte = score_sell >= _umbral_fue
         senal_sell_media  = score_sell >= _umbral_med
@@ -1093,31 +1093,32 @@ class GoldDetector1H(BaseDetector):
         elif cancelar_sell:
             tf_bias.limpiar_zona_activa(simbolo, tf_bias.BIAS_BEARISH)
 
-        # ── EXCLUSIÓN MUTUA: una sola dirección por vela ──
-        if senal_sell_alerta and senal_buy_alerta:
+        # ── EXCLUSIÓN MUTUA: una sola dirección por vela (todos los niveles) ──
+        if (senal_sell_alerta or senal_sell_media or senal_sell_fuerte or senal_sell_maxima) and \
+           (senal_buy_alerta  or senal_buy_media  or senal_buy_fuerte  or senal_buy_maxima):
             if score_sell >= score_buy:
-                senal_buy_alerta = False
+                senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
                 logger.info(f"  ⚖️ Exclusión mutua: BUY suprimida (SELL {score_sell} >= BUY {score_buy})")
             else:
-                senal_sell_alerta = False
+                senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
                 logger.info(f"  ⚖️ Exclusión mutua: SELL suprimida (BUY {score_buy} > SELL {score_sell})")
 
         # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 1H) ──
         _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
         tf_bias.publicar_sesgo(simbolo, '1H', _sesgo_dir, max(score_sell, score_buy))
         _conf_sell = ""; _conf_buy = ""
-        if senal_sell_fuerte:
+        if senal_sell_media:  # confluencia aplica desde MEDIA (antes solo FUERTE)
             _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BEARISH)
             if not _ok:
                 logger.info(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
-                senal_sell_maxima = senal_sell_fuerte = False
+                senal_sell_maxima = senal_sell_fuerte = senal_sell_media = False
             else:
                 _conf_sell = _desc
-        if senal_buy_fuerte:
+        if senal_buy_media:  # confluencia aplica desde MEDIA (antes solo FUERTE)
             _ok, _desc = tf_bias.verificar_confluencia(simbolo, '1H', tf_bias.BIAS_BULLISH)
             if not _ok:
                 logger.info(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
-                senal_buy_maxima = senal_buy_fuerte = False
+                senal_buy_maxima = senal_buy_fuerte = senal_buy_media = False
             else:
                 _conf_buy = _desc
 
@@ -1324,10 +1325,9 @@ class GoldDetector1H(BaseDetector):
                         logger.error(f"  ⚠️ Error BD: {e}")
                 self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
 
-        # ── SEÑALES SELL (en zona) — confirmación si ya hubo señal accionable ──
+        # ── SEÑALES SELL (en zona) — requiere mínimo MEDIA para enviar Telegram ──
         _tiene_rechazo_confirmado = en_zona_resist_any and (vela_rechazo or evening_star or intento_rotura_fallido)
-        # Usar pre-exclusión cuando hay confirmación de acción de precio real en zona
-        _sell_activa = senal_sell_alerta or (_prep_sell_alerta and _tiene_rechazo_confirmado)
+        _sell_activa = senal_sell_media or (_prep_sell_alerta and _tiene_rechazo_confirmado and senal_sell_alerta)
         if _sell_activa and not cancelar_sell and rr_sell_tp1 >= 1.2:
             if self.ya_enviada(f"{clave_vela}_PREP_SELL") and not (senal_sell_fuerte or senal_sell_maxima) and not _tiene_rechazo_confirmado:
                 logger.info(f"  ℹ️  SELL ALERTA/MEDIA ignorada: señal accionable ya enviada")
@@ -1388,11 +1388,10 @@ class GoldDetector1H(BaseDetector):
                         self.enviar(msg)
                         self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
 
-        # ── SEÑALES BUY (en zona) — confirmación si ya hubo señal accionable ──
+        # ── SEÑALES BUY (en zona) — requiere mínimo MEDIA para enviar Telegram ──
         # Si el precio realmente tocó la zona Y hay patrón de rebote → siempre confirmar
         _tiene_rebote_confirmado = en_zona_soporte_any and (vela_rebote or morning_star or intento_caida_fallido)
-        # Usar pre-exclusión cuando hay confirmación de acción de precio real en zona
-        _buy_activa = senal_buy_alerta or (_prep_buy_alerta and _tiene_rebote_confirmado)
+        _buy_activa = senal_buy_media or (_prep_buy_alerta and _tiene_rebote_confirmado and senal_buy_alerta)
         if _buy_activa and not cancelar_buy and rr_buy_tp1 >= 1.2:
             if self.ya_enviada(f"{clave_vela}_PREP_BUY") and not (senal_buy_fuerte or senal_buy_maxima) and not _tiene_rebote_confirmado:
                 logger.info(f"  ℹ️  BUY ALERTA/MEDIA ignorada: señal accionable ya enviada")
