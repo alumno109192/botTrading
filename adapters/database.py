@@ -491,7 +491,7 @@ class DatabaseManager:
         FROM senales
         WHERE simbolo = ?
         AND direccion = ?
-        AND estado IN ('SL', 'TP1', 'TP2', 'TP3', 'BREAKEVEN')
+        AND estado IN ('SL', 'TP1', 'BREAKEVEN')
         AND timestamp > ?
         ORDER BY timestamp DESC
         LIMIT 1
