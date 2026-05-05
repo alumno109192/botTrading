@@ -455,6 +455,27 @@ class DatabaseManager:
             return True
         return False
 
+    def existe_senal_activa_opuesta(self, simbolo: str, direccion: str) -> bool:
+        """
+        Verifica si existe una señal ACTIVA o PENDIENTE_CONFIRM en la dirección
+        CONTRARIA para el mismo símbolo. Sin límite temporal — sirve para bloquear
+        señales contradictorias mientras el trade sigue abierto (e.g. BUY 4H cuando
+        ya hay un SELL 4H activo, independientemente de cuándo se abrió).
+        """
+        opuesta = "COMPRA" if direccion == "VENTA" else "VENTA"
+        query = """
+        SELECT COUNT(*) as count
+        FROM senales
+        WHERE simbolo = ?
+        AND direccion = ?
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
+        """
+        result = self.ejecutar_query(query, (simbolo, opuesta))
+        if result.rows and int(result.rows[0]['count']) > 0:
+            logger.warning(f"🚫 Señal {direccion} bloqueada: existe {opuesta} ACTIVA en {simbolo}")
+            return True
+        return False
+
     def existe_senal_activa_tf(self, simbolo: str) -> bool:
         """
         Bloquea nueva señal si ya existe UNA ACTIVA para este símbolo,

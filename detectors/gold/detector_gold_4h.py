@@ -245,6 +245,14 @@ class GoldDetector4H(BaseDetector):
         cancelar_sell = close > zrh * (1 + cd / 100)
         cancelar_buy  = close < zsl * (1 - cd / 100)
 
+        # Bloquear si ya hay una señal ACTIVA en dirección contraria (sin límite temporal)
+        if self.db and self.db.existe_senal_activa_opuesta(simbolo_db, 'VENTA'):
+            cancelar_buy = True
+            logger.info(f"  🚫 [4H] cancelar_buy=True: VENTA activa en BD para {simbolo_db}")
+        if self.db and self.db.existe_senal_activa_opuesta(simbolo_db, 'COMPRA'):
+            cancelar_sell = True
+            logger.info(f"  🚫 [4H] cancelar_sell=True: COMPRA activa en BD para {simbolo_db}")
+
         # BLOQUE VENTA
         intento_rotura_fallido = (high >= zrl) and (close < zrl)
         shooting_star     = is_bearish and upper_wick > body*2 and lower_wick < body*0.3 and en_zona_resist
@@ -1040,7 +1048,7 @@ class GoldDetector4H(BaseDetector):
         # ══════════════════════════════════════════════════════════
 
         # ── Rotura alcista (precio superó resistencia con impulso) ──
-        if rotura_alcista and not self.ya_enviada(f"{clave_vela}_BREAK_BUY"):
+        if rotura_alcista and not cancelar_buy and not self.ya_enviada(f"{clave_vela}_BREAK_BUY"):
             # SL justo debajo del nivel roto (ahora soporte); TP con ATR
             sl_break_buy  = round(zrh - atr * 0.5, 2)
             tp1_break_buy = round(close + atr * params['atr_tp1_mult'], 2)
@@ -1081,7 +1089,7 @@ class GoldDetector4H(BaseDetector):
                 self.enviar(msg); self.marcar_enviada(f"{clave_vela}_BREAK_BUY")
 
         # ── Rotura bajista (precio rompió soporte con impulso) ──
-        if rotura_bajista and not self.ya_enviada(f"{clave_vela}_BREAK_SELL"):
+        if rotura_bajista and not cancelar_sell and not self.ya_enviada(f"{clave_vela}_BREAK_SELL"):
             sl_break_sell  = round(zsl + atr * 0.5, 2)
             tp1_break_sell = round(close - atr * params['atr_tp1_mult'], 2)
             tp2_break_sell = round(close - atr * params['atr_tp2_mult'], 2)
@@ -1125,7 +1133,7 @@ class GoldDetector4H(BaseDetector):
         # ══════════════════════════════════════════════════════════
 
         # ── Doble Techo ──
-        if dt_detectado and not self.ya_enviada(f"{clave_vela}_DTECHO"):
+        if dt_detectado and not cancelar_sell and not self.ya_enviada(f"{clave_vela}_DTECHO"):
             # Medida proyectada = altura del patrón (techo - cuello)
             altura_dt    = dt_nivel_techo - dt_neckline
             entrada_dt   = close  # mercado: ya rompió bajo la neckline
@@ -1166,7 +1174,7 @@ class GoldDetector4H(BaseDetector):
                 self.enviar(msg); self.marcar_enviada(f"{clave_vela}_DTECHO")
 
         # ── Doble Suelo ──
-        if ds_detectado and not self.ya_enviada(f"{clave_vela}_DSUELO"):
+        if ds_detectado and not cancelar_buy and not self.ya_enviada(f"{clave_vela}_DSUELO"):
             altura_ds    = ds_neckline - ds_nivel_suelo
             entrada_ds   = close
             sl_ds        = round(ds_nivel_suelo - atr * 0.5, 2)
