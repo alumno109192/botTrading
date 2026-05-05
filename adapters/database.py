@@ -432,6 +432,29 @@ class DatabaseManager:
             return True
         return False
     
+    def existe_senal_reciente_opuesta(self, simbolo: str, direccion: str, horas: int = 1) -> bool:
+        """
+        Verifica si existe una señal reciente en la dirección CONTRARIA.
+        Evita enviar BUY si ya se envió VENTA (y viceversa) en la misma ventana temporal.
+        Incluye todos los estados (activa, pendiente o ya cerrada).
+        """
+        opuesta = "COMPRA" if direccion == "VENTA" else "VENTA"
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
+        query = """
+        SELECT COUNT(*) as count
+        FROM senales
+        WHERE simbolo = ?
+        AND direccion = ?
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'TP1', 'TP2', 'TP3', 'SL')
+        AND timestamp > ?
+        """
+        result = self.ejecutar_query(query, (simbolo, opuesta, cutoff))
+        if result.rows and int(result.rows[0]['count']) > 0:
+            logger.warning(f"⚠️ Señal {direccion} bloqueada: existe {opuesta} reciente ({horas}h) en {simbolo}")
+            return True
+        return False
+
     def existe_senal_activa_tf(self, simbolo: str) -> bool:
         """
         Bloquea nueva señal si ya existe UNA ACTIVA para este símbolo,

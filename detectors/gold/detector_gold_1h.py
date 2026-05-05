@@ -1162,20 +1162,26 @@ class GoldDetector1H(BaseDetector):
                    f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                    f"⏱️ <b>TF:</b> 1H\n"
                    f"📅 <b>Estudio:</b> {fecha_live} UTC  🕐 <b>Envío:</b> {hora_envio} UTC")
-            if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
-                try:
-                    self._guardar_senal({
-                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                        'direccion': 'COMPRA', 'precio_entrada': close_live,
-                        'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
-                        'score': score_buy,
-                        'indicadores': json.dumps(_condiciones_bd),
-                        'patron_velas': f"ReboteVivo:True, Low={low_live:.2f}",
-                        'version_detector': 'GOLD 1H-v2.1'
-                    })
-                except Exception as e:
-                    logger.error(f"  ⚠️ Error BD: {e}")
-            self.enviar(msg); marcar_enviada_live('LIVE_BUY')
+            _bloquear_buy_live = self.db and (
+                self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1) or
+                self.db.existe_senal_reciente_opuesta(simbolo_db, "COMPRA", horas=1))
+            if _bloquear_buy_live:
+                logger.info(f"  🚫 BUY LIVE bloqueada: señal reciente o conflicto en BD")
+            else:
+                if self.db:
+                    try:
+                        self._guardar_senal({
+                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                            'direccion': 'COMPRA', 'precio_entrada': close_live,
+                            'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
+                            'score': score_buy,
+                            'indicadores': json.dumps(_condiciones_bd),
+                            'patron_velas': f"ReboteVivo:True, Low={low_live:.2f}",
+                            'version_detector': 'GOLD 1H-v2.1'
+                        })
+                    except Exception as e:
+                        logger.error(f"  ⚠️ Error BD: {e}")
+                self.enviar(msg); marcar_enviada_live('LIVE_BUY')
 
         if rechazo_resist_live and _prep_sell_alerta and not cancelar_sell and not cancelar_sell_rr and not ya_enviada_live('LIVE_SELL'):
             nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
@@ -1212,20 +1218,26 @@ class GoldDetector1H(BaseDetector):
                    f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                    f"⏱️ <b>TF:</b> 1H\n"
                    f"📅 <b>Estudio:</b> {fecha_live} UTC  🕐 <b>Envío:</b> {hora_envio} UTC")
-            if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
-                try:
-                    self._guardar_senal({
-                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                        'direccion': 'VENTA', 'precio_entrada': close_live,
-                        'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
-                        'score': score_sell,
-                        'indicadores': json.dumps(_condiciones_bd),
-                        'patron_velas': f"RechazoVivo:True, High={high_live:.2f}",
-                        'version_detector': 'GOLD 1H-v2.1'
-                    })
-                except Exception as e:
-                    logger.error(f"  ⚠️ Error BD: {e}")
-            self.enviar(msg); marcar_enviada_live('LIVE_SELL')
+            _bloquear_sell_live = self.db and (
+                self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1) or
+                self.db.existe_senal_reciente_opuesta(simbolo_db, "VENTA", horas=1))
+            if _bloquear_sell_live:
+                logger.info(f"  🚫 SELL LIVE bloqueada: señal reciente o conflicto en BD")
+            else:
+                if self.db:
+                    try:
+                        self._guardar_senal({
+                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                            'direccion': 'VENTA', 'precio_entrada': close_live,
+                            'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
+                            'score': score_sell,
+                            'indicadores': json.dumps(_condiciones_bd),
+                            'patron_velas': f"RechazoVivo:True, High={high_live:.2f}",
+                            'version_detector': 'GOLD 1H-v2.1'
+                        })
+                    except Exception as e:
+                        logger.error(f"  ⚠️ Error BD: {e}")
+                self.enviar(msg); marcar_enviada_live('LIVE_SELL')
 
         # ── ALERTAS DE APROXIMACIÓN → SEÑAL ACCIONABLE (pon la orden limit ahora) ──
         if aproximando_resist and not en_zona_resist and not cancelar_sell and not cancelar_sell_rr and _prep_sell_alerta and not self.ya_enviada(f"{clave_vela}_PREP_SELL"):
@@ -1248,21 +1260,27 @@ class GoldDetector1H(BaseDetector):
                    + f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                    f"📰 <b>Noticias:</b> {_sesgo_etiq} ({_sesgo_score:+.1f})  ➜  {_sesgo_news.replace('_', ' ')}\n"
                    f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
-            if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1):
-                try:
-                    self._guardar_senal({
-                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                        'direccion': 'VENTA', 'precio_entrada': sell_limit,
-                        'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
-                        'score': score_sell,
-                        'indicadores': json.dumps(_condiciones_bd),
-                        'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
-                        'version_detector': 'GOLD 1H-v2.0',
-                        'estado': 'PENDIENTE_CONFIRM'
-                    })
-                except Exception as e:
-                    logger.error(f"  ⚠️ Error BD: {e}")
-            self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_SELL")
+            _bloquear_prep_sell = self.db and (
+                self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1) or
+                self.db.existe_senal_reciente_opuesta(simbolo_db, "VENTA", horas=1))
+            if _bloquear_prep_sell:
+                logger.info(f"  🚫 PREP SELL bloqueada: señal reciente o conflicto en BD")
+            else:
+                if self.db:
+                    try:
+                        self._guardar_senal({
+                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                            'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                            'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                            'score': score_sell,
+                            'indicadores': json.dumps(_condiciones_bd),
+                            'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
+                            'version_detector': 'GOLD 1H-v2.0',
+                            'estado': 'PENDIENTE_CONFIRM'
+                        })
+                    except Exception as e:
+                        logger.error(f"  ⚠️ Error BD: {e}")
+                self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_SELL")
 
         if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not cancelar_buy_rr and _prep_buy_alerta and not self.ya_enviada(f"{clave_vela}_PREP_BUY"):
             nv = ("🔥 BUY MÁXIMA" if senal_buy_maxima else
@@ -1284,21 +1302,27 @@ class GoldDetector1H(BaseDetector):
                    + f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                    f"📰 <b>Noticias:</b> {_sesgo_etiq} ({_sesgo_score:+.1f})  ➜  {_sesgo_news.replace('_', ' ')}\n"
                    f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
-            if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1):
-                try:
-                    self._guardar_senal({
-                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                        'direccion': 'COMPRA', 'precio_entrada': buy_limit,
-                        'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
-                        'score': score_buy,
-                        'indicadores': json.dumps(_condiciones_bd),
-                        'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
-                        'version_detector': 'GOLD 1H-v2.0',
-                        'estado': 'PENDIENTE_CONFIRM'
-                    })
-                except Exception as e:
-                    logger.error(f"  ⚠️ Error BD: {e}")
-            self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
+            _bloquear_prep_buy = self.db and (
+                self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1) or
+                self.db.existe_senal_reciente_opuesta(simbolo_db, "COMPRA", horas=1))
+            if _bloquear_prep_buy:
+                logger.info(f"  🚫 PREP BUY bloqueada: señal reciente o conflicto en BD")
+            else:
+                if self.db:
+                    try:
+                        self._guardar_senal({
+                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                            'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                            'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                            'score': score_buy,
+                            'indicadores': json.dumps(_condiciones_bd),
+                            'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
+                            'version_detector': 'GOLD 1H-v2.0',
+                            'estado': 'PENDIENTE_CONFIRM'
+                        })
+                    except Exception as e:
+                        logger.error(f"  ⚠️ Error BD: {e}")
+                self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
 
         # ── SEÑALES SELL (en zona) — confirmación si ya hubo señal accionable ──
         _tiene_rechazo_confirmado = en_zona_resist_any and (vela_rechazo or evening_star or intento_rotura_fallido)
