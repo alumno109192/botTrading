@@ -278,7 +278,11 @@ class EURUSDDetector15M(BaseDetector):
             # ── Ajuste volumen ────────────────────────────────────────────────
             score_sell, score_buy, _ = self.ajustar_scores_por_volumen(
                 score_sell, score_buy, vol_actual, vol_medio, params['vol_mult'])
-
+            # ── Correlación USD: Gold confirma / contradice EUR/USD ──────────
+            score_sell, score_buy, _gold_corr = self.ajustar_score_por_correlacion_gold(
+                score_sell, score_buy, '15M')
+            if _gold_corr:
+                logger.info(f"  🔗 [EURUSD 15M] Correlación Gold: {_gold_corr}")
             _umbral_fue = self.umbral_adaptativo(8, atr, atr_media)
 
             # ── Filtro sesión óptima (07-21 UTC) ─────────────────────────────

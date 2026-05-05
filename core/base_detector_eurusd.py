@@ -72,3 +72,56 @@ class EURUSDBaseDetector(BaseDetector):
         tp3_c = round(buy_limit  + atr * p['atr_tp3_mult'], 5)
 
         return sl_venta, sl_compra, tp1_v, tp2_v, tp3_v, tp1_c, tp2_c, tp3_c
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Correlación USD: XAUUSD ↔ EURUSD
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def ajustar_score_por_correlacion_gold(
+            self, score_sell: int, score_buy: int, tf_label: str) -> tuple:
+        """
+        Ajusta los scores de EUR/USD según el sesgo publicado de XAUUSD.
+
+        Fundamento: Gold y EUR/USD comparten el USD como denominador / divisor.
+        Cuando el USD se debilita, ambos suben. Cuando el USD se fortalece,
+        ambos bajan. La correlación es POSITIVA: misma dirección.
+
+          Gold BULLISH + EUR/USD score_buy líder  → +2 BUY  (confirmación)
+          Gold BEARISH + EUR/USD score_sell líder → +2 SELL (confirmación)
+          Contradicción                           → -2 al score dominante (penalización)
+          Gold NEUTRAL / sin datos / expirado     → sin ajuste
+
+        El sesgo de Gold se considera expirado si tiene más de 2 horas sin actualizar.
+
+        Returns: (score_sell, score_buy, desc)
+            desc — cadena vacía si no hay ajuste, o descripción del ajuste aplicado.
+        """
+        from services import tf_bias as _tf_bias
+        from datetime import datetime
+
+        gold_sesgo = _tf_bias.obtener_sesgo('XAUUSD', tf_label)
+        if gold_sesgo is None:
+            return score_sell, score_buy, ''
+
+        edad_seg = (datetime.now() - gold_sesgo['ts']).total_seconds()
+        if edad_seg > 7200:   # sesgo de Gold expirado (>2 h sin nuevos datos)
+            return score_sell, score_buy, ''
+
+        bias_gold = gold_sesgo['bias']
+        if bias_gold == _tf_bias.BIAS_NEUTRAL:
+            return score_sell, score_buy, ''
+
+        if bias_gold == _tf_bias.BIAS_BULLISH:
+            if score_buy >= score_sell:
+                score_buy = min(score_buy + 2, 50)
+                return score_sell, score_buy, f'🥇 Gold BULLISH ({tf_label}) confirma → +2 BUY'
+            else:
+                score_sell = max(0, score_sell - 2)
+                return score_sell, score_buy, f'⚠️ Gold BULLISH ({tf_label}) contradice SELL → -2'
+        else:  # BEARISH
+            if score_sell >= score_buy:
+                score_sell = min(score_sell + 2, 50)
+                return score_sell, score_buy, f'🥇 Gold BEARISH ({tf_label}) confirma → +2 SELL'
+            else:
+                score_buy = max(0, score_buy - 2)
+                return score_sell, score_buy, f'⚠️ Gold BEARISH ({tf_label}) contradice BUY → -2'

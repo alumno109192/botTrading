@@ -309,6 +309,12 @@ class EURUSDDetector5M(BaseDetector):
             elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
                 score_buy = min(score_buy + 1, max_score)
 
+            # ── Correlación USD: Gold confirma / contradice EUR/USD ────────────
+            score_sell, score_buy, _gold_corr = self.ajustar_score_por_correlacion_gold(
+                score_sell, score_buy, '5M')
+            if _gold_corr:
+                logger.info(f"  🔗 [EURUSD 5M] Correlación Gold: {_gold_corr}")
+
             _umbral_fue = self.umbral_adaptativo(10, atr, atr_media)
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue

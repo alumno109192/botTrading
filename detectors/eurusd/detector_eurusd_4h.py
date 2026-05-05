@@ -246,6 +246,12 @@ class EURUSDDetector4H(BaseDetector):
             score_sell, score_buy, _ = self.ajustar_scores_por_volumen(
                 score_sell, score_buy, vol_actual, vol_medio, params['vol_mult'])
 
+            # ── Correlación USD: Gold confirma / contradice EUR/USD ──────────
+            score_sell, score_buy, _gold_corr = self.ajustar_score_por_correlacion_gold(
+                score_sell, score_buy, '4H')
+            if _gold_corr:
+                logger.info(f"  🔗 [EURUSD 4H] Correlación Gold: {_gold_corr}")
+
             _umbral_fue = self.umbral_adaptativo(10, atr, atr_media)
 
             # 4H no filtra por sesión (velas largas atraviesan múltiples sesiones)

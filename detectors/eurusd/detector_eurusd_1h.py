@@ -261,6 +261,12 @@ class EURUSDDetector1H(BaseDetector):
             score_sell, score_buy, _ = self.ajustar_scores_por_volumen(
                 score_sell, score_buy, vol_actual, vol_medio, params['vol_mult'])
 
+            # ── Correlación USD: Gold confirma / contradice EUR/USD ──────────
+            score_sell, score_buy, _gold_corr = self.ajustar_score_por_correlacion_gold(
+                score_sell, score_buy, '1H')
+            if _gold_corr:
+                logger.info(f"  🔗 [EURUSD 1H] Correlación Gold: {_gold_corr}")
+
             _umbral_fue = self.umbral_adaptativo(12, atr, atr_media)
 
             senal_sell_fuerte = score_sell >= _umbral_fue and self.en_sesion_optima()
