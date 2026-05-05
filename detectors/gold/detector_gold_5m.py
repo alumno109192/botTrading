@@ -588,6 +588,28 @@ class GoldDetector5M(BaseDetector):
             def marcar_enviada(tipo):
                 clave = f"{clave_vela}_{tipo}"
                 self.alertas_enviadas[clave] = time.time()
+
+            # Anti-spam para AVISO SETUP: clave fija por dirección (sin timestamp de vela)
+            # Cooldown 30 min — evita spam entre velas consecutivas de la misma dirección
+            _TTL_AVISO_SETUP = 1800  # 30 minutos
+
+            def ya_enviada_aviso(tipo):
+                clave = f"{simbolo}_aviso_setup_{tipo}"
+                ts_mem = self.alertas_enviadas.get(clave, 0)
+                if ts_mem > time.time() - _TTL_AVISO_SETUP:
+                    return True
+                if self.db:
+                    ts_db = self.db.get_antispam(clave)
+                    if ts_db > time.time() - _TTL_AVISO_SETUP:
+                        self.alertas_enviadas[clave] = ts_db
+                        return True
+                return False
+
+            def marcar_enviada_aviso(tipo):
+                clave = f"{simbolo}_aviso_setup_{tipo}"
+                self.alertas_enviadas[clave] = time.time()
+                if self.db:
+                    self.db.set_antispam(clave, self.alertas_enviadas[clave])
                 if self.db:
                     self.db.set_antispam(clave, self.alertas_enviadas[clave])
     
@@ -604,16 +626,16 @@ class GoldDetector5M(BaseDetector):
             tf_bias.publicar_sesgo(simbolo, '5M', _sesgo_dir, max(score_sell, score_buy))
             _conf_sell = ""; _conf_buy = ""
 
-            # ── AVISO SETUP TEMPRANO (score ≥ 5, independiente de filtros) ───────
+            # ── AVISO SETUP TEMPRANO (score ≥ umbral, independiente de filtros) ───
             # Se envía aunque confluencia/R:R/señal-activa lo bloqueen después.
             # Guarda señal en BD para que el monitor de P&L haga seguimiento TP/SL.
-            # Anti-spam: una vez por vela (5 min) por dirección.
+            # Anti-spam: cooldown 30 min por dirección (no por vela) — evita spam.
             # ⚠️ FILTRO R:R MÍNIMO 1.5:1 para evitar señales poco rentables
-            _UMBRAL_AVISO = 6
+            _UMBRAL_AVISO = 10
             _RR_MINIMO_SETUP = 1.5
             _simbolo_db_5m = f"{simbolo}_5M"
             if self.en_sesion_optima():
-                if score_sell >= _UMBRAL_AVISO and not ya_enviada('aviso_sell'):
+                if score_sell >= _UMBRAL_AVISO and not ya_enviada_aviso('sell'):
                     # Verificar R:R antes de enviar SETUP
                     rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
                     if rr_sell_tp1 < _RR_MINIMO_SETUP:
@@ -651,11 +673,11 @@ class GoldDetector5M(BaseDetector):
                             f"⏱️ 5M  📅 {fecha}"
                         )
                         self.enviar(_msg_aviso)
-                        marcar_enviada('aviso_sell')
+                        marcar_enviada_aviso('sell')
                         
                         if not senal_id:
                             logger.info(f"  ⚡ [5M] AVISO SETUP SELL enviado (score {score_sell}) — BD ya tiene señal activa")
-                if score_buy >= _UMBRAL_AVISO and not ya_enviada('aviso_buy'):
+                if score_buy >= _UMBRAL_AVISO and not ya_enviada_aviso('buy'):
                     rr_buy_tp1 = rr(buy_limit, sl_compra, tp1_c)
                     if rr_buy_tp1 < _RR_MINIMO_SETUP:
                         logger.warning(f"  ⚠️ [5M] SETUP BUY bloqueado — R:R {rr_buy_tp1}:1 < {_RR_MINIMO_SETUP}:1 mínimo")
@@ -694,7 +716,7 @@ class GoldDetector5M(BaseDetector):
                             f"⏱️ 5M  📅 {fecha}"
                         )
                         self.enviar(_msg_aviso)
-                        marcar_enviada('aviso_buy')
+                        marcar_enviada_aviso('buy')
                         
                         if not senal_id:
                             logger.info(f"  ⚡ [5M] AVISO SETUP BUY enviado (score {score_buy}) — BD ya tiene señal activa")
