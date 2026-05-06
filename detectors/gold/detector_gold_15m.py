@@ -72,6 +72,7 @@ SIMBOLOS = {
         'atr_length':         10,           # ATR más sensible
         'atr_sl_mult':        1.5,          # SL más ajustado (scalping)
         'vol_mult':           1.2,          # Volumen importante pero no crítico
+        'spread':             0.35,          # Spread típico broker CFD (XAUUSD)
         # Parámetros específicos de scalping
         'min_score_scalping': 3,            # Score mínimo más bajo (más señales)
         'max_perdidas_dia':   3,            # Máximo 3 pérdidas consecutivas
@@ -544,8 +545,16 @@ class GoldDetector15M(BaseDetector):
                 senal_buy_fuerte  = False
 
             # Cancelaciones (más estrictas en scalping)
+            simbolo_db_15m = f"{simbolo}_15M"
             cancelar_sell = (close < zsh) or (rsi < 30)
             cancelar_buy  = (close > zrh) or (rsi > 70)
+            # Bloquear si ya hay señal ACTIVA en la MISMA dirección
+            if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db_15m, 'VENTA'):
+                cancelar_sell = True
+                logger.info(f"  🚫 [15M] cancelar_sell=True: VENTA ya activa en BD")
+            if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db_15m, 'COMPRA'):
+                cancelar_buy = True
+                logger.info(f"  🚫 [15M] cancelar_buy=True: COMPRA ya activa en BD")
         
             # ── SL y TP para SCALPING ──
             asm = params['atr_sl_mult']
@@ -557,12 +566,17 @@ class GoldDetector15M(BaseDetector):
             sell_limit = close * (1 + offset_pct / 100)
             buy_limit  = close * (1 - offset_pct / 100)
 
-            tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
-            tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
-            tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
-            tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
-            tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
-            tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
+            # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
+            spread = params.get('spread', 0.35)
+            sell_entry = round(sell_limit - spread, 2)
+            buy_entry  = round(buy_limit  + spread, 2)
+
+            tp1_v = round(sell_entry - atr * params['atr_tp1_mult'], 2)
+            tp2_v = round(sell_entry - atr * params['atr_tp2_mult'], 2)
+            tp3_v = round(sell_entry - atr * params['atr_tp3_mult'], 2)
+            tp1_c = round(buy_entry  + atr * params['atr_tp1_mult'], 2)
+            tp2_c = round(buy_entry  + atr * params['atr_tp2_mult'], 2)
+            tp3_c = round(buy_entry  + atr * params['atr_tp3_mult'], 2)
         
             def rr(limit, sl, tp):
                 return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
@@ -699,8 +713,8 @@ class GoldDetector15M(BaseDetector):
 
             # ── FILTRO R:R MÍNIMO 1.5 (Scalping 15M) ──
             RR_MINIMO = 1.5
-            rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
-            rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
+            rr_sell_tp1 = rr(sell_entry, sl_venta,  tp1_v)
+            rr_buy_tp1  = rr(buy_entry,  sl_compra, tp1_c)
             if rr_sell_tp1 < RR_MINIMO:
                 logger.warning(f'  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < {RR_MINIMO}')
                 cancelar_sell = True
@@ -709,7 +723,23 @@ class GoldDetector15M(BaseDetector):
                 cancelar_buy = True
 
             simbolo_db = f"{simbolo}_15M"
-            
+
+            # ── Contexto HTF para mensajes ──────────────────────────────────────────────
+            _ctx_htf = ""
+            try:
+                _htf_lineas_15m = []
+                for _tf_key, _label in [('1W', '1W'), ('1D', '1D'), ('4H', '4H'), ('1H', '1H')]:
+                    _bd = tf_bias.obtener_sesgo(simbolo, _tf_key)
+                    if _bd:
+                        _b   = _bd['bias']
+                        _ico = "📈" if _b == tf_bias.BIAS_BULLISH else "📉" if _b == tf_bias.BIAS_BEARISH else "➖"
+                        _htf_lineas_15m.append(f"  {_ico} <b>{_label}:</b> {_b}")
+                    else:
+                        _htf_lineas_15m.append(f"  ⏳ <b>{_tf_key}:</b> sin datos")
+                _ctx_htf = "\n━━━━━━━━━━━━━━━━━━━━\n📊 <b>Contexto HTF:</b>\n" + "\n".join(_htf_lineas_15m)
+            except Exception as _ctx_e:
+                logger.debug(f"  [15M] Error _ctx_htf: {_ctx_e}")
+
             # ── Construir diagnóstico de patrones detectados ──
             patrones_detectados = []
             if patron_envolvente_bajista(df):
@@ -735,7 +765,7 @@ class GoldDetector15M(BaseDetector):
 
             # ── SEÑALES VENTA — solo FUERTE ──
             if senal_sell_fuerte and not cancelar_sell:
-                if self.db and self.db.existe_senal_activa_tf(simbolo_db):
+                if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db, 'VENTA'):
                     logger.info(f"  ℹ️  SELL 15M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
                 else:
                     # Timestamp de la vela analizada
@@ -746,12 +776,12 @@ class GoldDetector15M(BaseDetector):
                     msg = (f"{_titulo_sell}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
-                           f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 2)}\n"
+                           f"📌 <b>SELL LIMIT:</b> ${sell_entry:.2f}  (spread ${spread:.2f} incluido)\n"
                            f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                           f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                           f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                           f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                           f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_entry, sl_venta, tp1_v)}:1\n"
+                           f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
+                           f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                            f"⏱️ <b>TF:</b> 15M\n"
@@ -761,6 +791,8 @@ class GoldDetector15M(BaseDetector):
                            f"🔍 <b>Patrones Detectados:</b>\n{diagnostico_patrones}")
                     if _conf_sell:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
+                    if _ctx_htf:
+                        msg += _ctx_htf
                     if self.db:
                         try:
                             self._guardar_senal({
@@ -769,7 +801,7 @@ class GoldDetector15M(BaseDetector):
                                 'simbolo': simbolo_db,
                                 'asset': 'GOLD',
                                 'timeframe': '15M',
-                                'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                                'direccion': 'VENTA', 'precio_entrada': sell_entry,
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                 'score': score_sell,
                                 'indicadores': json.dumps(_condiciones_bd),
@@ -782,7 +814,7 @@ class GoldDetector15M(BaseDetector):
 
             # ── SEÑALES COMPRA — solo FUERTE ──
             if senal_buy_fuerte and not cancelar_buy:
-                if self.db and self.db.existe_senal_activa_tf(simbolo_db):
+                if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db, 'COMPRA'):
                     logger.info(f"  ℹ️  BUY 15M bloqueada: ya existe señal ACTIVA en {simbolo_db}")
                 else:
                     # Timestamp de la vela analizada
@@ -793,12 +825,12 @@ class GoldDetector15M(BaseDetector):
                     msg = (f"{_titulo_buy}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
-                           f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 2)}\n"
+                           f"📌 <b>BUY LIMIT:</b> ${buy_entry:.2f}  (spread ${spread:.2f} incluido)\n"
                            f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                           f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                           f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                           f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                           f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_entry, sl_compra, tp1_c)}:1\n"
+                           f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
+                           f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                            f"⏱️ <b>TF:</b> 15M\n"
@@ -808,6 +840,8 @@ class GoldDetector15M(BaseDetector):
                            f"🔍 <b>Patrones Detectados:</b>\n{diagnostico_patrones}")
                     if _conf_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                    if _ctx_htf:
+                        msg += _ctx_htf
                     if self.db:
                         try:
                             self._guardar_senal({
@@ -816,7 +850,7 @@ class GoldDetector15M(BaseDetector):
                                 'simbolo': simbolo_db,
                                 'asset': 'GOLD',
                                 'timeframe': '15M',
-                                'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                                'direccion': 'COMPRA', 'precio_entrada': buy_entry,
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                 'score': score_buy,
                                 'indicadores': json.dumps(_condiciones_bd),

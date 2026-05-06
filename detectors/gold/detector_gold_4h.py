@@ -65,6 +65,7 @@ SIMBOLOS = {
         'atr_tp2_mult':       3.5,          # TP2: 3.5× ATR
         'atr_tp3_mult':       5.5,          # TP3: 5.5× ATR (objetivo swing)
         'vol_mult':           1.2,
+        'spread':             0.35,         # Spread típico broker CFD (XAUUSD)
     }
 }
 
@@ -167,6 +168,71 @@ class GoldDetector4H(BaseDetector):
         df['is_bearish']  = df['Close'] < df['Open']
         df['is_bullish']  = df['Close'] > df['Open']
 
+        # ── CONTEXTO HTF: descargar 1D y 1W, calcular indicadores básicos ──────
+        _ctx_htf = ""
+        _htf_lines = []
+        try:
+            from core.indicators import calcular_rsi as _crsi, calcular_ema as _cema
+
+            def _analizar_htf(ticker, interval, period, label, tf_key, ema_fast=20, ema_slow=50, ema_trend=200, min_velas=40):
+                """Descarga datos HTF, calcula indicadores y devuelve (texto_linea, bias)."""
+                try:
+                    _df, _ = get_ohlcv(ticker, period=period, interval=interval)
+                    if _df.empty or len(_df) < min_velas:
+                        return f"  ⏳ {label} → sin datos suficientes ({len(_df)} velas)", tf_bias.BIAS_NEUTRAL
+                    if isinstance(_df.columns, pd.MultiIndex):
+                        _df.columns = _df.columns.get_level_values(0)
+                    _df = _df.copy()
+                    _rsi = float(_crsi(_df['Close'], 14).iloc[-2])
+                    _ema_f = float(_cema(_df['Close'], ema_fast).iloc[-2])
+                    _ema_s = float(_cema(_df['Close'], ema_slow).iloc[-2])
+                    _ema_t = float(_cema(_df['Close'], ema_trend).iloc[-2]) if len(_df) >= ema_trend + 10 else None
+                    _c = float(_df['Close'].iloc[-2])
+                    # Determinar tendencia
+                    if _ema_f > _ema_s and _c > _ema_s:
+                        _bias = tf_bias.BIAS_BULLISH
+                        _trend_icon = "📈"
+                        _trend_txt  = "ALCISTA"
+                    elif _ema_f < _ema_s and _c < _ema_s:
+                        _bias = tf_bias.BIAS_BEARISH
+                        _trend_icon = "📉"
+                        _trend_txt  = "BAJISTA"
+                    else:
+                        _bias = tf_bias.BIAS_NEUTRAL
+                        _trend_icon = "➖"
+                        _trend_txt  = "LATERAL"
+                    _ema200_txt = ""
+                    if _ema_t is not None:
+                        _ema200_txt = f"  EMA200: ${round(_ema_t, 2)} ({'↑' if _c > _ema_t else '↓'})"
+                    _line = (f"  {_trend_icon} <b>{label}:</b> {_trend_txt}  "
+                             f"RSI {round(_rsi, 1)}  EMA{ema_fast}/EMA{ema_slow}: ${round(_ema_f, 0):.0f}/${round(_ema_s, 0):.0f}"
+                             f"{_ema200_txt}")
+                    return _line, _bias
+                except Exception as _e:
+                    logger.debug(f"  HTF {label} error: {_e}")
+                    return f"  ⏳ {label} → error al cargar", tf_bias.BIAS_NEUTRAL
+
+            _line_1d, _bias_1d_calc = _analizar_htf(
+                params['ticker_yf'], '1d', '6mo', '1D', '1D',
+                ema_fast=20, ema_slow=50, ema_trend=200, min_velas=60)
+            _line_1w, _bias_1w_calc = _analizar_htf(
+                params['ticker_yf'], '1wk', '5y', '1W', '1W',
+                ema_fast=20, ema_slow=50, ema_trend=200, min_velas=52)
+
+            # Publicar en tf_bias para que verificar_confluencia use datos frescos
+            tf_bias.publicar_sesgo(simbolo, '1D', _bias_1d_calc, 0)
+            tf_bias.publicar_sesgo(simbolo, '1W', _bias_1w_calc, 0)
+
+            _htf_lines = [_line_1d, _line_1w]
+            _ctx_htf = (
+                f"\n━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 <b>Contexto HTF:</b>\n"
+                + "\n".join(_htf_lines)
+            )
+        except Exception as _htf_ex:
+            logger.debug(f"  [4H] Error bloque HTF: {_htf_ex}")
+        # ────────────────────────────────────────────────────────────────────────
+
         # Última vela completa
         row  = df.iloc[-2]
         prev = df.iloc[-3]
@@ -242,6 +308,8 @@ class GoldDetector4H(BaseDetector):
         en_zona_resist  = (high >= zrl - tol) and (high <= zrh + tol)
         en_zona_soporte = (low  >= zsl - tol) and (low  <= zsh + tol)
 
+        simbolo_db = f"{simbolo}_4H"
+
         cancelar_sell = close > zrh * (1 + cd / 100)
         cancelar_buy  = close < zsl * (1 - cd / 100)
 
@@ -252,6 +320,13 @@ class GoldDetector4H(BaseDetector):
         if self.db and self.db.existe_senal_activa_opuesta(simbolo_db, 'COMPRA'):
             cancelar_sell = True
             logger.info(f"  🚫 [4H] cancelar_sell=True: COMPRA activa en BD para {simbolo_db}")
+        # Bloquear también si ya hay señal ACTIVA en la MISMA dirección (no duplicar orden)
+        if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db, 'VENTA'):
+            cancelar_sell = True
+            logger.info(f"  🚫 [4H] cancelar_sell=True: VENTA ya activa en BD para {simbolo_db}")
+        if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db, 'COMPRA'):
+            cancelar_buy = True
+            logger.info(f"  🚫 [4H] cancelar_buy=True: COMPRA ya activa en BD para {simbolo_db}")
 
         # BLOQUE VENTA
         intento_rotura_fallido = (high >= zrl) and (close < zrl)
@@ -732,23 +807,28 @@ class GoldDetector4H(BaseDetector):
             senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima = \
                 self.umbral_activo_por_sesion(senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima, tf_corto=False)
 
-        sl_venta  = round(sell_limit + atr * asm, 2)
-        sl_compra = round(buy_limit  - atr * asm, 2)
+        # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
+        spread = params.get('spread', 0.35)
+        sell_entry = round(sell_limit - spread, 2)
+        buy_entry  = round(buy_limit  + spread, 2)
+
+        sl_venta  = round(sell_entry + atr * asm, 2)
+        sl_compra = round(buy_entry  - atr * asm, 2)
 
         # TPs dinámicos basados en ATR (se adaptan automáticamente al rango de precio)
-        tp1_v = round(sell_limit - atr * params['atr_tp1_mult'], 2)
-        tp2_v = round(sell_limit - atr * params['atr_tp2_mult'], 2)
-        tp3_v = round(sell_limit - atr * params['atr_tp3_mult'], 2)
-        tp1_c = round(buy_limit  + atr * params['atr_tp1_mult'], 2)
-        tp2_c = round(buy_limit  + atr * params['atr_tp2_mult'], 2)
-        tp3_c = round(buy_limit  + atr * params['atr_tp3_mult'], 2)
+        tp1_v = round(sell_entry - atr * params['atr_tp1_mult'], 2)
+        tp2_v = round(sell_entry - atr * params['atr_tp2_mult'], 2)
+        tp3_v = round(sell_entry - atr * params['atr_tp3_mult'], 2)
+        tp1_c = round(buy_entry  + atr * params['atr_tp1_mult'], 2)
+        tp2_c = round(buy_entry  + atr * params['atr_tp2_mult'], 2)
+        tp3_c = round(buy_entry  + atr * params['atr_tp3_mult'], 2)
 
         def rr(limit, sl, tp):
             return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
 
         # ── FILTRO R:R MÍNIMO 1.2 ──
-        rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
-        rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
+        rr_sell_tp1 = rr(sell_entry, sl_venta, tp1_v)
+        rr_buy_tp1  = rr(buy_entry,  sl_compra, tp1_c)
         if rr_sell_tp1 < 1.2:
             logger.warning(f"  ⛔ SELL bloqueada: R:R TP1={rr_sell_tp1} < 1.2")
         if rr_buy_tp1 < 1.2:
@@ -834,8 +914,6 @@ class GoldDetector4H(BaseDetector):
             else:
                 _conf_buy = _desc
 
-        simbolo_db = f"{simbolo}_4H"
-
         # ── CIERRE SUGERIDO: señal fuerte contra el trade activo ─────────────────
         # Si hay una VENTA activa pero el análisis detecta una señal BUY FUERTE+,
         # avisar al usuario para que considere cerrar la VENTA.
@@ -907,21 +985,21 @@ class GoldDetector4H(BaseDetector):
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv}\n"
                    f"💰 <b>Precio actual:</b> ${round(close, 2)}\n"
-                   f"📌 <b>SELL LIMIT:</b>   ${round(sell_limit, 2)}  ← pon la orden aquí\n"
-                   f"🛑 <b>Stop Loss:</b>    ${round(sl_venta, 2)}  (-${round(sl_venta - sell_limit, 2)})\n"
+                   f"📌 <b>SELL LIMIT:</b>   ${sell_entry}  ← pon la orden aquí  (spread ${spread:.2f} incluido)\n"
+                   f"🛑 <b>Stop Loss:</b>    ${round(sl_venta, 2)}  (+${round(sl_venta - sell_entry, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1  (+${round(sell_limit - tp1_v, 2)})\n"
-                   f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1  (+${round(sell_limit - tp2_v, 2)})\n"
-                   f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1  (+${round(sell_limit - tp3_v, 2)})\n"
+                   f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_entry, sl_venta, tp1_v)}:1  (+${round(sell_entry - tp1_v, 2)})\n"
+                   f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1  (+${round(sell_entry - tp2_v, 2)})\n"
+                   f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1  (+${round(sell_entry - tp3_v, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING"
-                   + _sfx_sell)
+                   + _ctx_htf + _sfx_sell)
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                 try:
                     self._guardar_senal({
                         'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                        'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                        'direccion': 'VENTA', 'precio_entrada': sell_entry,
                         'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                         'score': score_sell,
                         'indicadores': json.dumps(_condiciones_bd),
@@ -941,21 +1019,21 @@ class GoldDetector4H(BaseDetector):
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv}\n"
                    f"💰 <b>Precio actual:</b> ${round(close, 2)}\n"
-                   f"📌 <b>BUY LIMIT:</b>    ${round(buy_limit, 2)}  ← pon la orden aquí\n"
-                   f"🛑 <b>Stop Loss:</b>    ${round(sl_compra, 2)}  (-${round(buy_limit - sl_compra, 2)})\n"
+                   f"📌 <b>BUY LIMIT:</b>    ${buy_entry}  ← pon la orden aquí  (spread ${spread:.2f} incluido)\n"
+                   f"🛑 <b>Stop Loss:</b>    ${round(sl_compra, 2)}  (-${round(buy_entry - sl_compra, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1  (+${round(tp1_c - buy_limit, 2)})\n"
-                   f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1  (+${round(tp2_c - buy_limit, 2)})\n"
-                   f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_limit, 2)})\n"
+                   f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_entry, sl_compra, tp1_c)}:1  (+${round(tp1_c - buy_entry, 2)})\n"
+                   f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1  (+${round(tp2_c - buy_entry, 2)})\n"
+                   f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_entry, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING"
-                   + _sfx_buy)
+                   + _ctx_htf + _sfx_buy)
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                 try:
                     self._guardar_senal({
                         'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                        'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                        'direccion': 'COMPRA', 'precio_entrada': buy_entry,
                         'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                         'score': score_buy,
                         'indicadores': json.dumps(_condiciones_bd),
@@ -993,22 +1071,24 @@ class GoldDetector4H(BaseDetector):
                         msg = (f"{nivel} — <b>ORO (XAUUSD) 🔒 SWING</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
-                               f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 2)}\n"
+                               f"📌 <b>SELL LIMIT:</b> ${sell_entry}  (spread ${spread:.2f} incluido)\n"
                                f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                               f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                               f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                               f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_entry, sl_venta, tp1_v)}:1\n"
+                               f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
+                               f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
+                        if _ctx_htf:
+                            msg += _ctx_htf
                         if _conf_sell:
                             msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                         if self.db:
                             try:
                                 self._guardar_senal({
                                     'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                                    'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                                    'direccion': 'VENTA', 'precio_entrada': sell_entry,
                                     'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                     'score': score_sell,
                                     'indicadores': json.dumps(_condiciones_bd),
@@ -1045,22 +1125,24 @@ class GoldDetector4H(BaseDetector):
                         msg = (f"{nivel} — <b>ORO (XAUUSD) 🔒 SWING</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
-                               f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 2)}\n"
+                               f"📌 <b>BUY LIMIT:</b> ${buy_entry}  (spread ${spread:.2f} incluido)\n"
                                f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                               f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                               f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                               f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_entry, sl_compra, tp1_c)}:1\n"
+                               f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
+                               f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
+                        if _ctx_htf:
+                            msg += _ctx_htf
                         if _conf_buy:
                             msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                         if self.db:
                             try:
                                 self._guardar_senal({
                                     'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                                    'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                                    'direccion': 'COMPRA', 'precio_entrada': buy_entry,
                                     'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                     'score': score_buy,
                                     'indicadores': json.dumps(_condiciones_bd),
@@ -1075,7 +1157,7 @@ class GoldDetector4H(BaseDetector):
         if cancelar_sell and not self.ya_enviada(f"{clave_vela}_CANCEL_SELL"):
             msg = (f"❌ <b>CANCELAR SELL LIMIT — ORO (XAUUSD) 4H</b> ❌\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📌 <b>Orden prevista:</b> SELL LIMIT ${sell_limit:.2f}\n"
+                   f"📌 <b>Orden prevista:</b> SELL LIMIT ${sell_entry:.2f}  (spread incluido)\n"
                    f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
                    f"⚠️ <b>Motivo:</b> Precio rompió la resistencia (${zrh:.2f}) hacia arriba\n"
                    f"🚫 La entrada ya no es válida — cancela la orden limit\n"
@@ -1092,7 +1174,7 @@ class GoldDetector4H(BaseDetector):
         if cancelar_buy and not self.ya_enviada(f"{clave_vela}_CANCEL_BUY"):
             msg = (f"❌ <b>CANCELAR BUY LIMIT — ORO (XAUUSD) 4H</b> ❌\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📌 <b>Orden prevista:</b> BUY LIMIT ${buy_limit:.2f}\n"
+                   f"📌 <b>Orden prevista:</b> BUY LIMIT ${buy_entry:.2f}  (spread incluido)\n"
                    f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
                    f"⚠️ <b>Motivo:</b> Precio perforó el soporte (${zsl:.2f}) hacia abajo\n"
                    f"🚫 La entrada ya no es válida — cancela la orden limit\n"

@@ -63,10 +63,9 @@ SIMBOLOS = {
         'atr_tp2_mult':       2.5,    # TP2: 2.5× ATR
         'atr_tp3_mult':       4.0,    # TP3: 4.0× ATR (objetivo ambicioso)
         'vol_mult':           1.2,
+        'spread':             0.35,         # Spread típico broker CFD (XAUUSD)
     }
-}
-
-alertas_enviadas = {}
+} = {}
 ultimo_analisis  = {}
 # Estado previo de pullback por símbolo — permite edge-trigger (solo dispara al
 # activarse, no mientras persiste). Se resetea al resolverse el pullback.
@@ -277,24 +276,29 @@ class GoldDetector1H(BaseDetector):
                all(l <= float(sub_sl['Low'].iloc[i+j]) for j in range(1, swing_wing+1)):
                 swing_l_vals.append(l)
 
+        # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
+        spread = params.get('spread', 0.35)
+        sell_entry = round(sell_limit - spread, 2)
+        buy_entry  = round(buy_limit  + spread, 2)
+
         # Para SELL: SL en último swing HIGH por encima de la entrada + 0.3×ATR buffer
         # Cap: si el swing está muy lejos, usar el techo de zona + buffer (invalidación natural)
         sl_zona_sell = round(zrh + atr * 0.5, 2)
-        sl_swing_sell_candidates = [v for v in swing_h_vals if v > sell_limit]
+        sl_swing_sell_candidates = [v for v in swing_h_vals if v > sell_entry]
         if sl_swing_sell_candidates:
             sl_venta = round(min(sl_swing_sell_candidates) + atr * 0.3, 2)
         else:
-            sl_venta = round(sell_limit + atr * asm, 2)  # fallback ATR
+            sl_venta = round(sell_entry + atr * asm, 2)  # fallback ATR
         sl_venta = min(sl_venta, sl_zona_sell)  # nunca más lejos que la zona rota
 
         # Para BUY: SL en último swing LOW por debajo de la entrada - 0.3×ATR buffer
         # Cap: si el swing está muy lejos, usar el suelo de zona + buffer (invalidación natural)
         sl_zona_buy = round(zsl - atr * 0.5, 2)
-        sl_swing_buy_candidates = [v for v in swing_l_vals if v < buy_limit]
+        sl_swing_buy_candidates = [v for v in swing_l_vals if v < buy_entry]
         if sl_swing_buy_candidates:
             sl_compra = round(max(sl_swing_buy_candidates) - atr * 0.3, 2)
         else:
-            sl_compra = round(buy_limit - atr * asm, 2)   # fallback ATR
+            sl_compra = round(buy_entry - atr * asm, 2)   # fallback ATR
         sl_compra = max(sl_compra, sl_zona_buy)  # nunca más lejos que la zona rota
 
         # ── TPs en zonas S/R reales (con fallback a ATR si no hay suficientes niveles) ──
@@ -365,22 +369,22 @@ class GoldDetector1H(BaseDetector):
             )   # menor primero = más cercano a tp_anterior = precio lo toca primero subiendo
             return round(blockers[0], 2) if blockers else round(tp_objetivo, 2)
 
-        tp1_v = _tp1_viable_sell(soportes_sr, sell_limit, sl_venta, 1.2,
-                                 sell_limit - atr * params['atr_tp1_mult'])
+        tp1_v = _tp1_viable_sell(soportes_sr, sell_entry, sl_venta, 1.2,
+                                 sell_entry - atr * params['atr_tp1_mult'])
         tp2_v = _recortar_tp_venta(
-                    _tp_desde_sr(soportes_sr, 2, sell_limit - atr * params['atr_tp2_mult']),
+                    _tp_desde_sr(soportes_sr, 2, sell_entry - atr * params['atr_tp2_mult']),
                     tp1_v, soportes_sr, atr)
         tp3_v = _recortar_tp_venta(
-                    _tp_desde_sr(soportes_sr, 3, sell_limit - atr * params['atr_tp3_mult']),
+                    _tp_desde_sr(soportes_sr, 3, sell_entry - atr * params['atr_tp3_mult']),
                     tp2_v, soportes_sr, atr)
-        tp1_c = _tp1_viable_buy(resistencias_sr, buy_limit, sl_compra, 1.2,
-                                buy_limit + atr * params['atr_tp1_mult'])
-        _resis_sobre = sorted([v for v in resistencias_sr if v > buy_limit])
+        tp1_c = _tp1_viable_buy(resistencias_sr, buy_entry, sl_compra, 1.2,
+                                buy_entry + atr * params['atr_tp1_mult'])
+        _resis_sobre = sorted([v for v in resistencias_sr if v > buy_entry])
         tp2_c = _recortar_tp_compra(
-                    _tp_desde_sr(_resis_sobre, 2, buy_limit + atr * params['atr_tp2_mult']),
+                    _tp_desde_sr(_resis_sobre, 2, buy_entry + atr * params['atr_tp2_mult']),
                     tp1_c, resistencias_sr, atr)
         tp3_c = _recortar_tp_compra(
-                    _tp_desde_sr(_resis_sobre, 3, buy_limit + atr * params['atr_tp3_mult']),
+                    _tp_desde_sr(_resis_sobre, 3, buy_entry + atr * params['atr_tp3_mult']),
                     tp2_c, resistencias_sr, atr)
 
         avg_candle_range    = df['total_range'].iloc[-6:-1].mean()
@@ -395,6 +399,20 @@ class GoldDetector1H(BaseDetector):
         en_zona_soporte_any = en_zona_soporte or _en_sop_sr_1h
         cancelar_sell       = close > zrh * (1 + cd / 100)
         cancelar_buy        = close < zsl * (1 - cd / 100)
+        # Bloquear si ya hay señal ACTIVA en la MISMA dirección (no duplicar orden)
+        if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db, 'VENTA'):
+            cancelar_sell = True
+            logger.info(f"  🚫 [1H] cancelar_sell=True: VENTA ya activa en BD para {simbolo_db}")
+        if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db, 'COMPRA'):
+            cancelar_buy = True
+            logger.info(f"  🚫 [1H] cancelar_buy=True: COMPRA ya activa en BD para {simbolo_db}")
+        # Bloquear si hay señal ACTIVA en dirección contraria
+        if self.db and self.db.existe_senal_activa_opuesta(simbolo_db, 'VENTA'):
+            cancelar_buy = True
+            logger.info(f"  🚫 [1H] cancelar_buy=True: VENTA activa en BD para {simbolo_db}")
+        if self.db and self.db.existe_senal_activa_opuesta(simbolo_db, 'COMPRA'):
+            cancelar_sell = True
+            logger.info(f"  🚫 [1H] cancelar_sell=True: COMPRA activa en BD para {simbolo_db}")
 
         # ── Detección en vela VIVA: rebote de soporte / rechazo de resistencia ────
         # Permite alertas DURANTE la formación de la vela sin esperar al cierre.
@@ -1126,6 +1144,23 @@ class GoldDetector1H(BaseDetector):
             else:
                 _conf_buy = _desc
 
+        # ── BLOQUE CONTEXTO HTF (1D/1W/4H) para mensajes ─────────────────────
+        _ctx_htf = ""
+        try:
+            _htf_lineas_1h = []
+            for _tf_key, _label in [('1W', '1W'), ('1D', '1D'), ('4H', '4H')]:
+                _bd = tf_bias.obtener_sesgo(simbolo, _tf_key)
+                if _bd:
+                    _b   = _bd['bias']
+                    _ico = "📈" if _b == tf_bias.BIAS_BULLISH else "📉" if _b == tf_bias.BIAS_BEARISH else "➖"
+                    _htf_lineas_1h.append(f"  {_ico} <b>{_label}:</b> {_b}")
+                else:
+                    _htf_lineas_1h.append(f"  ⏳ <b>{_tf_key}:</b> sin datos")
+            _ctx_htf = "\n━━━━━━━━━━━━━━━━━━━━\n📊 <b>Contexto HTF:</b>\n" + "\n".join(_htf_lineas_1h)
+        except Exception as _ctx_e:
+            logger.debug(f"  [1H] Error _ctx_htf: {_ctx_e}")
+        # ─────────────────────────────────────────────────────────────────────
+
         # ── ALERTA INMEDIATA: rebote/rechazo en vela VIVA ────────────────────────
         # Se dispara mientras la vela está formándose — no espera al cierre.
         # El precio YA tocó la zona y está rebotando/rechazando: entry = market price ahora.
@@ -1254,12 +1289,12 @@ class GoldDetector1H(BaseDetector):
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv}\n"
                    f"💰 <b>Precio actual:</b> ${close:.2f}\n"
-                   f"📌 <b>SELL LIMIT previsto:</b> ${sell_limit:.2f}\n"
+                   f"📌 <b>SELL LIMIT previsto:</b> ${sell_entry:.2f}  (spread ${spread:.2f} incluido)\n"
                    f"🛑 <b>Stop Loss:</b> ${sl_venta:.2f}  ← swing high estructural\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1  (zona S/R)\n"
-                   f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1  (zona S/R)\n"
-                   f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1  (zona S/R)\n"
+                   f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_entry, sl_venta, tp1_v)}:1  (zona S/R)\n"
+                   f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1  (zona S/R)\n"
+                   f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1  (zona S/R)\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    + (f"🔻 <b>Canal alcista ROTO</b> — nivel canal ${linea_soporte_canal:.2f}\n" if canal_alcista_roto else "")
                    + f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
@@ -1275,7 +1310,7 @@ class GoldDetector1H(BaseDetector):
                     try:
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                            'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                            'direccion': 'VENTA', 'precio_entrada': sell_entry,
                             'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                             'score': score_sell,
                             'indicadores': json.dumps(_condiciones_bd),
@@ -1285,6 +1320,8 @@ class GoldDetector1H(BaseDetector):
                         })
                     except Exception as e:
                         logger.error(f"  ⚠️ Error BD: {e}")
+                if _ctx_htf:
+                    msg += _ctx_htf
                 self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_SELL")
 
         if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not cancelar_buy_rr and _prep_buy_alerta and not self.ya_enviada(f"{clave_vela}_PREP_BUY"):
@@ -1296,12 +1333,12 @@ class GoldDetector1H(BaseDetector):
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv}\n"
                    f"💰 <b>Precio actual:</b> ${close:.2f}\n"
-                   f"📌 <b>BUY LIMIT previsto:</b> ${buy_limit:.2f}\n"
+                   f"📌 <b>BUY LIMIT previsto:</b> ${buy_entry:.2f}  (spread ${spread:.2f} incluido)\n"
                    f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  ← swing low estructural\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1  (zona S/R)\n"
-                   f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1  (zona S/R)\n"
-                   f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1  (zona S/R)\n"
+                   f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_entry, sl_compra, tp1_c)}:1  (zona S/R)\n"
+                   f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1  (zona S/R)\n"
+                   f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1  (zona S/R)\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    + (f"🔺 <b>Canal bajista ROTO</b> — nivel canal ${linea_resist_canal:.2f}\n" if canal_bajista_roto else "")
                    + f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
@@ -1317,7 +1354,7 @@ class GoldDetector1H(BaseDetector):
                     try:
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                            'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                            'direccion': 'COMPRA', 'precio_entrada': buy_entry,
                             'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                             'score': score_buy,
                             'indicadores': json.dumps(_condiciones_bd),
@@ -1327,6 +1364,8 @@ class GoldDetector1H(BaseDetector):
                         })
                     except Exception as e:
                         logger.error(f"  ⚠️ Error BD: {e}")
+                if _ctx_htf:
+                    msg += _ctx_htf
                 self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
 
         # ── SEÑALES SELL (en zona) — requiere mínimo MEDIA para enviar Telegram ──
@@ -1363,12 +1402,12 @@ class GoldDetector1H(BaseDetector):
                         msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>     ${close:.2f}\n"
-                               f"📌 <b>SELL LIMIT:</b> ${sell_limit:.2f}\n"
-                               f"🛑 <b>Stop Loss:</b>  ${sl_venta:.2f}  (-${round(sl_venta - sell_limit, 2)})\n"
+                               f"📌 <b>SELL LIMIT:</b> ${sell_entry:.2f}  (spread ${spread:.2f} incluido)\n"
+                               f"🛑 <b>Stop Loss:</b>  ${sl_venta:.2f}  (-${round(sl_venta - sell_entry, 2)})\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                               f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                               f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                               f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_entry, sl_venta, tp1_v)}:1\n"
+                               f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
+                               f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"📐 <b>ATR:</b> ${atr:.2f}\n"
@@ -1376,11 +1415,13 @@ class GoldDetector1H(BaseDetector):
                                f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
                         if _conf_sell:
                             msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
+                        if _ctx_htf:
+                            msg += _ctx_htf
                         if self.db:
                             try:
                                 self._guardar_senal({
                                     'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                                    'direccion': 'VENTA', 'precio_entrada': sell_limit,
+                                    'direccion': 'VENTA', 'precio_entrada': sell_entry,
                                     'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                     'score': score_sell,
                                     'indicadores': json.dumps(_condiciones_bd),
@@ -1427,12 +1468,12 @@ class GoldDetector1H(BaseDetector):
                         msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>    ${close:.2f}\n"
-                               f"📌 <b>BUY LIMIT:</b> ${buy_limit:.2f}\n"
-                               f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(buy_limit - sl_compra, 2)})\n"
+                               f"📌 <b>BUY LIMIT:</b> ${buy_entry:.2f}  (spread ${spread:.2f} incluido)\n"
+                               f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(buy_entry - sl_compra, 2)})\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                               f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                               f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                               f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_entry, sl_compra, tp1_c)}:1\n"
+                               f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
+                               f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"📐 <b>ATR:</b> ${atr:.2f}\n"
@@ -1440,11 +1481,13 @@ class GoldDetector1H(BaseDetector):
                                f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
                         if _conf_buy:
                             msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                        if _ctx_htf:
+                            msg += _ctx_htf
                         if self.db:
                             try:
                                 self._guardar_senal({
                                     'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                                    'direccion': 'COMPRA', 'precio_entrada': buy_limit,
+                                    'direccion': 'COMPRA', 'precio_entrada': buy_entry,
                                     'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                     'score': score_buy,
                                     'indicadores': json.dumps(_condiciones_bd),

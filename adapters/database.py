@@ -476,6 +476,24 @@ class DatabaseManager:
             return True
         return False
 
+    def existe_senal_activa_misma_dir(self, simbolo: str, direccion: str) -> bool:
+        """
+        Verifica si ya existe una señal ACTIVA o PENDIENTE_CONFIRM en la MISMA dirección.
+        Bloquea nuevas órdenes LIMIT cuando ya hay una posición abierta en ese sentido.
+        """
+        query = """
+        SELECT COUNT(*) as count
+        FROM senales
+        WHERE simbolo = ?
+        AND direccion = ?
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
+        """
+        result = self.ejecutar_query(query, (simbolo, direccion))
+        if result.rows and int(result.rows[0]['count']) > 0:
+            logger.warning(f"🚫 Nueva señal {direccion} bloqueada: ya existe {direccion} ACTIVA en {simbolo}")
+            return True
+        return False
+
     def existe_senal_cerrada_reciente(self, simbolo: str, direccion: str, horas: int = 24) -> dict | None:
         """
         Busca la señal cerrada (SL o TP) más reciente en la misma dirección y símbolo.
