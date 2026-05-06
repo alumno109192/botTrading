@@ -253,7 +253,7 @@ class DatabaseManager:
         for col, tipo in [('telegram_thread_id', 'INTEGER'), ('telegram_message_id', 'INTEGER')]:
             try:
                 self.ejecutar_query(f"ALTER TABLE senales ADD COLUMN {col} {tipo}")
-                logger.info(f"✅ Migración: columna {col} añadida a senales")
+                logger.debug(f"  Migración: columna {col} añadida a senales")
             except Exception as e:
                 if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
                     logger.debug(f"  {col} ya existía en senales")
@@ -268,7 +268,7 @@ class DatabaseManager:
         """
         try:
             self.ejecutar_query("ALTER TABLE senales ADD COLUMN nivel TEXT")
-            logger.info("✅ Migración: columna nivel añadida a senales")
+            logger.debug("  Migración: columna nivel añadida a senales")
         except Exception as e:
             if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
                 logger.debug("  nivel ya existía en senales")
@@ -286,7 +286,7 @@ class DatabaseManager:
         """
         try:
             self.ejecutar_query("ALTER TABLE senales ADD COLUMN ciclo_vida TEXT")
-            logger.info("✅ Migración: columna ciclo_vida añadida a senales")
+            logger.debug("  Migración: columna ciclo_vida añadida a senales")
         except Exception as e:
             if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
                 logger.debug("  ciclo_vida ya existía en senales")
@@ -318,7 +318,7 @@ class DatabaseManager:
         for col, tipo in columnas_nuevas:
             try:
                 self.ejecutar_query(f"ALTER TABLE senales ADD COLUMN {col} {tipo}")
-                logger.info(f"✅ Migración: columna {col} añadida a senales")
+                logger.debug(f"  Migración: columna {col} añadida a senales")
             except Exception as e:
                 if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
                     logger.debug(f"  {col} ya existía en senales")
@@ -346,7 +346,7 @@ class DatabaseManager:
                 END
                 WHERE asset IS NULL OR timeframe IS NULL
             """)
-            logger.info("✅ Migración: asset y timeframe poblados desde simbolo legacy")
+            logger.debug("  Migración: asset y timeframe poblados desde simbolo legacy")
         except Exception as e:
             logger.warning(f"⚠️ Error poblando asset/timeframe: {e}")
 
@@ -1602,6 +1602,7 @@ class DatabaseManager:
 
 
 _db_warning_printed = False
+_migrations_run = False
 
 
 def get_db() -> Optional[DatabaseManager]:
@@ -1623,17 +1624,20 @@ def get_db() -> Optional[DatabaseManager]:
             _db_warning_printed = True
         return None
     
+    global _migrations_run
     db = DatabaseManager()
-    
-    # Ejecutar migraciones automáticamente (son idempotentes)
-    try:
-        db.migrate_add_telegram_thread_id()
-        db.migrate_add_timestamp_and_split_symbol()
-        db.migrate_add_nivel()
-        db.migrate_add_ciclo_vida()
-    except Exception as e:
-        logger.warning(f"⚠️ Error ejecutando migraciones: {e}")
-    
+
+    # Ejecutar migraciones solo una vez por proceso (son idempotentes)
+    if not _migrations_run:
+        _migrations_run = True
+        try:
+            db.migrate_add_telegram_thread_id()
+            db.migrate_add_timestamp_and_split_symbol()
+            db.migrate_add_nivel()
+            db.migrate_add_ciclo_vida()
+        except Exception as e:
+            logger.warning(f"⚠️ Error ejecutando migraciones: {e}")
+
     return db
 
 
