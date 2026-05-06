@@ -251,6 +251,16 @@ class GoldDetector15M(BaseDetector):
                 if _rsi_sub_3: score_buy += 1    # RSI subiendo 3 velas consecutivas
             elif rsi <= 40:
                 score_buy += 1
+
+            # 2.5. RSI momentum en tendencia fuerte (RSI sostenido ≠ sobrecompra)
+            # En ADX alto el RSI se mantiene elevado en tendencia — es señal, no freno
+            if adx > 40:
+                if 50 <= rsi <= 68 and ema_fast.iloc[-1] > ema_slow.iloc[-1]:
+                    score_buy += 1
+                    logger.info(f"  📈 [15M] RSI trending BUY ({rsi:.1f}) + ADX {adx:.1f} — +1 BUY")
+                elif 32 <= rsi <= 50 and ema_fast.iloc[-1] < ema_slow.iloc[-1]:
+                    score_sell += 1
+                    logger.info(f"  📉 [15M] RSI trending SELL ({rsi:.1f}) + ADX {adx:.1f} — +1 SELL")
         
             # 3. EMAs (cruce rápido = señal)
             if ema_fast.iloc[-1] < ema_slow.iloc[-1]:
@@ -275,12 +285,22 @@ class GoldDetector15M(BaseDetector):
             if en_zona_soporte or aproximando_soporte:
                 score_buy += 2
         
-            # 6. ADX (fuerza de tendencia)
-            if adx > 25:  # Tendencia fuerte
+            # 6. ADX (fuerza de tendencia — escalado por intensidad)
+            if adx > 55:
+                _adx_bonus = 3
+            elif adx > 40:
+                _adx_bonus = 2
+            elif adx > 25:
+                _adx_bonus = 1
+            else:
+                _adx_bonus = 0
+            if _adx_bonus > 0:
                 if score_sell > score_buy:
-                    score_sell += 1
+                    score_sell += _adx_bonus
+                    logger.info(f"  📌 [15M] ADX {adx:.1f} → +{_adx_bonus} SELL")
                 else:
-                    score_buy += 1
+                    score_buy += _adx_bonus
+                    logger.info(f"  📌 [15M] ADX {adx:.1f} → +{_adx_bonus} BUY")
         
             # 7. Volumen (confirma movimiento)
             vol_medio = df['Volume'].iloc[-20:].mean()
@@ -547,7 +567,7 @@ class GoldDetector15M(BaseDetector):
             # Cancelaciones (más estrictas en scalping)
             simbolo_db_15m = f"{simbolo}_15M"
             cancelar_sell = (close < zsh) or (rsi < 30)
-            cancelar_buy  = (close > zrh) or (rsi > 70)
+            cancelar_buy  = (close > zrh) or (rsi > (75 if adx > 45 else 70))
             # Bloquear si ya hay señal ACTIVA en la MISMA dirección
             if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db_15m, 'VENTA'):
                 cancelar_sell = True
