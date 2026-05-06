@@ -763,8 +763,159 @@ def _verificar_reversal_post_tp1(senal: dict, _reversal_tp1_avisado: set) -> Non
         logger.debug(f"  [reversal_tp1] Error analizando {simbolo}: {e}")
 
 
+def _verificar_reversal_post_tp2(senal: dict, _reversal_tp2_avisado: set) -> None:
+    """
+    Detecta señales de reversión cuando el trade está entre TP2 y TP3.
 
-def _confirmar_con_velas_1m(ticker: str, direccion: str, precio_entrada: float) -> tuple:
+    Se activa ÚNICAMENTE cuando:
+      - tp2_alcanzado = True  (SL ya debería estar en TP1)
+      - tp3_alcanzado = False (trade sigue esperando TP3)
+
+    Condiciones de reversión (se necesitan al menos 2 de 3):
+      1. Precio retrocedió ≥ 0.4×ATR desde el máximo reciente de las últimas 8 velas (COMPRA)
+         o recuperó ≥ 0.4×ATR desde el mínimo reciente (VENTA)
+      2. ≥ 2 velas bajistas/alcistas en las últimas 4
+      3. RSI > 65 y bajando (COMPRA) — o RSI < 35 y subiendo (VENTA)
+
+    Avisa solo UNA VEZ por señal via _reversal_tp2_avisado.
+    """
+    from core.indicators import calcular_atr
+
+    senal_id  = senal['id']
+    simbolo   = senal['simbolo']
+    direccion = senal['direccion']
+
+    tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
+    tp3_alcanzado = bool(int(senal.get('tp3_alcanzado') or 0))
+
+    # Solo actuar entre TP2 y TP3
+    if not tp2_alcanzado or tp3_alcanzado:
+        return
+
+    # Avisar solo una vez por señal
+    if senal_id in _reversal_tp2_avisado:
+        return
+
+    simbolo_base = simbolo.split('_')[0]
+    ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
+    if not ticker:
+        return
+
+    sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
+    if sufijo == '5M':
+        interval, period = '5m', '1d'
+    elif sufijo == '15M':
+        interval, period = '15m', '2d'
+    elif sufijo == '1H':
+        interval, period = '1h', '5d'
+    else:  # 4H, 1D
+        interval, period = '4h', '30d'
+
+    try:
+        df, _ = _get_ohlcv(ticker, period=period, interval=interval)
+        if df is None or len(df) < 15:
+            return
+
+        close = df['Close']
+        high  = df['High']
+        low   = df['Low']
+
+        atr = float(calcular_atr(df, 14).iloc[-1])
+        if atr <= 0:
+            return
+
+        precio_entrada = float(senal['precio_entrada'])
+        tp1 = float(senal['tp1'])
+        tp3 = float(senal['tp3'])
+        precio_actual  = float(close.iloc[-1])
+
+        # RSI 14
+        delta = close.diff()
+        gain  = delta.clip(lower=0).rolling(14).mean()
+        loss  = (-delta.clip(upper=0)).rolling(14).mean()
+        rs    = gain / loss.replace(0, float('inf'))
+        rsi_series   = 100 - (100 / (1 + rs))
+        rsi_actual   = float(rsi_series.iloc[-1])
+        rsi_anterior = float(rsi_series.iloc[-2])
+
+        senales_reversal = []
+
+        if direccion == 'COMPRA':
+            # 1. Retroceso desde máximo reciente
+            max_reciente = float(high.tail(8).max())
+            retroceso = max_reciente - precio_actual
+            if retroceso >= 0.4 * atr:
+                senales_reversal.append(
+                    f"Retrocedió {retroceso:.1f} pts desde máx reciente ${max_reciente:.2f} ({retroceso/atr:.1f}×ATR)"
+                )
+            # 2. Velas bajistas en las últimas 4
+            ultimas_4 = df.tail(4)
+            bajistas = sum(1 for _, r in ultimas_4.iterrows() if r['Close'] < r['Open'])
+            if bajistas >= 2:
+                senales_reversal.append(f"{bajistas} velas bajistas en las últimas 4 velas")
+            # 3. RSI sobrecomprado y bajando
+            if rsi_actual > 65 and rsi_actual < rsi_anterior:
+                senales_reversal.append(
+                    f"RSI sobrecomprado y bajando ({rsi_anterior:.0f}→{rsi_actual:.0f})"
+                )
+
+        else:  # VENTA
+            # 1. Recuperación desde mínimo reciente
+            min_reciente = float(low.tail(8).min())
+            recuperacion = precio_actual - min_reciente
+            if recuperacion >= 0.4 * atr:
+                senales_reversal.append(
+                    f"Recuperó {recuperacion:.1f} pts desde mín reciente ${min_reciente:.2f} ({recuperacion/atr:.1f}×ATR)"
+                )
+            # 2. Velas alcistas en las últimas 4
+            ultimas_4 = df.tail(4)
+            alcistas = sum(1 for _, r in ultimas_4.iterrows() if r['Close'] > r['Open'])
+            if alcistas >= 2:
+                senales_reversal.append(f"{alcistas} velas alcistas en las últimas 4 velas")
+            # 3. RSI sobrevendido y subiendo
+            if rsi_actual < 35 and rsi_actual > rsi_anterior:
+                senales_reversal.append(
+                    f"RSI sobrevendido y subiendo ({rsi_anterior:.0f}→{rsi_actual:.0f})"
+                )
+
+        # Necesitamos al menos 2 señales para evitar falsos positivos
+        if len(senales_reversal) < 2:
+            return
+
+        beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, direccion)
+        icono = '🟢' if direccion == 'COMPRA' else '🔴'
+        reply_msg_id = senal.get('telegram_message_id')
+
+        iconos_senal = ['📉', '🕯️', '📊']
+        msg = (
+            f"⚠️ <b>REVERSIÓN DETECTADA — TP3 en riesgo</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{icono} {simbolo} | {direccion}\n"
+            f"💰 Entrada: ${precio_entrada:.2f}\n"
+            f"📍 Actual:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔍 <b>Señales de reversión ({len(senales_reversal)}/3):</b>\n"
+            + "\n".join(f"  • {iconos_senal[i]} {s}" for i, s in enumerate(senales_reversal)) + "\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔒 SL sugerido en TP1 ${tp1:.2f}\n"
+            f"💡 Considera cerrar el resto en <b>${precio_actual:.2f}</b>\n"
+            f"   antes de que el precio retroceda a TP1\n"
+            f"🎯 TP3: ${tp3:.2f}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔖 <code>#{senal_id}</code>"
+        )
+        enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
+        _reversal_tp2_avisado.add(senal_id)
+        logger.info(
+            f"  ⚠️ [{simbolo}] REVERSIÓN post-TP2 señal #{senal_id} ({direccion}): "
+            + " | ".join(senales_reversal)
+        )
+
+    except Exception as e:
+        logger.debug(f"  [reversal_tp2] Error analizando {simbolo}: {e}")
+
+
+(ticker: str, direccion: str, precio_entrada: float) -> tuple:
     """
     Analiza las últimas velas de 1M para verificar que el momentum actual
     confirma la dirección de la señal 1H.
@@ -1017,6 +1168,8 @@ def monitor_senales():
     _trampa_avisada: set = set()
     # Set de IDs de señales para las que ya se envió la alerta de reversión post-TP1
     _reversal_tp1_avisado: set = set()
+    # Set de IDs de señales para las que ya se envió la alerta de reversión post-TP2
+    _reversal_tp2_avisado: set = set()
     # Último tick en que se verificó la trampa por señal (evita llamadas API excesivas)
     _ultimo_check_trampa: dict = {}
     # Set de IDs de señales cuya orden LIMIT ya fue ejecutada (precio tocó la entrada)
@@ -1290,6 +1443,7 @@ def monitor_senales():
                             ciclo - _ultimo_trampa >= _intervalo_trampa):
                         _verificar_trampa_patron(senal, db, _trampa_avisada)
                         _verificar_reversal_post_tp1(senal, _reversal_tp1_avisado)
+                        _verificar_reversal_post_tp2(senal, _reversal_tp2_avisado)
                         _ultimo_check_trampa[senal_id] = ciclo
 
             # Limpiar del diccionario señales que ya no están activas
@@ -1300,6 +1454,7 @@ def monitor_senales():
             _progreso_50_enviado.intersection_update(ids_activos)
             _trampa_avisada.intersection_update(ids_activos)
             _reversal_tp1_avisado.intersection_update(ids_activos)
+            _reversal_tp2_avisado.intersection_update(ids_activos)
             _ordenes_ejecutadas.intersection_update(ids_activos)
             for sid in list(_ultimo_check_trampa):
                 if sid not in ids_activos:
