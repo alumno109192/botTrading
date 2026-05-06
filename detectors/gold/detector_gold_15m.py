@@ -690,6 +690,20 @@ class GoldDetector15M(BaseDetector):
                 else:
                     _conf_buy = _desc
 
+            # ── Filtro de umbral elevado contra-tendencia 4H ─────────────────────────
+            # Si la señal va CONTRA el sesgo del 4H, exigir score mínimo 13 (en lugar de 8)
+            # para que solo señales muy claras (Stop Hunt + patrón + RSI extremo) pasen.
+            _SCORE_CONTRA_4H = 13
+            _bias_4h = tf_bias.obtener_sesgo(simbolo, '4H')
+            if _bias_4h:
+                _b4h = _bias_4h['bias']
+                if senal_sell_fuerte and _b4h == tf_bias.BIAS_BULLISH and score_sell < _SCORE_CONTRA_4H:
+                    logger.info(f"  🚫 SELL contra 4H BULLISH bloqueada: score {score_sell} < {_SCORE_CONTRA_4H} (contra-tendencia)")
+                    senal_sell_fuerte = False
+                if senal_buy_fuerte and _b4h == tf_bias.BIAS_BEARISH and score_buy < _SCORE_CONTRA_4H:
+                    logger.info(f"  🚫 BUY contra 4H BEARISH bloqueada: score {score_buy} < {_SCORE_CONTRA_4H} (contra-tendencia)")
+                    senal_buy_fuerte = False
+
             # ── MODO CAZA: activar si hay zona activa del 1H ───────────────────────────
             # El detector 1H publicó una zona activa (score≥5). Si el precio
             # entra en esa zona y score_15M≥4, disparar señal con umbral reducido.
