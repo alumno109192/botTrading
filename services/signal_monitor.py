@@ -277,9 +277,12 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
             enviar_notificacion_telegram(msg_50, simbolo, reply_to_message_id=reply_msg_id)
             progreso_50_enviado.add(senal_id)
             logger.info(f"  ⚡ [50%] {simbolo} COMPRA — notificación de progreso enviada")
+            return  # no verificar SL en el mismo ciclo
 
-    # Verificar SL / Breakeven — usa Low reciente
-    if precio_min <= sl and not sl_alcanzado:
+    # Verificar SL / Breakeven
+    # Usa precio_actual (Close) en lugar de precio_min (Low) para evitar falsas
+    # activaciones por mechas temporales que ya se han recuperado.
+    if precio_actual <= sl and not sl_alcanzado:
         if tp1_alcanzado:
             # TP1 ya se tocó → SL fue movido a breakeven automáticamente → cierre en 0
             db.actualizar_estado_senal(senal_id, 'BREAKEVEN', 0.0)
@@ -443,9 +446,12 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
             enviar_notificacion_telegram(msg_50, simbolo, reply_to_message_id=reply_msg_id)
             progreso_50_enviado.add(senal_id)
             logger.info(f"  ⚡ [50%] {simbolo} VENTA — notificación de progreso enviada")
+            return  # no verificar SL en el mismo ciclo
 
-    # Verificar SL / Breakeven — usa High reciente
-    if precio_max >= sl and not sl_alcanzado:
+    # Verificar SL / Breakeven
+    # Usa precio_actual (Close) en lugar de precio_max (High) para evitar falsas
+    # activaciones por mechas temporales que ya se han recuperado.
+    if precio_actual >= sl and not sl_alcanzado:
         if tp1_alcanzado:
             # TP1 ya se tocó → SL fue movido a breakeven automáticamente → cierre en 0
             db.actualizar_estado_senal(senal_id, 'BREAKEVEN', 0.0)
@@ -861,6 +867,8 @@ def monitor_senales():
     _trampa_avisada: set = set()
     # Último tick en que se verificó la trampa por señal (evita llamadas API excesivas)
     _ultimo_check_trampa: dict = {}
+    # Set de IDs de señales cuya orden LIMIT ya fue ejecutada (precio tocó la entrada)
+    _ordenes_ejecutadas: set = set()
     ciclo = 0
     # ISO week numbers de la última apertura/cierre notificados (evita mensajes duplicados)
     _semana_apertura_enviada: int = -1
@@ -1100,8 +1108,27 @@ def monitor_senales():
                         pass
 
                     if direccion == 'COMPRA':
+                        # ── Verificar que la orden LIMIT fue ejecutada ──
+                        # BUY LIMIT: el precio tiene que haber bajado hasta la entrada.
+                        # Si el precio nunca toca el nivel de entrada, la orden no fue llenada.
+                        if senal_id not in _ordenes_ejecutadas:
+                            if precio_min <= precio_entrada:
+                                _ordenes_ejecutadas.add(senal_id)
+                                logger.info(f"  ✅ [#{senal_id}] Orden BUY LIMIT ejecutada — precio tocó ${precio_entrada:.2f}")
+                            else:
+                                logger.info(f"  ⏳ [#{senal_id}] Orden BUY LIMIT pendiente — esperando precio ≤ ${precio_entrada:.2f} (actual ${precio_actual:.2f})")
+                                continue
                         verificar_niveles_compra(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
                     else:
+                        # ── Verificar que la orden SELL LIMIT fue ejecutada ──
+                        # SELL LIMIT: el precio tiene que haber subido hasta la entrada.
+                        if senal_id not in _ordenes_ejecutadas:
+                            if precio_max >= precio_entrada:
+                                _ordenes_ejecutadas.add(senal_id)
+                                logger.info(f"  ✅ [#{senal_id}] Orden SELL LIMIT ejecutada — precio tocó ${precio_entrada:.2f}")
+                            else:
+                                logger.info(f"  ⏳ [#{senal_id}] Orden SELL LIMIT pendiente — esperando precio ≥ ${precio_entrada:.2f} (actual ${precio_actual:.2f})")
+                                continue
                         verificar_niveles_venta(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
 
                     # ── Verificar trampa de patrón (cada 10 ticks ≈ 5 min, sin TP1) ──
@@ -1119,6 +1146,7 @@ def monitor_senales():
                     del ultimo_check[sid]
             _progreso_50_enviado.intersection_update(ids_activos)
             _trampa_avisada.intersection_update(ids_activos)
+            _ordenes_ejecutadas.intersection_update(ids_activos)
             for sid in list(_ultimo_check_trampa):
                 if sid not in ids_activos:
                     del _ultimo_check_trampa[sid]
