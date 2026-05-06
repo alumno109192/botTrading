@@ -275,6 +275,39 @@ class DatabaseManager:
             else:
                 logger.warning(f"⚠️ migrate_add_nivel: {e}")
 
+    def migrate_add_ciclo_vida(self) -> None:
+        """Migración idempotente: añade columna ciclo_vida a senales.
+
+        ciclo_vida almacena el ciclo de vida simplificado de la señal:
+          PREPARADA  → detectada, enviada, aún sin activar en el broker
+          ACTIVA     → orden ejecutada en el mercado
+          CANCELADA  → tiempo expirado sin activación o zona invalidada
+          COMPLETA   → operación cerrada (TP o SL)
+        """
+        try:
+            self.ejecutar_query("ALTER TABLE senales ADD COLUMN ciclo_vida TEXT")
+            logger.info("✅ Migración: columna ciclo_vida añadida a senales")
+        except Exception as e:
+            if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+                logger.debug("  ciclo_vida ya existía en senales")
+            else:
+                logger.warning(f"⚠️ migrate_add_ciclo_vida: {e}")
+        # Poblar ciclo_vida para registros legacy (donde sea NULL)
+        try:
+            self.ejecutar_query("""
+                UPDATE senales SET ciclo_vida = CASE
+                    WHEN estado = 'PENDIENTE_CONFIRM'                   THEN 'PREPARADA'
+                    WHEN estado = 'ACTIVA'                              THEN 'ACTIVA'
+                    WHEN estado IN ('CANCELADA', 'CADUCADA', 'EXPIRADA') THEN 'CANCELADA'
+                    WHEN estado IN ('TP1', 'TP2', 'TP3', 'SL', 'BREAKEVEN') THEN 'COMPLETA'
+                    ELSE 'PREPARADA'
+                END
+                WHERE ciclo_vida IS NULL
+            """)
+            logger.info("✅ Migración: ciclo_vida poblado desde estado legacy")
+        except Exception as e:
+            logger.warning(f"⚠️ Error poblando ciclo_vida: {e}")
+
     def migrate_add_timestamp_and_split_symbol(self) -> None:
         """Migración idempotente: añade timestamp_entry, asset y timeframe a senales."""
         columnas_nuevas = [
@@ -349,6 +382,13 @@ class DatabaseManager:
                     asset = 'GOLD' if base == 'XAUUSD' else base
                 if not timeframe:
                     timeframe = tf
+
+        # Ciclo de vida simplificado
+        _ciclo_map = {
+            'PENDIENTE_CONFIRM': 'PREPARADA',
+            'ACTIVA': 'ACTIVA',
+        }
+        ciclo_vida = _ciclo_map.get(estado, 'PREPARADA')
         
         query = f"""
         INSERT INTO senales (
@@ -356,8 +396,8 @@ class DatabaseManager:
             tp1, tp2, tp3, sl, score,
             indicadores, patron_velas, version_detector,
             estado, telegram_thread_id, telegram_message_id,
-            timestamp_entry, asset, timeframe, nivel
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}', ?, ?, ?, ?, ?, ?)
+            timestamp_entry, asset, timeframe, nivel, ciclo_vida
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}', ?, ?, ?, ?, ?, ?, ?)
         """
         
         params = (
@@ -379,6 +419,7 @@ class DatabaseManager:
             asset,
             timeframe,
             senal_data.get('nivel'),             # ALERTA | MEDIA | FUERTE | MAXIMA
+            ciclo_vida,                          # PREPARADA | ACTIVA | CANCELADA | COMPLETA
         )
         
         senal_id = self.ejecutar_insert(query, params)
@@ -593,16 +634,16 @@ class DatabaseManager:
 
     def confirmar_senal_pendiente(self, senal_id: int) -> None:
         """Activa una señal que estaba esperando confirmación de TF inferior."""
-        query = "UPDATE senales SET estado = 'ACTIVA' WHERE id = ?"
+        query = "UPDATE senales SET estado = 'ACTIVA', ciclo_vida = 'ACTIVA' WHERE id = ?"
         self.ejecutar_query(query, (senal_id,))
-        logger.info(f"✅ Señal {senal_id} confirmada — estado → ACTIVA")
+        logger.info(f"✅ Señal {senal_id} confirmada — estado → ACTIVA | ciclo_vida → ACTIVA")
 
     def caducar_senal_pendiente(self, senal_id: int) -> None:
         """Caduca una señal PENDIENTE_CONFIRM que no recibió confirmación a tiempo."""
         now = datetime.now(timezone.utc).isoformat()
-        query = "UPDATE senales SET estado = 'CADUCADA', fecha_cierre = ? WHERE id = ?"
+        query = "UPDATE senales SET estado = 'CADUCADA', ciclo_vida = 'CANCELADA', fecha_cierre = ? WHERE id = ?"
         self.ejecutar_query(query, (now, senal_id))
-        logger.info(f"⏰ Señal {senal_id} caducada — sin confirmación 5M/15M en tiempo")
+        logger.info(f"⏰ Señal {senal_id} caducada — sin confirmación 5M/15M en tiempo | ciclo_vida → CANCELADA")
     
     def actualizar_precio_actual(self, senal_id: int, precio: float):
         """Actualiza el precio actual de una señal"""
@@ -637,7 +678,7 @@ class DatabaseManager:
             query = """
             UPDATE senales
             SET sl_alcanzado = TRUE, fecha_sl = ?,
-                estado = 'BREAKEVEN', fecha_cierre = ?, beneficio_final_pct = 0.0
+                estado = 'BREAKEVEN', ciclo_vida = 'COMPLETA', fecha_cierre = ?, beneficio_final_pct = 0.0
             WHERE id = ?
             """
             self.ejecutar_query(query, (now, now, senal_id))
@@ -654,7 +695,7 @@ class DatabaseManager:
             query = """
             UPDATE senales 
             SET tp3_alcanzado = TRUE, fecha_tp3 = ?, 
-                estado = ?, fecha_cierre = ?, beneficio_final_pct = ?
+                estado = ?, ciclo_vida = 'COMPLETA', fecha_cierre = ?, beneficio_final_pct = ?
             WHERE id = ?
             """
             self.ejecutar_query(query, (now, nuevo_estado, now, beneficio_pct, senal_id))
@@ -663,7 +704,7 @@ class DatabaseManager:
             query = """
             UPDATE senales 
             SET sl_alcanzado = TRUE, fecha_sl = ?, 
-                estado = ?, fecha_cierre = ?, beneficio_final_pct = ?
+                estado = ?, ciclo_vida = 'COMPLETA', fecha_cierre = ?, beneficio_final_pct = ?
             WHERE id = ?
             """
             self.ejecutar_query(query, (now, nuevo_estado, now, beneficio_pct, senal_id))
@@ -676,12 +717,12 @@ class DatabaseManager:
         
         query = """
         UPDATE senales
-        SET estado = ?, fecha_cierre = ?, beneficio_final_pct = ?
+        SET estado = ?, ciclo_vida = 'COMPLETA', fecha_cierre = ?, beneficio_final_pct = ?
         WHERE id = ?
         """
         
         self.ejecutar_query(query, (estado_final, now, beneficio_pct, senal_id))
-        logger.info(f"🔒 Señal {senal_id} cerrada con estado: {estado_final}")
+        logger.info(f"🔒 Señal {senal_id} cerrada con estado: {estado_final} | ciclo_vida → COMPLETA")
 
     def cancelar_senales_pendientes(self, simbolo: str, direccion: str) -> List[Dict]:
         """
@@ -712,7 +753,7 @@ class DatabaseManager:
             now = datetime.now(timezone.utc).isoformat()
             update_query = """
             UPDATE senales
-            SET estado = 'CANCELADA', fecha_cierre = ?
+            SET estado = 'CANCELADA', ciclo_vida = 'CANCELADA', fecha_cierre = ?
             WHERE simbolo = ?
               AND direccion = ?
               AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
@@ -1589,6 +1630,7 @@ def get_db() -> Optional[DatabaseManager]:
         db.migrate_add_telegram_thread_id()
         db.migrate_add_timestamp_and_split_symbol()
         db.migrate_add_nivel()
+        db.migrate_add_ciclo_vida()
     except Exception as e:
         logger.warning(f"⚠️ Error ejecutando migraciones: {e}")
     
