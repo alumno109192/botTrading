@@ -35,8 +35,19 @@ logfile.txt
 # Claude AI workspace
 .claude/
 
-# Scripts temporales
-_get_thread_ids.py
+# Scripts temporales y de diagnóstico
+scripts/_diag_*.py
+scripts/_stats_*.py
+scripts/_debug_*.py
+scripts/_check_*.py
+scripts/_test_*.py
+
+# Bases de datos locales
+signals.db
+*.db
+
+# Salidas de tests
+pytest_out.txt
 
 # Documentos Claude-web (no son código)
 CONTEXTO_PROYECTO.md
