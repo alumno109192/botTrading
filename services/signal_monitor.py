@@ -1075,6 +1075,88 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
         logger.info(f"  ✅ Señal {senal_id} ({simbolo} {direccion}) confirmada: {desc_1m}")
 
 
+# Tiempo máximo (horas) que una orden LIMIT puede estar pendiente sin ejecutarse
+_EXPIRY_PENDIENTE_H = {
+    'scalping': 4,    # 5M / 15M → 4 horas
+    'intraday': 12,   # 1H      → 12 horas
+    'swing':    48,   # 4H / 1D → 2 días
+}
+
+
+def _cancelar_orden_pendiente(senal: dict, precio_actual: float, sl: float,
+                               categoria: str, ahora: datetime,
+                               db: DatabaseManager) -> bool:
+    """Cancela una orden LIMIT no ejecutada si:
+      - El precio ya superó el SL (la orden no tiene sentido aunque se ejecutara), o
+      - Lleva demasiado tiempo pendiente sin ejecutarse.
+    Retorna True si la señal fue cancelada (el caller debe hacer 'continue').
+    """
+    senal_id       = senal['id']
+    simbolo        = senal['simbolo']
+    direccion      = senal['direccion']
+    precio_entrada = float(senal['precio_entrada'])
+    reply_msg_id   = senal.get('telegram_message_id')
+
+    # ── 1. SL superado sin que la orden fuera ejecutada ──────────────────────
+    sl_superado = (
+        (direccion == 'VENTA'  and precio_actual >= sl) or
+        (direccion == 'COMPRA' and precio_actual <= sl)
+    )
+    if sl_superado:
+        db.cerrar_senal(senal_id, 'CANCELADA', 0.0)
+        icono = '📈' if direccion == 'VENTA' else '📉'
+        msg = (
+            f"❌ <b>ORDEN CANCELADA — SL superado sin ejecución</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 {simbolo} | {direccion}\n"
+            f"💰 Entrada (no ejecutada): ${precio_entrada:.2f}\n"
+            f"🛑 SL: ${sl:.2f}\n"
+            f"{icono} Precio actual: ${precio_actual:.2f}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"ℹ️ La orden límite nunca se confirmó como ejecutada\n"
+            f"   y el precio ya cruzó el nivel de stop loss.\n"
+            f"🔖 <code>#{senal_id}</code>"
+        )
+        enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
+        logger.info(
+            f"  ❌ [#{senal_id}] Orden LIMIT cancelada — SL superado "
+            f"(${precio_actual:.2f} vs SL ${sl:.2f})"
+        )
+        return True
+
+    # ── 2. Caducidad por tiempo ───────────────────────────────────────────────
+    ts_str = senal.get('timestamp')
+    if ts_str:
+        try:
+            ts_senal = datetime.fromisoformat(str(ts_str).replace('Z', '+00:00'))
+            if ts_senal.tzinfo is None:
+                ts_senal = ts_senal.replace(tzinfo=timezone.utc)
+            horas_pendiente = (ahora - ts_senal).total_seconds() / 3600
+            limite_h = _EXPIRY_PENDIENTE_H.get(categoria, 48)
+            if horas_pendiente >= limite_h:
+                db.cerrar_senal(senal_id, 'CANCELADA', 0.0)
+                msg = (
+                    f"⏱️ <b>ORDEN CANCELADA — Tiempo expirado</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 {simbolo} | {direccion}\n"
+                    f"💰 Entrada (no ejecutada): ${precio_entrada:.2f}\n"
+                    f"⏰ Pendiente: {horas_pendiente:.1f}h (límite {limite_h}h)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"ℹ️ La orden límite expiró sin ejecutarse.\n"
+                    f"🔖 <code>#{senal_id}</code>"
+                )
+                enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
+                logger.info(
+                    f"  ⏱️ [#{senal_id}] Orden LIMIT cancelada — "
+                    f"{horas_pendiente:.1f}h pendiente (límite {limite_h}h)"
+                )
+                return True
+        except Exception as e:
+            logger.warning(f"  ⚠️ [#{senal_id}] No se pudo verificar caducidad: {e}")
+
+    return False
+
+
 def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
     """
     Cierra automáticamente señales que llevan más de X días activas
@@ -1422,6 +1504,7 @@ def monitor_senales():
                                 logger.info(f"  ✅ [#{senal_id}] Orden BUY LIMIT ejecutada — precio tocó ${precio_entrada:.2f}")
                             else:
                                 logger.info(f"  ⏳ [#{senal_id}] Orden BUY LIMIT pendiente — esperando precio ≤ ${precio_entrada:.2f} (actual ${precio_actual:.2f})")
+                                _cancelar_orden_pendiente(senal, precio_actual, sl, categoria, ahora, db)
                                 continue
                         verificar_niveles_compra(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
                     else:
@@ -1433,6 +1516,7 @@ def monitor_senales():
                                 logger.info(f"  ✅ [#{senal_id}] Orden SELL LIMIT ejecutada — precio tocó ${precio_entrada:.2f}")
                             else:
                                 logger.info(f"  ⏳ [#{senal_id}] Orden SELL LIMIT pendiente — esperando precio ≥ ${precio_entrada:.2f} (actual ${precio_actual:.2f})")
+                                _cancelar_orden_pendiente(senal, precio_actual, sl, categoria, ahora, db)
                                 continue
                         verificar_niveles_venta(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
 
