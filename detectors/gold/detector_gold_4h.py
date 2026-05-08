@@ -1096,18 +1096,18 @@ class GoldDetector4H(BaseDetector):
                         if _conf_sell:
                             msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                         if self.db:
-                             try:
-                                 self._guardar_senal({
-                                     'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                                     'direccion': 'VENTA', 'precio_entrada': sell_entry,
-                                     'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
-                                     'score': score_sell,
-                                     'indicadores': json.dumps(_condiciones_bd),
-                                     'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
-                                     'version_detector': 'GOLD 4H-v2.0'
-                                 })
-                             except Exception as e:
-                                 logger.error(f"  ⚠️ Error guardando en BD: {e}")
+                            try:
+                                self._guardar_senal({
+                                    'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                    'direccion': 'VENTA', 'precio_entrada': sell_entry,
+                                    'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                                    'score': score_sell,
+                                    'indicadores': json.dumps(_condiciones_bd),
+                                    'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
+                                    'version_detector': 'GOLD 4H-v2.0'
+                                })
+                            except Exception as e:
+                                logger.error(f"  ⚠️ Error guardando en BD: {e}")
                         _nivel_z_sell_d_4h = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
                         if not self._debe_suprimir_por_evento(_nivel_z_sell_d_4h):
                             self.enviar(msg)
@@ -1156,18 +1156,18 @@ class GoldDetector4H(BaseDetector):
                         if _conf_buy:
                             msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                         if self.db:
-                             try:
-                                 self._guardar_senal({
-                                     'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                                     'direccion': 'COMPRA', 'precio_entrada': buy_entry,
-                                     'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
-                                     'score': score_buy,
-                                     'indicadores': json.dumps(_condiciones_bd),
-                                     'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
-                                     'version_detector': 'GOLD 4H-v2.0'
-                                 })
-                             except Exception as e:
-                                 logger.error(f"  ⚠️ Error guardando en BD: {e}")
+                            try:
+                                self._guardar_senal({
+                                    'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                                    'direccion': 'COMPRA', 'precio_entrada': buy_entry,
+                                    'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                                    'score': score_buy,
+                                    'indicadores': json.dumps(_condiciones_bd),
+                                    'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
+                                    'version_detector': 'GOLD 4H-v2.0'
+                                })
+                            except Exception as e:
+                                logger.error(f"  ⚠️ Error guardando en BD: {e}")
                         _nivel_z_buy_d_4h = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
                         if not self._debe_suprimir_por_evento(_nivel_z_buy_d_4h):
                             self.enviar(msg)
