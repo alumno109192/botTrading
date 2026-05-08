@@ -13,10 +13,7 @@ Variables de entorno requeridas:
   MT5_PASSWORD     — Contraseña de la cuenta
   MT5_SERVER       — Nombre exacto del servidor MT5 (ej. VTMarkets-Demo)
   MT5_SYMBOL       — Símbolo en MT5 (ej. XAUUSD)
-  MT5_RISK_PCT     — % del balance a arriesgar por operación (default: 1.0)
-  MT5_MAX_LOTES    — Tope máximo de lotes por operación (default: 0.10)
-  MT5_MIN_SCORE    — Score mínimo para ejecutar (default: 4)
-  MT5_TIMEFRAMES_ACTIVOS — TFs habilitados separados por coma (default: 5m,15m)
+  MT5_LOTES        — Lotes fijos por operación (default: 0.01)
 
 Uso (descomentado cuando se quiera activar):
   from adapters.mt5_broker import broker
@@ -24,7 +21,6 @@ Uso (descomentado cuando se quiera activar):
 """
 
 import os
-import math
 import logging
 from dotenv import load_dotenv
 
@@ -55,13 +51,7 @@ class MT5Broker:
         self.password      = os.getenv('MT5_PASSWORD', '')
         self.server        = os.getenv('MT5_SERVER', 'VTMarkets-Demo')
         self.symbol        = os.getenv('MT5_SYMBOL', 'XAUUSD')
-        self.risk_pct      = float(os.getenv('MT5_RISK_PCT', '1.0'))
-        self.max_lotes     = float(os.getenv('MT5_MAX_LOTES', '0.10'))
-        self.min_score     = int(os.getenv('MT5_MIN_SCORE', '4'))
-        self.tfs_activos   = {
-            tf.strip()
-            for tf in os.getenv('MT5_TIMEFRAMES_ACTIVOS', '5m,15m').split(',')
-        }
+        self.lotes_fijos   = float(os.getenv('MT5_LOTES', '0.01'))
 
         # ── Importar MetaTrader5 opcionalmente ─────────────────────────────
         if self.auto_trade:
@@ -134,56 +124,8 @@ class MT5Broker:
     # ──────────────────────────────────────────────────────────────────────────
 
     def calcular_lotes(self, entry: float, sl: float) -> float:
-        """
-        Calcula el tamaño de lote en función del riesgo configurado.
-
-        Fórmula:
-            riesgo_usd  = balance × (risk_pct / 100)
-            lotes       = riesgo_usd / (distancia_sl_en_puntos × tick_value)
-
-        Para XAU/USD en VT Markets:
-            1 lote estándar = 100 oz → tick_value ≈ 10 USD (precio ~2000)
-
-        El resultado se redondea al step mínimo del broker y se limita a
-        MT5_MAX_LOTES como medida de seguridad.
-
-        Retorna 0.0 si no hay conexión o el cálculo falla.
-        """
-        if not self._mt5 or not self._asegurar_conexion():
-            return 0.0
-
-        info_cuenta = self._mt5.account_info()
-        if not info_cuenta:
-            return 0.0
-
-        distancia_sl = abs(entry - sl)
-        if distancia_sl == 0:
-            logger.warning("calcular_lotes: distancia SL = 0, abortando")
-            return 0.0
-
-        sym_info = self._mt5.symbol_info(self.symbol)
-        if not sym_info:
-            logger.error(f"MT5Broker: símbolo {self.symbol!r} no encontrado en Market Watch")
-            return 0.0
-
-        balance    = info_cuenta.balance
-        riesgo_usd = balance * (self.risk_pct / 100.0)
-        tick_value = sym_info.trade_tick_value
-        tick_size  = sym_info.trade_tick_size
-        puntos_sl  = distancia_sl / tick_size
-
-        lotes_raw = riesgo_usd / (puntos_sl * tick_value)
-
-        # Redondear al step mínimo del broker (hacia abajo por seguridad)
-        step  = sym_info.volume_step
-        lotes = math.floor(lotes_raw / step) * step
-        lotes = round(min(lotes, self.max_lotes), 2)
-
-        logger.info(
-            f"Sizing | Balance {balance:.0f} | Riesgo {riesgo_usd:.2f} USD | "
-            f"SL dist {distancia_sl:.2f} | Lotes calculados: {lotes}"
-        )
-        return lotes
+        """Devuelve el tamaño de lote fijo configurado en MT5_LOTES (default: 0.01)."""
+        return self.lotes_fijos
 
     # ──────────────────────────────────────────────────────────────────────────
     # Apertura de operación
@@ -198,32 +140,17 @@ class MT5Broker:
             entry      : float — precio de entrada
             sl         : float — stop loss
             tp1        : float — primer objetivo (TP principal en MT5)
-            score      : int   — puntuación de la señal
             timeframe  : str   — ej. '5m', '15m'
             simbolo    : str   — ej. 'GC=F' (se traduce a self.symbol)
 
-        Filtros aplicados antes de operar:
-            - MT5_AUTO_TRADE debe ser true
-            - timeframe debe estar en MT5_TIMEFRAMES_ACTIVOS
-            - score debe ser >= MT5_MIN_SCORE
+        Solo requiere MT5_AUTO_TRADE=true. Toda señal válida (BUY/SELL) se ejecuta.
 
         Retorna el ticket de la orden abierta, o None si no se ejecutó.
         """
         if not self.auto_trade or not self._mt5:
             return None
 
-        # ── Filtros de seguridad ───────────────────────────────────────────
-        tf        = senal_data.get('timeframe', '')
-        score     = int(senal_data.get('score', 0) or 0)
         direccion = str(senal_data.get('direccion', '')).upper()
-
-        if tf not in self.tfs_activos:
-            logger.debug(f"MT5Broker: TF {tf!r} no está en activos → omitido")
-            return None
-
-        if score < self.min_score:
-            logger.info(f"MT5Broker: score {score} < {self.min_score} → no ejecutado")
-            return None
 
         if direccion not in ('BUY', 'SELL'):
             logger.warning(f"MT5Broker: dirección inválida {direccion!r}")
@@ -231,16 +158,6 @@ class MT5Broker:
 
         if not self._asegurar_conexion():
             logger.error("MT5Broker: no hay conexión, operación cancelada")
-            return None
-
-        # ── Drawdown diario — parada automática ───────────────────────────
-        info_cuenta = self._mt5.account_info()
-        if info_cuenta and info_cuenta.equity < info_cuenta.balance * 0.97:
-            logger.warning(
-                f"MT5Broker: drawdown diario > 3% "
-                f"(equity {info_cuenta.equity:.2f} / balance {info_cuenta.balance:.2f}) "
-                f"→ operaciones pausadas hasta mañana"
-            )
             return None
 
         # ── Construcción de la orden ───────────────────────────────────────
