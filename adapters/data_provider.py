@@ -137,6 +137,12 @@ _MAX_RPM_KEY1  = 50    # Grow 55: límite real 55 req/min
 _MAX_RPM_FREE  =  7    # Basic 8: límite real  8 req/min
 _MAX_DAILY_FREE = 790  # Basic 8: límite real 800 req/día → margen 10 para no rozar el techo
 
+# Mínimo de velas para considerar una respuesta de Twelve Data válida, por intervalo.
+# Los intervalos de baja frecuencia (4h, 1d, 1wk) suelen pedirse con periodos cortos
+# (p.ej. period='5d' + interval='1d' → 5 velas) y ese resultado es legítimo.
+# Sin este mapa el chequeo genérico ">= 10" falsa-falla y pone cooldown en todas las keys.
+_MIN_VELAS_TD: dict = {'4h': 3, '1d': 3, '1wk': 2}
+
 def _get_max_rpm(alias: str) -> int:
     """Devuelve el límite de req/min según el plan de la key."""
     return _MAX_RPM_KEY1 if alias == 'key1' else _MAX_RPM_FREE
@@ -452,6 +458,11 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
         # en POLL_TARGETS de ohlcv_poller.py.
         # ── fin OPCIÓN B ───────────────────────────────────────────────────────
 
+        # Intervalos de baja frecuencia: un periodo corto devuelve pocas velas
+        # legítimamente (p.ej. 1d+5d=5 velas para cálculo de pivots). No
+        # aplicar el umbral de 10 velas para evitar cooldowns innecesarios.
+        _min_velas_ok = _MIN_VELAS_TD.get(interval, 10)
+
         for _ in range(len(_td_keys)):
             alias, key = _next_td_key()
             if not key:
@@ -461,7 +472,7 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
                 print(f"  🚦 [quota] {alias}: cupo minuto lleno — rotando")
                 continue
             df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
-            if ok and not df.empty and len(df) >= 10:
+            if ok and not df.empty and len(df) >= _min_velas_ok:
                 _registrar_uso_key(alias)
                 print(f"  🔥 [DIRECT] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
                 return df, False
@@ -514,6 +525,7 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
 
         # 3️⃣ Twelve Data (tiempo real) — soporta intraday y 1d
         if interval in _INTRADAY_INTERVALS and _td_keys and ticker_yf in _TICKER_MAP_TWELVE:
+            _min_velas_ok_leg = _MIN_VELAS_TD.get(interval, 10)
             for _ in range(len(_td_keys)):
                 alias, key = _next_td_key()
                 if not key:
@@ -523,7 +535,7 @@ def get_ohlcv(ticker_yf: str, period: str, interval: str) -> tuple:
                     print(f"  🚦 [quota] {alias}: cupo minuto lleno — rotando")
                     continue
                 df, ok = _get_twelve_data(ticker_yf, period, interval, key, alias=alias)
-                if ok and not df.empty and len(df) >= 10:
+                if ok and not df.empty and len(df) >= _min_velas_ok_leg:
                     _registrar_uso_key(alias)
                     print(f"  ✅ [legacy] Twelve Data ({alias}) — {ticker_yf} {interval} ({len(df)} velas, tiempo real)")
                     _guardar_en_db(ticker_yf, interval, df)
