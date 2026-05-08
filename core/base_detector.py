@@ -25,9 +25,9 @@ from abc import ABC, abstractmethod
 
 import adapters.telegram as _telegram_mod
 # ── MT5 / VT Markets ─────────────────────────────────────────────────────────
-# Descomentar la línea siguiente para activar la ejecución automática de órdenes.
 # Requiere MT5_AUTO_TRADE=true en .env y MetaTrader5 instalado (solo Windows).
-# from adapters.mt5_broker import broker as _mt5_broker
+# En entornos Linux (Render) la importación falla silenciosamente.
+from adapters.mt5_broker import broker as _mt5_broker
 from core.indicators import (
     calcular_rsi, calcular_ema, calcular_atr,
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
@@ -429,25 +429,34 @@ class BaseDetector(ABC):
                                                    self.telegram_thread_id)
 
         # ── Hook MT5 — ejecución automática en VT Markets ─────────────────────
-        # Descomentar el bloque siguiente cuando se quiera operar en demo/real.
-        # senal_data se construye aquí con los datos mínimos que necesita MT5Broker.
+        # Activo cuando MT5_AUTO_TRADE=true en .env y MetaTrader5 instalado.
+        # senal_data se construye con los datos mínimos que necesita MT5Broker.
         # La clase filtra por timeframe, score y MT5_MIN_SCORE antes de operar.
-        #
-        # if senal_id and self.db:
-        #     try:
-        #         _senal_row = self.db.ejecutar_query(
-        #             "SELECT direccion, entry, sl, tp1, score, timeframe, simbolo "
-        #             "FROM senales WHERE id = ?",
-        #             (senal_id,),
-        #             fetchone=True
-        #         )
-        #         if _senal_row:
-        #             _mt5_broker.abrir_operacion(dict(_senal_row))
-        #     except Exception as _e:
-        #         import logging as _log
-        #         _log.getLogger('bottrading').warning(
-        #             f"MT5 hook: error al intentar abrir operación — {_e}"
-        #         )
+        if senal_id and self.db and _mt5_broker.auto_trade:
+            try:
+                _result = self.db.ejecutar_query(
+                    "SELECT direccion, precio_entrada AS entry, sl, tp1, "
+                    "score, timeframe, simbolo FROM senales WHERE id = ?",
+                    (senal_id,)
+                )
+                if _result and _result.rows:
+                    _row = dict(_result.rows[0])
+                    # MT5Broker espera BUY/SELL; la BD almacena COMPRA/VENTA
+                    _dir_map = {'COMPRA': 'BUY', 'VENTA': 'SELL'}
+                    _row['direccion'] = _dir_map.get(
+                        str(_row.get('direccion', '')).upper(),
+                        _row.get('direccion', '')
+                    )
+                    # MT5Broker compara TF en minúsculas; la BD los almacena en
+                    # mayúsculas (ej. '5M', '15M') → normalizar
+                    if _row.get('timeframe'):
+                        _row['timeframe'] = str(_row['timeframe']).lower()
+                    _mt5_broker.abrir_operacion(_row)
+            except Exception as _e:
+                import logging as _log
+                _log.getLogger('bottrading').warning(
+                    f"MT5 hook: error al intentar abrir operación — {_e}"
+                )
         # ── Fin hook MT5 ───────────────────────────────────────────────────────
 
         # Guardar message_id en BD para poder hacer reply en alertas TP/SL
