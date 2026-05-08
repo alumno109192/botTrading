@@ -27,6 +27,7 @@ def enviar_telegram(mensaje):
 
 from adapters.database import get_db
 from core.base_detector_gold import GoldBaseDetector as BaseDetector
+from core.predictor import GoldPredictor
 import logging
 logger = logging.getLogger('bottrading')
 
@@ -77,6 +78,9 @@ ultimo_analisis = {}
 
 # Instancia singleton — persiste alertas_enviadas entre ciclos
 _detector_instance: 'GoldDetector4H | None' = None
+_predictor_4h_buy = GoldPredictor(tf='4H', direccion='COMPRA')
+_predictor_4h_sell = GoldPredictor(tf='4H', direccion='VENTA')
+_last_ml_retrain_4h = 0.0
 
 
 # ══════════════════════════════════════
@@ -327,6 +331,31 @@ class GoldDetector4H(BaseDetector):
         if self.db and self.db.existe_senal_activa_misma_dir(simbolo_db, 'COMPRA'):
             cancelar_buy = True
             logger.info(f"  🚫 [4H] cancelar_buy=True: COMPRA ya activa en BD para {simbolo_db}")
+
+        # ── PREDICCIÓN ANTICIPADA ML ──────────────────────────────────────────
+        _pred_features = {}
+        _prob_buy = 0.0
+        _prob_sell = 0.0
+        _etiq_buy = 'NEUTRO'
+        _etiq_sell = 'NEUTRO'
+        try:
+            _pred_features = _predictor_4h_buy.calcular_features_predictivos(
+                df, zsl, zsh, zrl, zrh, atr
+            )
+        except Exception as e:
+            logger.debug(f"  [ML 4H] Features predictivos no disponibles: {e}")
+        try:
+            _prob_buy, _etiq_buy = _predictor_4h_buy.predecir(_pred_features)
+        except Exception as e:
+            logger.debug(f"  [ML 4H] Predicción BUY no disponible: {e}")
+            _prob_buy = 0.0
+            _etiq_buy = 'NEUTRO'
+        try:
+            _prob_sell, _etiq_sell = _predictor_4h_sell.predecir(_pred_features)
+        except Exception as e:
+            logger.debug(f"  [ML 4H] Predicción SELL no disponible: {e}")
+            _prob_sell = 0.0
+            _etiq_sell = 'NEUTRO'
 
         # BLOQUE VENTA
         intento_rotura_fallido = (high >= zrl) and (close < zrl)
@@ -781,6 +810,28 @@ class GoldDetector4H(BaseDetector):
             score_buy = min(score_buy + 1, 23)
             logger.info(f"  🔺 [4H] Momentum alcista en soporte — +1 BUY")
 
+        # ── Ajuste de score por predicción anticipada ML ───────────────────────
+        if _prob_buy > 0.80:
+            score_buy = min(score_buy + 3, 25)
+            logger.info(f"  🤖 [ML 4H] Alta probabilidad BUY ({_prob_buy:.1%}) — +3 pts BUY")
+        elif _prob_buy > 0.65:
+            score_buy = min(score_buy + 2, 25)
+            logger.info(f"  🤖 [ML 4H] Probabilidad BUY ({_prob_buy:.1%}) — +2 pts BUY")
+        if _prob_sell > 0.80:
+            score_sell = min(score_sell + 3, 25)
+            logger.info(f"  🤖 [ML 4H] Alta probabilidad SELL ({_prob_sell:.1%}) — +3 pts SELL")
+        elif _prob_sell > 0.65:
+            score_sell = min(score_sell + 2, 25)
+            logger.info(f"  🤖 [ML 4H] Probabilidad SELL ({_prob_sell:.1%}) — +2 pts SELL")
+        _condiciones_bd['score_sell'] = score_sell
+        _condiciones_bd['score_buy'] = score_buy
+        _condiciones_bd['ml_prob_buy'] = round(float(_prob_buy), 4)
+        _condiciones_bd['ml_prob_sell'] = round(float(_prob_sell), 4)
+        _condiciones_bd['ml_label_buy'] = str(_etiq_buy)
+        _condiciones_bd['ml_label_sell'] = str(_etiq_sell)
+        for _k, _v in (_pred_features or {}).items():
+            _condiciones_bd[_k] = float(_v) if isinstance(_v, (int, float, np.floating)) else _v
+
         _umbral_max = self.umbral_adaptativo(16, atr, atr_media)   # antes: 14
         _umbral_fue = self.umbral_adaptativo(14, atr, atr_media)   # antes: 12
         _umbral_med = self.umbral_adaptativo(11, atr, atr_media)   # antes: 9
@@ -864,6 +915,101 @@ class GoldDetector4H(BaseDetector):
         logger.info(f"  🟢 BUY  → Alerta:{senal_buy_alerta}  Media:{senal_buy_media}  Fuerte:{senal_buy_fuerte}  Máxima:{senal_buy_maxima}")
 
         clave_vela = f"{simbolo}_4H_{fecha}"
+        _clave_pred = f"{simbolo}_4H_PRED_{fecha}"
+
+        # ── ALERTA ANTICIPADA ML (precio aún no en zona, pero ML predice entrada) ──
+        _dist_max_pred = float(avg_candle_range) * 5
+        _sin_conflicto_buy = True
+        _sin_conflicto_sell = True
+        if self.db:
+            _sin_conflicto_buy = not (
+                self.db.existe_senal_activa_misma_dir(simbolo_db, 'COMPRA') or
+                self.db.existe_senal_activa_opuesta(simbolo_db, 'COMPRA') or
+                self.db.existe_senal_reciente(simbolo_db, 'COMPRA', horas=4) or
+                self.db.existe_senal_reciente_opuesta(simbolo_db, 'COMPRA', horas=4)
+            )
+            _sin_conflicto_sell = not (
+                self.db.existe_senal_activa_misma_dir(simbolo_db, 'VENTA') or
+                self.db.existe_senal_activa_opuesta(simbolo_db, 'VENTA') or
+                self.db.existe_senal_reciente(simbolo_db, 'VENTA', horas=4) or
+                self.db.existe_senal_reciente_opuesta(simbolo_db, 'VENTA', horas=4)
+            )
+
+        if (_prob_buy > 0.70 and not senal_buy_alerta and abs(dist_to_support) < _dist_max_pred and
+                _sin_conflicto_buy and not self.ya_enviada(f"{_clave_pred}_PRED_BUY")):
+            _ml_msg_buy = (
+                f"🤖 <b>PREDICCIÓN ML — ORO (XAUUSD) 4H</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ El modelo detecta condiciones pre-señal de COMPRA\n"
+                f"📊 Probabilidad: {round(_prob_buy * 100)}%\n"
+                f"💰 Precio actual: ${close:.2f}\n"
+                f"📌 Zona soporte: ${zsl:.2f}–${zsh:.2f}\n"
+                f"⏳ Señal reactiva estimada: 1-2 velas 4H (4-8 horas)\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📉 RSI: {round(rsi, 1)} ({'bajando' if rsi < rsi_prev else 'subiendo'})  ATR: ${atr:.2f}\n"
+                f"🔍 Features clave:\n"
+                f"   • Dist. soporte: {_pred_features.get('dist_soporte_pct', 0.0):.2f}%\n"
+                f"   • Vol relativo: {_pred_features.get('vol_relativo_3v', 0.0):.2f}\n"
+                f"   • MACD mejorando: {'Sí' if _pred_features.get('macd_hist_mejorando', 0) == 1 else 'No'}\n"
+                f"   • ATR contrayendo: {'Sí' if _pred_features.get('atr_contrayendo', 0) == 1 else 'No'}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ Esta es una predicción ML, no una señal confirmada\n"
+                f"⏱️ TF: 4H  📅 {fecha}"
+            )
+            self.enviar(_ml_msg_buy)
+            self.marcar_enviada(f"{_clave_pred}_PRED_BUY")
+            if self.db:
+                try:
+                    self._guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                        'direccion': 'COMPRA', 'precio_entrada': buy_entry,
+                        'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                        'score': score_buy,
+                        'indicadores': json.dumps(_condiciones_bd),
+                        'patron_velas': 'Predicción anticipada ML COMPRA',
+                        'version_detector': 'GOLD 4H-ML-v1.0',
+                        'estado': 'PENDIENTE_CONFIRM',
+                    })
+                except Exception as e:
+                    logger.debug(f"  [ML 4H] Error guardando predicción BUY: {e}")
+
+        if (_prob_sell > 0.70 and not senal_sell_alerta and abs(dist_to_resist) < _dist_max_pred and
+                _sin_conflicto_sell and not self.ya_enviada(f"{_clave_pred}_PRED_SELL")):
+            _ml_msg_sell = (
+                f"🤖 <b>PREDICCIÓN ML — ORO (XAUUSD) 4H</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ El modelo detecta condiciones pre-señal de VENTA\n"
+                f"📊 Probabilidad: {round(_prob_sell * 100)}%\n"
+                f"💰 Precio actual: ${close:.2f}\n"
+                f"📌 Zona resistencia: ${zrl:.2f}–${zrh:.2f}\n"
+                f"⏳ Señal reactiva estimada: 1-2 velas 4H (4-8 horas)\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📉 RSI: {round(rsi, 1)} ({'subiendo' if rsi > rsi_prev else 'bajando'})  ATR: ${atr:.2f}\n"
+                f"🔍 Features clave:\n"
+                f"   • Dist. resistencia: {_pred_features.get('dist_resist_pct', 0.0):.2f}%\n"
+                f"   • Vol relativo: {_pred_features.get('vol_relativo_3v', 0.0):.2f}\n"
+                f"   • MACD mejorando: {'Sí' if _pred_features.get('macd_hist_mejorando', 0) == 1 else 'No'}\n"
+                f"   • ATR contrayendo: {'Sí' if _pred_features.get('atr_contrayendo', 0) == 1 else 'No'}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ Esta es una predicción ML, no una señal confirmada\n"
+                f"⏱️ TF: 4H  📅 {fecha}"
+            )
+            self.enviar(_ml_msg_sell)
+            self.marcar_enviada(f"{_clave_pred}_PRED_SELL")
+            if self.db:
+                try:
+                    self._guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                        'direccion': 'VENTA', 'precio_entrada': sell_entry,
+                        'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                        'score': score_sell,
+                        'indicadores': json.dumps(_condiciones_bd),
+                        'patron_velas': 'Predicción anticipada ML VENTA',
+                        'version_detector': 'GOLD 4H-ML-v1.0',
+                        'estado': 'PENDIENTE_CONFIRM',
+                    })
+                except Exception as e:
+                    logger.debug(f"  [ML 4H] Error guardando predicción SELL: {e}")
 
 
         cerca_resistencia = (en_zona_resist or aproximando_resistencia or
@@ -1390,6 +1536,7 @@ def analizar(simbolo, params):
 
 
 def main():
+    global _last_ml_retrain_4h
     logger.info("🚀 Detector GOLD 4H iniciado")
     logger.info(f"⏱️  Revisando cada {CHECK_INTERVAL // 60} minutos")
     enviar_telegram("🚀 <b>Detector GOLD 4H iniciado</b>\n"
@@ -1417,6 +1564,16 @@ def main():
         ahora = ahora_utc.strftime('%Y-%m-%d %H:%M:%S')
         logger.info(f"\n{'=' * 60}")
         logger.info(f"[{ahora}] 🔄 CICLO #{ciclo} - Iniciando análisis GOLD 4H")
+        if (_predictor_4h_buy.necesita_reentrenamiento() or
+                _predictor_4h_sell.necesita_reentrenamiento() or
+                (time.time() - _last_ml_retrain_4h) >= 7 * 24 * 3600):
+            try:
+                _predictor_4h_buy.reentrenar_desde_bd(db)
+                _predictor_4h_sell.reentrenar_desde_bd(db)
+                _last_ml_retrain_4h = time.time()
+                logger.info("  ✅ [ML] Modelos 4H re-entrenados")
+            except Exception as e:
+                logger.warning(f"  ⚠️ [ML] Re-entrenamiento fallido (continuando sin ML): {e}")
         for simbolo, params in SIMBOLOS.items():
             logger.info(f"\n📊 Analizando {simbolo} [4H]...")
             analizar(simbolo, params)
@@ -1426,4 +1583,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
