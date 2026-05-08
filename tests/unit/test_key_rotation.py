@@ -153,8 +153,7 @@ class TestNextTdKey:
         # Simular que key2 y key3 han agotado el límite diario
         with dp._uso_cache_lock:
             dp._uso_cache = {'key2': dp._MAX_DAILY_FREE + 1, 'key3': dp._MAX_DAILY_FREE + 1}
-            import time as _t
-            dp._uso_cache_ts = _t.time()  # cache fresco
+            dp._uso_cache_ts = time.time()  # cache fresco
 
         alias, key = dp._next_td_key()
         assert alias == 'key1', (
