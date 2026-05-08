@@ -395,7 +395,7 @@ class GoldDetector5M(BaseDetector):
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo se consulta si estamos en zona de desempate (score cerca del umbral)
             # Evita llamadas innecesarias a la API y mantiene el intervalo bajo
-            _umbral_conf = 12  # igual que _umbral_fue antes del ajuste DXY/vol
+            _umbral_conf = 14  # igual que _umbral_fue antes del ajuste DXY/vol
             _necesita_conf_sell = 5 <= score_sell < _umbral_conf
             _necesita_conf_buy  = 5 <= score_buy  < _umbral_conf
             if _necesita_conf_sell or _necesita_conf_buy:
@@ -475,7 +475,7 @@ class GoldDetector5M(BaseDetector):
             elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
                 score_buy = min(score_buy + 1, 23)
                 logger.info(f"  🔺 [5M] Momentum alcista en soporte — +1 BUY")
-            _umbral_fue = self.umbral_adaptativo(12, atr, atr_media)
+            _umbral_fue = self.umbral_adaptativo(14, atr, atr_media)   # antes: 12
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
@@ -631,7 +631,7 @@ class GoldDetector5M(BaseDetector):
             # Guarda señal en BD para que el monitor de P&L haga seguimiento TP/SL.
             # Anti-spam: cooldown 30 min por dirección (no por vela) — evita spam.
             # ⚠️ FILTRO R:R MÍNIMO 1.5:1 para evitar señales poco rentables
-            _UMBRAL_AVISO = 12
+            _UMBRAL_AVISO = 14   # antes: 12
             _RR_MINIMO_SETUP = 1.5
             _simbolo_db_5m = f"{simbolo}_5M"
             if self.en_sesion_optima():

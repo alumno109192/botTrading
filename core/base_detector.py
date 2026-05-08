@@ -384,6 +384,29 @@ class BaseDetector(ABC):
         return 'NEUTRAL'
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Filtro de supresión por evento macro
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _debe_suprimir_por_evento(self, nivel_senal: str) -> bool:
+        """
+        Suprime señales de baja prioridad (ALERTA y MEDIA) cuando hay evento macro activo.
+        Solo FUERTE y MAXIMA pasan durante eventos.
+
+        Args:
+            nivel_senal: 'ALERTA', 'MEDIA', 'FUERTE' o 'MAXIMA'
+
+        Returns:
+            True si la señal debe suprimirse.
+        """
+        if self.aviso_macro and nivel_senal in ('ALERTA', 'MEDIA'):
+            import logging as _log
+            _log.getLogger('bottrading').warning(
+                f"  🔕 Señal {nivel_senal} suprimida — evento macro activo: {self.aviso_macro}"
+            )
+            return True
+        return False
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Telegram wrapper
     # ─────────────────────────────────────────────────────────────────────────
 

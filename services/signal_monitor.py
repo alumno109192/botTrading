@@ -1270,6 +1270,8 @@ def monitor_senales():
         _AUTO_CLOSE_CFG = 'none'
     if _AUTO_CLOSE_CFG != 'none':
         logger.info(f"⚡ Auto-cierre por eventos macro: {_AUTO_CLOSE_CFG.upper()}")
+    # Flag para evitar enviar el resumen diario más de una vez por franja horaria
+    _resumen_diario_sl_enviado: bool = False
 
     while True:
         try:
@@ -1562,6 +1564,37 @@ def monitor_senales():
                     )
                 except Exception:
                     pass
+
+            # ── Resumen diario de SLs a las 22:00 UTC ──────────────────────────────
+            _hora_utc = ahora_utc.hour
+            _min_utc  = ahora_utc.minute
+            if _hora_utc == 22 and _min_utc < 5 and not _resumen_diario_sl_enviado:
+                try:
+                    senales_hoy = db.obtener_senales_cerradas_recientes(horas=24)
+                    sl_count  = sum(1 for s in senales_hoy if s.get('estado') == 'SL')
+                    tp1_count = sum(1 for s in senales_hoy if s.get('estado') == 'TP1')
+                    tp2_count = sum(1 for s in senales_hoy if s.get('estado') == 'TP2')
+                    tp3_count = sum(1 for s in senales_hoy if s.get('estado') == 'TP3')
+                    total = sl_count + tp1_count + tp2_count + tp3_count
+                    if total > 0:
+                        win_rate = round((tp1_count + tp2_count + tp3_count) / total * 100)
+                        resumen = (
+                            f"📊 <b>RESUMEN DIARIO — {ahora_utc.strftime('%Y-%m-%d')}</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"🎯 TP1: {tp1_count}  |  🎯🎯 TP2: {tp2_count}  |  🎯🎯🎯 TP3: {tp3_count}\n"
+                            f"❌ SL activados: <b>{sl_count}</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"📈 Total señales cerradas: {total}\n"
+                            f"✅ Win rate (TP1+): <b>{win_rate}%</b>\n"
+                            f"⏰ {ahora_utc.strftime('%Y-%m-%d %H:%M UTC')}"
+                        )
+                        enviar_notificacion_telegram(resumen, 'XAUUSD')
+                        logger.info(f"📊 Resumen diario enviado: {sl_count} SLs, {tp1_count + tp2_count + tp3_count} TPs")
+                    _resumen_diario_sl_enviado = True
+                except Exception as _r_e:
+                    logger.warning(f"⚠️ Error enviando resumen diario: {_r_e}")
+            elif _hora_utc != 22:
+                _resumen_diario_sl_enviado = False
 
             logger.info(f"[{ahora.strftime('%H:%M:%S')}] ⏳ Próximo tick en {_TICK}s...")
             time.sleep(_TICK)
