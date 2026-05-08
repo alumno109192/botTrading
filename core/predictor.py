@@ -28,6 +28,7 @@ ESTADOS_WIN = {'TP1', 'TP2', 'TP3', 'BREAKEVEN'}
 ESTADOS_LOSS = {'SL'}
 ESTADOS_VALIDOS = ESTADOS_WIN | ESTADOS_LOSS
 MIN_MUESTRAS_BD = 30
+DEFAULT_FEATURE_FILL = 1.0  # XAU/USD suele traer volumen plano (1.0) en Twelve Data
 
 
 class GoldPredictor:
@@ -269,7 +270,7 @@ class GoldPredictor:
         X = df[[c for c in self.FEATURE_COLUMNS if c in df.columns]].copy()
         for col in X.columns:
             X[col] = pd.to_numeric(X[col], errors='coerce')
-        X = X.fillna(1.0)
+        X = X.fillna(DEFAULT_FEATURE_FILL)
         y = pd.to_numeric(df['win'], errors='coerce').fillna(0).astype(int)
 
         rf = RandomForestClassifier(

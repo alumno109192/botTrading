@@ -13,6 +13,7 @@ from adapters.database import get_db
 from core.predictor import ESTADOS_LOSS, ESTADOS_WIN, GoldPredictor
 
 MIN_MUESTRAS_BD = 30
+DEFAULT_FEATURE_FILL = 1.0  # fallback consistente para features NaN (incl. volumen plano en XAU/USD)
 
 
 def cargar_senales_bd(db, tf: str, direccion: str, feature_cols: list[str]) -> list[dict]:
@@ -130,7 +131,7 @@ def entrenar_modelo(df: pd.DataFrame, predictor: GoldPredictor) -> dict:
     X = df[feature_cols].copy()
     for col in X.columns:
         X[col] = pd.to_numeric(X[col], errors='coerce')
-    X = X.fillna(1.0)
+    X = X.fillna(DEFAULT_FEATURE_FILL)
     y = pd.to_numeric(df['win'], errors='coerce').fillna(0).astype(int)
 
     split_idx = max(1, int(len(df) * 0.8))
