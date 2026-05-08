@@ -27,6 +27,7 @@ def enviar_telegram(mensaje):
 
 from adapters.database import get_db
 from core.base_detector_gold import GoldBaseDetector as BaseDetector
+from core.predictor import GoldPredictor
 import logging
 logger = logging.getLogger('bottrading')
 
@@ -65,7 +66,7 @@ SIMBOLOS = {
         'vol_mult':           1.2,
         'spread':             0.35,         # Spread típico broker CFD (XAUUSD)
     }
-} = {}
+}
 ultimo_analisis  = {}
 # Estado previo de pullback por símbolo — permite edge-trigger (solo dispara al
 # activarse, no mientras persiste). Se resetea al resolverse el pullback.
@@ -73,6 +74,9 @@ _estado_pullback: dict = {}  # clave → bool (True = pullback activo en ciclo a
 
 # Instancia singleton — persiste alertas_enviadas entre ciclos
 _detector_instance: 'GoldDetector1H | None' = None
+_predictor_1h_buy = GoldPredictor(tf='1H', direccion='COMPRA')
+_predictor_1h_sell = GoldPredictor(tf='1H', direccion='VENTA')
+_last_ml_retrain_1h = 0.0
 
 
 from core.indicators import (
@@ -461,6 +465,31 @@ class GoldDetector1H(BaseDetector):
             logger.info(f"  🎯 RETEST CANAL SELL detectado — línea ${linea_soporte_canal:.2f}, precio ${close:.2f}")
         if retest_canal_buy:
             logger.info(f"  🎯 RETEST CANAL BUY detectado — línea ${linea_resist_canal:.2f}, precio ${close:.2f}")
+
+        # ── PREDICCIÓN ANTICIPADA ML ──────────────────────────────────────────
+        _pred_features = {}
+        _prob_buy = 0.0
+        _prob_sell = 0.0
+        _etiq_buy = 'NEUTRO'
+        _etiq_sell = 'NEUTRO'
+        try:
+            _pred_features = _predictor_1h_buy.calcular_features_predictivos(
+                df, zsl, zsh, zrl, zrh, atr
+            )
+        except Exception as e:
+            logger.debug(f"  [ML 1H] Features predictivos no disponibles: {e}")
+        try:
+            _prob_buy, _etiq_buy = _predictor_1h_buy.predecir(_pred_features)
+        except Exception as e:
+            logger.debug(f"  [ML 1H] Predicción BUY no disponible: {e}")
+            _prob_buy = 0.0
+            _etiq_buy = 'NEUTRO'
+        try:
+            _prob_sell, _etiq_sell = _predictor_1h_sell.predecir(_pred_features)
+        except Exception as e:
+            logger.debug(f"  [ML 1H] Predicción SELL no disponible: {e}")
+            _prob_sell = 0.0
+            _etiq_sell = 'NEUTRO'
 
         # ── SCORING VENTA ──────────────────────────────────────────
         intento_rotura_fallido = (high >= zrl) and (close < zrl)
@@ -951,6 +980,20 @@ class GoldDetector1H(BaseDetector):
         if rechazo_resist_live:
             score_sell = min(score_sell + 3, 23)
 
+        # ── Ajuste de score por predicción anticipada ML ───────────────────────
+        if _prob_buy > 0.80:
+            score_buy = min(score_buy + 4, 25)
+            logger.info(f"  🤖 [ML 1H] Alta probabilidad BUY ({_prob_buy:.1%}) — +4 pts BUY")
+        elif _prob_buy > 0.65:
+            score_buy = min(score_buy + 2, 25)
+            logger.info(f"  🤖 [ML 1H] Probabilidad BUY ({_prob_buy:.1%}) — +2 pts BUY")
+        if _prob_sell > 0.80:
+            score_sell = min(score_sell + 4, 25)
+            logger.info(f"  🤖 [ML 1H] Alta probabilidad SELL ({_prob_sell:.1%}) — +4 pts SELL")
+        elif _prob_sell > 0.65:
+            score_sell = min(score_sell + 2, 25)
+            logger.info(f"  🤖 [ML 1H] Probabilidad SELL ({_prob_sell:.1%}) — +2 pts SELL")
+
         # ── Snapshot completo de condiciones para backtesting/estudio ─────────
         _condiciones_bd = {
             # Indicadores numéricos
@@ -960,6 +1003,8 @@ class GoldDetector1H(BaseDetector):
             'macd': round(float(macd), 4), 'macd_hist': round(float(macd_hist), 4),
             'vol': round(float(vol), 0), 'vol_avg': round(float(vol_avg), 0),
             'score_sell': score_sell, 'score_buy': score_buy,
+            'ml_prob_buy': round(float(_prob_buy), 4), 'ml_prob_sell': round(float(_prob_sell), 4),
+            'ml_label_buy': str(_etiq_buy), 'ml_label_sell': str(_etiq_sell),
             # Zonas S/R
             'zrl': round(zrl, 2), 'zrh': round(zrh, 2), 'zsl': round(zsl, 2), 'zsh': round(zsh, 2),
             # Condiciones SELL
@@ -1015,6 +1060,8 @@ class GoldDetector1H(BaseDetector):
             'n_confirm_sell': int(_n_confirm_sell), 'n_confirm_buy': int(_n_confirm_buy),
             'pullback_alcista': bool(pullback_alcista), 'pullback_bajista': bool(pullback_bajista),
         }
+        for _k, _v in (_pred_features or {}).items():
+            _condiciones_bd[_k] = float(_v) if isinstance(_v, (int, float, np.floating)) else _v
 
         _umbral_max = self.umbral_adaptativo(15, atr, atr_media)   # antes: 12
         _umbral_fue = self.umbral_adaptativo(13, atr, atr_media)   # antes: 11
@@ -1087,6 +1134,103 @@ class GoldDetector1H(BaseDetector):
         # y deben dispararse aunque el bias dominante sea la dirección opuesta.
         _prep_sell_alerta = senal_sell_alerta
         _prep_buy_alerta  = senal_buy_alerta
+
+        # ── ALERTA ANTICIPADA ML (precio aún no en zona, pero ML predice entrada) ──
+        _clave_pred = f"{simbolo}_1H_PRED_{fecha}"
+        _dist_buy = abs(close - zsh)
+        _dist_sell = abs(zrl - close)
+        _dist_max_pred = float(avg_candle_range) * 5
+        _sin_conflicto_buy = True
+        _sin_conflicto_sell = True
+        if self.db:
+            _sin_conflicto_buy = not (
+                self.db.existe_senal_activa_misma_dir(simbolo_db, 'COMPRA') or
+                self.db.existe_senal_activa_opuesta(simbolo_db, 'COMPRA') or
+                self.db.existe_senal_reciente(simbolo_db, 'COMPRA', horas=1) or
+                self.db.existe_senal_reciente_opuesta(simbolo_db, 'COMPRA', horas=1)
+            )
+            _sin_conflicto_sell = not (
+                self.db.existe_senal_activa_misma_dir(simbolo_db, 'VENTA') or
+                self.db.existe_senal_activa_opuesta(simbolo_db, 'VENTA') or
+                self.db.existe_senal_reciente(simbolo_db, 'VENTA', horas=1) or
+                self.db.existe_senal_reciente_opuesta(simbolo_db, 'VENTA', horas=1)
+            )
+
+        if (_prob_buy > 0.70 and not senal_buy_alerta and _dist_buy < _dist_max_pred and
+                _sin_conflicto_buy and not self.ya_enviada(f"{_clave_pred}_PRED_BUY")):
+            _ml_msg_buy = (
+                f"🤖 <b>PREDICCIÓN ML — ORO (XAUUSD) 1H</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ El modelo detecta condiciones pre-señal de COMPRA\n"
+                f"📊 Probabilidad: {round(_prob_buy * 100)}%\n"
+                f"💰 Precio actual: ${close:.2f}\n"
+                f"📌 Zona soporte: ${zsl:.2f}–${zsh:.2f}\n"
+                f"⏳ Señal reactiva estimada: 1-3 velas\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📉 RSI: {round(rsi, 1)} ({'bajando' if rsi < rsi_prev else 'subiendo'})  ATR: ${atr:.2f}\n"
+                f"🔍 Features clave:\n"
+                f"   • Dist. soporte: {_pred_features.get('dist_soporte_pct', 0.0):.2f}%\n"
+                f"   • Vol relativo: {_pred_features.get('vol_relativo_3v', 0.0):.2f}\n"
+                f"   • MACD mejorando: {'Sí' if _pred_features.get('macd_hist_mejorando', 0) == 1 else 'No'}\n"
+                f"   • ATR contrayendo: {'Sí' if _pred_features.get('atr_contrayendo', 0) == 1 else 'No'}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ Esta es una predicción ML, no una señal confirmada\n"
+                f"⏱️ TF: 1H  📅 {fecha}"
+            )
+            self.enviar(_ml_msg_buy)
+            self.marcar_enviada(f"{_clave_pred}_PRED_BUY")
+            if self.db:
+                try:
+                    self._guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                        'direccion': 'COMPRA', 'precio_entrada': buy_entry,
+                        'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                        'score': score_buy,
+                        'indicadores': json.dumps(_condiciones_bd),
+                        'patron_velas': 'Predicción anticipada ML COMPRA',
+                        'version_detector': 'GOLD 1H-ML-v1.0',
+                        'estado': 'PENDIENTE_CONFIRM',
+                    })
+                except Exception as e:
+                    logger.debug(f"  [ML 1H] Error guardando predicción BUY: {e}")
+
+        if (_prob_sell > 0.70 and not senal_sell_alerta and _dist_sell < _dist_max_pred and
+                _sin_conflicto_sell and not self.ya_enviada(f"{_clave_pred}_PRED_SELL")):
+            _ml_msg_sell = (
+                f"🤖 <b>PREDICCIÓN ML — ORO (XAUUSD) 1H</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ El modelo detecta condiciones pre-señal de VENTA\n"
+                f"📊 Probabilidad: {round(_prob_sell * 100)}%\n"
+                f"💰 Precio actual: ${close:.2f}\n"
+                f"📌 Zona resistencia: ${zrl:.2f}–${zrh:.2f}\n"
+                f"⏳ Señal reactiva estimada: 1-3 velas\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📉 RSI: {round(rsi, 1)} ({'subiendo' if rsi > rsi_prev else 'bajando'})  ATR: ${atr:.2f}\n"
+                f"🔍 Features clave:\n"
+                f"   • Dist. resistencia: {_pred_features.get('dist_resist_pct', 0.0):.2f}%\n"
+                f"   • Vol relativo: {_pred_features.get('vol_relativo_3v', 0.0):.2f}\n"
+                f"   • MACD mejorando: {'Sí' if _pred_features.get('macd_hist_mejorando', 0) == 1 else 'No'}\n"
+                f"   • ATR contrayendo: {'Sí' if _pred_features.get('atr_contrayendo', 0) == 1 else 'No'}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ Esta es una predicción ML, no una señal confirmada\n"
+                f"⏱️ TF: 1H  📅 {fecha}"
+            )
+            self.enviar(_ml_msg_sell)
+            self.marcar_enviada(f"{_clave_pred}_PRED_SELL")
+            if self.db:
+                try:
+                    self._guardar_senal({
+                        'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
+                        'direccion': 'VENTA', 'precio_entrada': sell_entry,
+                        'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                        'score': score_sell,
+                        'indicadores': json.dumps(_condiciones_bd),
+                        'patron_velas': 'Predicción anticipada ML VENTA',
+                        'version_detector': 'GOLD 1H-ML-v1.0',
+                        'estado': 'PENDIENTE_CONFIRM',
+                    })
+                except Exception as e:
+                    logger.debug(f"  [ML 1H] Error guardando predicción SELL: {e}")
 
         # ── Publicar / limpiar zona activa para modo caza 15M/5M ──────────────────
         if _prep_buy_alerta and not cancelar_buy and not cancelar_buy_rr:
@@ -1719,6 +1863,7 @@ class GoldDetector1H(BaseDetector):
 
 
 def main():
+    global _last_ml_retrain_1h
     logger.info("🚀 Detector ORO 1H intradía iniciado")
     enviar_telegram("🚀 <b>Detector ORO (XAUUSD) 1H — INTRADÍA iniciado</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
@@ -1745,6 +1890,16 @@ def main():
             continue
 
         logger.info(f"\n[{ahora_utc.strftime('%Y-%m-%d %H:%M:%S')}] 🔄 CICLO #{ciclo} - ORO 1H")
+        if (_predictor_1h_buy.necesita_reentrenamiento() or
+                _predictor_1h_sell.necesita_reentrenamiento() or
+                (time.time() - _last_ml_retrain_1h) >= 7 * 24 * 3600):
+            try:
+                _predictor_1h_buy.reentrenar_desde_bd(db)
+                _predictor_1h_sell.reentrenar_desde_bd(db)
+                _last_ml_retrain_1h = time.time()
+                logger.info("  ✅ [ML] Modelos 1H re-entrenados")
+            except Exception as e:
+                logger.warning(f"  ⚠️ [ML] Re-entrenamiento fallido (continuando sin ML): {e}")
         for simbolo, params in SIMBOLOS.items():
             analizar(simbolo, params)
         logger.info(f"⏳ Esperando {CHECK_INTERVAL}s...")

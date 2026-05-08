@@ -52,3 +52,6 @@ pytest_out.txt
 # Documentos Claude-web (no son código)
 CONTEXTO_PROYECTO.md
 PLAN_MEJORA_Y_APP.md
+
+# ML models
+models/*.pkl

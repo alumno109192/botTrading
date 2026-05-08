@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from adapters.database import get_db
 from core.predictor import ESTADOS_LOSS, ESTADOS_WIN, GoldPredictor
@@ -23,7 +25,7 @@ def cargar_senales_bd(db, tf: str, direccion: str, feature_cols: list[str]) -> l
     query = """
     SELECT timestamp, direccion, estado, indicadores
     FROM senales
-    WHERE estado IN ('TP1','TP2','TP3','BREAKEVEN','SL')
+    WHERE estado IN ('TP1','TP2','TP3','BREAKEVEN','SL','IN TP1','IN TP2','IN TP3')
       AND timeframe = ?
       AND direccion = ?
       AND indicadores IS NOT NULL
@@ -42,7 +44,7 @@ def cargar_senales_bd(db, tf: str, direccion: str, feature_cols: list[str]) -> l
         if estado not in ESTADOS_WIN | ESTADOS_LOSS:
             continue
 
-        sample = {f: ind.get(f) for f in feature_cols}
+        sample = {f: ind.get(f, DEFAULT_FEATURE_FILL) for f in feature_cols}
         sample['win'] = 1 if estado in ESTADOS_WIN else 0
         sample['timestamp'] = row.get('timestamp')
         rows.append(sample)
@@ -57,12 +59,6 @@ def cargar_datos_entrenamiento(
     backtest_period: str = '3mo',
     force_backtest: bool = False,
 ) -> pd.DataFrame:
-    """
-    Estrategia híbrida:
-    1. Carga señales cerradas de BD Turso
-    2. Si hay pocas, genera muestras históricas desde Twelve Data
-    3. Combina ambas fuentes, priorizando BD (peso x2)
-    """
     predictor_tmp = GoldPredictor(tf=tf, direccion=direccion)
 
     senales_bd = cargar_senales_bd(db, tf, direccion, predictor_tmp.FEATURE_COLUMNS)
@@ -164,7 +160,7 @@ def entrenar_modelo(df: pd.DataFrame, predictor: GoldPredictor) -> dict:
 
     predictor.model_dir.mkdir(parents=True, exist_ok=True)
     payload = {
-        'model': rf,
+        'modelo_rf': rf,
         'feature_columns': feature_cols,
         'tf': predictor.tf,
         'direccion': predictor.direccion,
@@ -217,32 +213,45 @@ def imprimir_resumen(tf: str, direccion: str, stats: dict, predictor: GoldPredic
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Entrena predictor ML GOLD con estrategia híbrida BD + backtest')
     parser.add_argument('--tf', default='1H', help='Timeframe (1H, 4H, 1D)')
-    parser.add_argument('--direccion', default='COMPRA', choices=['COMPRA', 'VENTA'])
+    parser.add_argument('--direccion', choices=['COMPRA', 'VENTA'], help='Dirección a entrenar')
+    parser.add_argument('--direction', choices=['COMPRA', 'VENTA'], help='Alias de --direccion')
     parser.add_argument('--backtest-period', default='3mo', help='Periodo histórico para backtest Twelve Data (3mo, 6mo, ...)')
     parser.add_argument('--force-backtest', action='store_true', help='Forzar backtest aunque haya suficientes datos BD')
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-
-    db = get_db()
-    predictor = GoldPredictor(tf=args.tf, direccion=args.direccion)
-
+def _run_one(db, tf: str, direccion: str, backtest_period: str, force_backtest: bool) -> bool:
+    predictor = GoldPredictor(tf=tf, direccion=direccion)
     try:
         df = cargar_datos_entrenamiento(
             db=db,
-            tf=args.tf,
-            direccion=args.direccion,
-            backtest_period=args.backtest_period,
-            force_backtest=args.force_backtest,
+            tf=tf,
+            direccion=direccion,
+            backtest_period=backtest_period,
+            force_backtest=force_backtest,
         )
         stats = entrenar_modelo(df, predictor)
-        imprimir_resumen(args.tf, args.direccion, stats, predictor)
-        return 0
+        imprimir_resumen(tf, direccion, stats, predictor)
+        return True
     except Exception as exc:
-        print(f'❌ Error en entrenamiento: {exc}')
-        return 1
+        print(f'❌ Error en entrenamiento {tf}/{direccion}: {exc}')
+        return False
+
+
+def main() -> int:
+    args = parse_args()
+    direccion = args.direccion or args.direction
+
+    db = get_db()
+    tfs = [args.tf.upper()] if args.tf else ['1H', '4H']
+    dirs = [direccion] if direccion else ['COMPRA', 'VENTA']
+
+    ok_any = False
+    for tf in tfs:
+        for d in dirs:
+            ok_any = _run_one(db, tf, d, args.backtest_period, args.force_backtest) or ok_any
+
+    return 0 if ok_any else 1
 
 
 if __name__ == '__main__':
