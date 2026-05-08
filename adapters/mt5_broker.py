@@ -15,8 +15,6 @@ Variables de entorno requeridas:
   MT5_SYMBOL       — Símbolo en MT5 (ej. XAUUSD)
   MT5_RISK_PCT     — % del balance a arriesgar por operación (default: 1.0)
   MT5_MAX_LOTES    — Tope máximo de lotes por operación (default: 0.10)
-  MT5_MIN_SCORE    — Score mínimo para ejecutar (default: 4)
-  MT5_TIMEFRAMES_ACTIVOS — TFs habilitados separados por coma (default: 5m,15m)
 
 Uso (descomentado cuando se quiera activar):
   from adapters.mt5_broker import broker
@@ -57,11 +55,6 @@ class MT5Broker:
         self.symbol        = os.getenv('MT5_SYMBOL', 'XAUUSD')
         self.risk_pct      = float(os.getenv('MT5_RISK_PCT', '1.0'))
         self.max_lotes     = float(os.getenv('MT5_MAX_LOTES', '0.10'))
-        self.min_score     = int(os.getenv('MT5_MIN_SCORE', '4'))
-        self.tfs_activos   = {
-            tf.strip()
-            for tf in os.getenv('MT5_TIMEFRAMES_ACTIVOS', '5m,15m').split(',')
-        }
 
         # ── Importar MetaTrader5 opcionalmente ─────────────────────────────
         if self.auto_trade:
@@ -198,32 +191,17 @@ class MT5Broker:
             entry      : float — precio de entrada
             sl         : float — stop loss
             tp1        : float — primer objetivo (TP principal en MT5)
-            score      : int   — puntuación de la señal
             timeframe  : str   — ej. '5m', '15m'
             simbolo    : str   — ej. 'GC=F' (se traduce a self.symbol)
 
-        Filtros aplicados antes de operar:
-            - MT5_AUTO_TRADE debe ser true
-            - timeframe debe estar en MT5_TIMEFRAMES_ACTIVOS
-            - score debe ser >= MT5_MIN_SCORE
+        Solo requiere MT5_AUTO_TRADE=true. Toda señal válida (BUY/SELL) se ejecuta.
 
         Retorna el ticket de la orden abierta, o None si no se ejecutó.
         """
         if not self.auto_trade or not self._mt5:
             return None
 
-        # ── Filtros de seguridad ───────────────────────────────────────────
-        tf        = senal_data.get('timeframe', '')
-        score     = int(senal_data.get('score', 0) or 0)
         direccion = str(senal_data.get('direccion', '')).upper()
-
-        if tf not in self.tfs_activos:
-            logger.debug(f"MT5Broker: TF {tf!r} no está en activos → omitido")
-            return None
-
-        if score < self.min_score:
-            logger.info(f"MT5Broker: score {score} < {self.min_score} → no ejecutado")
-            return None
 
         if direccion not in ('BUY', 'SELL'):
             logger.warning(f"MT5Broker: dirección inválida {direccion!r}")
@@ -231,16 +209,6 @@ class MT5Broker:
 
         if not self._asegurar_conexion():
             logger.error("MT5Broker: no hay conexión, operación cancelada")
-            return None
-
-        # ── Drawdown diario — parada automática ───────────────────────────
-        info_cuenta = self._mt5.account_info()
-        if info_cuenta and info_cuenta.equity < info_cuenta.balance * 0.97:
-            logger.warning(
-                f"MT5Broker: drawdown diario > 3% "
-                f"(equity {info_cuenta.equity:.2f} / balance {info_cuenta.balance:.2f}) "
-                f"→ operaciones pausadas hasta mañana"
-            )
             return None
 
         # ── Construcción de la orden ───────────────────────────────────────
