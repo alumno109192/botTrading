@@ -632,6 +632,26 @@ class DatabaseManager:
         result = self.ejecutar_query(query)
         return [dict(row) for row in result.rows] if result.rows else []
 
+    def obtener_senales_cerradas_recientes(self, horas: int = 24) -> List[Dict]:
+        """
+        Obtiene señales cerradas (SL, TP1, TP2, TP3) en las últimas N horas.
+
+        Args:
+            horas: Ventana temporal hacia atrás desde ahora (por defecto 24h).
+
+        Returns:
+            Lista de diccionarios con los datos de cada señal cerrada.
+        """
+        query = f"""
+        SELECT *
+        FROM senales
+        WHERE estado IN ('SL', 'TP1', 'TP2', 'TP3')
+          AND timestamp >= datetime('now', '-{int(horas)} hours')
+        ORDER BY timestamp DESC
+        """
+        result = self.ejecutar_query(query)
+        return [dict(row) for row in result.rows] if result.rows else []
+
     def confirmar_senal_pendiente(self, senal_id: int) -> None:
         """Activa una señal que estaba esperando confirmación de TF inferior."""
         query = "UPDATE senales SET estado = 'ACTIVA', ciclo_vida = 'ACTIVA' WHERE id = ?"

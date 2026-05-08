@@ -781,10 +781,10 @@ class GoldDetector4H(BaseDetector):
             score_buy = min(score_buy + 1, 23)
             logger.info(f"  🔺 [4H] Momentum alcista en soporte — +1 BUY")
 
-        _umbral_max = self.umbral_adaptativo(14, atr, atr_media)
-        _umbral_fue = self.umbral_adaptativo(12, atr, atr_media)
-        _umbral_med = self.umbral_adaptativo(9,  atr, atr_media)
-        _umbral_ale = self.umbral_adaptativo(5,  atr, atr_media)
+        _umbral_max = self.umbral_adaptativo(16, atr, atr_media)   # antes: 14
+        _umbral_fue = self.umbral_adaptativo(14, atr, atr_media)   # antes: 12
+        _umbral_med = self.umbral_adaptativo(11, atr, atr_media)   # antes: 9
+        _umbral_ale = self.umbral_adaptativo(7,  atr, atr_media)   # antes: 5
 
         # NIVELES DE SEÑAL 4H (MÁS ESTRICTOS)
         senal_sell_maxima = score_sell >= _umbral_max
@@ -1008,7 +1008,11 @@ class GoldDetector4H(BaseDetector):
                     })
                 except Exception as e:
                     logger.error(f"  ⚠️ Error BD: {e}")
-            self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_SELL")
+            _nivel_prep_sell_4h = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
+            if not self._debe_suprimir_por_evento(_nivel_prep_sell_4h):
+                self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_SELL")
+            else:
+                logger.info(f"  🔕 [4H] SELL PREP suprimida por evento macro")
 
         if aproximando_soporte and not en_zona_soporte and not cancelar_buy and senal_buy_alerta and not self.ya_enviada(f"{clave_vela}_PREP_BUY"):
             nv = ("🔥 BUY MÁXIMA"  if senal_buy_maxima else
@@ -1042,7 +1046,11 @@ class GoldDetector4H(BaseDetector):
                     })
                 except Exception as e:
                     logger.error(f"  ⚠️ Error BD: {e}")
-            self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
+            _nivel_prep_buy_4h = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
+            if not self._debe_suprimir_por_evento(_nivel_prep_buy_4h):
+                self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
+            else:
+                logger.info(f"  🔕 [4H] BUY PREP suprimida por evento macro")
 
         # ── SEÑALES EN ZONA (confirmación si ya hubo señal accionable) ──
         if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
@@ -1064,7 +1072,10 @@ class GoldDetector4H(BaseDetector):
                                f"💰 <b>Precio:</b> ${round(close, 2)}\n"
                                f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
-                        self.enviar(msg); self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
+                        _nivel_z_sell_4h = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
+                        if not self._debe_suprimir_por_evento(_nivel_z_sell_4h):
+                            self.enviar(msg)
+                        self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
                     else:
                         if self.db and self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                             logger.info(f"  ℹ️  Señal VENTA duplicada - No se guarda"); return
@@ -1097,7 +1108,10 @@ class GoldDetector4H(BaseDetector):
                                 })
                             except Exception as e:
                                 logger.error(f"  ⚠️ Error guardando en BD: {e}")
-                        self.enviar(msg); self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
+                        _nivel_z_sell_d_4h = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
+                        if not self._debe_suprimir_por_evento(_nivel_z_sell_d_4h):
+                            self.enviar(msg)
+                        self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
 
         if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
             if self.ya_enviada(f"{clave_vela}_PREP_BUY") and not (senal_buy_fuerte or senal_buy_maxima):
@@ -1118,7 +1132,10 @@ class GoldDetector4H(BaseDetector):
                                f"💰 <b>Precio:</b> ${round(close, 2)}\n"
                                f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
-                        self.enviar(msg); self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
+                        _nivel_z_buy_4h = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
+                        if not self._debe_suprimir_por_evento(_nivel_z_buy_4h):
+                            self.enviar(msg)
+                        self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
                     else:
                         if self.db and self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                             logger.info(f"  ℹ️  Señal COMPRA duplicada - No se guarda"); return
@@ -1151,7 +1168,10 @@ class GoldDetector4H(BaseDetector):
                                 })
                             except Exception as e:
                                 logger.error(f"  ⚠️ Error guardando en BD: {e}")
-                        self.enviar(msg); self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
+                        _nivel_z_buy_d_4h = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
+                        if not self._debe_suprimir_por_evento(_nivel_z_buy_d_4h):
+                            self.enviar(msg)
+                        self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
 
         # ── CANCELACIONES ──────────────────────────────────────────────────────
         if cancelar_sell and not self.ya_enviada(f"{clave_vela}_CANCEL_SELL"):

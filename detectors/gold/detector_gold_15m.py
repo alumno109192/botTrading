@@ -442,7 +442,7 @@ class GoldDetector15M(BaseDetector):
 
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo si score está en zona de desempate (4–7), evita llamadas innecesarias
-            _umbral_conf_15 = 8
+            _umbral_conf_15 = 10
             _necesita_conf_sell = 4 <= score_sell < _umbral_conf_15
             _necesita_conf_buy  = 4 <= score_buy  < _umbral_conf_15
             if _necesita_conf_sell or _necesita_conf_buy:
@@ -479,8 +479,8 @@ class GoldDetector15M(BaseDetector):
             # ══════════════════════════════════════
             # NIVELES DE SEÑAL 15M — solo FUERTE llega a Telegram
             # ══════════════════════════════════════
-            senal_sell_fuerte = score_sell >= 8
-            senal_buy_fuerte  = score_buy  >= 8
+            senal_sell_fuerte = score_sell >= 10   # antes: 8
+            senal_buy_fuerte  = score_buy  >= 10   # antes: 8
 
             # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
             dxy_bias = get_dxy_bias()
@@ -519,7 +519,7 @@ class GoldDetector15M(BaseDetector):
             elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
                 score_buy = min(score_buy + 1, 23)
                 logger.info(f"  🔺 [15M] Momentum alcista en soporte — +1 BUY")
-            _umbral_fue = self.umbral_adaptativo(8, atr, atr_media)
+            _umbral_fue = self.umbral_adaptativo(10, atr, atr_media)   # antes: 8
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 

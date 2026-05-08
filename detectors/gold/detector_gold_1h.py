@@ -252,7 +252,7 @@ class GoldDetector1H(BaseDetector):
         if canal_bajista_roto:
             logger.info(f"  🔺 Canal bajista ROTO — sesgo alcista reforzado (resist canal ${linea_resist_canal:.2f})")
 
-        tol  = round(atr * 0.4, 2)   # tolerancia dinámica: 40% del ATR
+        tol  = round(atr * 0.5, 2)   # tolerancia dinámica: 50% del ATR (ampliado para capturar toques de mecha)
         lop = params['limit_offset_pct']; cd = params['cancelar_dist']
         av   = params['anticipar_velas']; vm = params['vol_mult']
         rsms = params['rsi_min_sell']; rsmb = params['rsi_max_buy']; asm = params['atr_sl_mult']
@@ -412,20 +412,20 @@ class GoldDetector1H(BaseDetector):
             logger.info(f"  🚫 [1H] cancelar_buy=True: VENTA activa en BD para {simbolo_db}")
         if self.db and self.db.existe_senal_activa_opuesta(simbolo_db, 'COMPRA'):
             cancelar_sell = True
-            logger.info(f"  🚫 [1H] cancelar_sell=True: COMPRA activa en BD para {simbolo_db}")
+            logger.warning(f"  🚫 [1H] cancelar_sell=True: COMPRA activa en BD para {simbolo_db}")
 
         # ── Detección en vela VIVA: rebote de soporte / rechazo de resistencia ────
         # Permite alertas DURANTE la formación de la vela sin esperar al cierre.
         # BUY: la vela en curso tocó el soporte (low en zona) y ya está rebotando.
         rebote_soporte_live = (
-            (low_live  >= zsl - tol) and (low_live  <= zsh + tol) and  # low tocó zona soporte
+            (low_live  >= zsl - tol * 1.2) and (low_live  <= zsh + tol * 1.5) and  # low tocó zona soporte (mecha amplificada)
             close_live > open_live and                                   # vela alcista (rebote)
             close_live > zsh - tol and                                   # cierre saliendo de la zona
             low_live   < zsh                                             # efectivamente entró en zona
         )
         # SELL: la vela en curso tocó la resistencia y está rechazando.
         rechazo_resist_live = (
-            (high_live >= zrl - tol) and (high_live <= zrh + tol) and  # high tocó zona resist
+            (high_live >= zrl - tol * 1.2) and (high_live <= zrh + tol * 1.5) and  # high tocó zona resist (mecha amplificada)
             close_live < open_live and                                   # vela bajista (rechazo)
             close_live < zrh + tol and                                   # cierre en/bajo la zona
             high_live  > zrl                                             # efectivamente tocó zona
@@ -1016,10 +1016,10 @@ class GoldDetector1H(BaseDetector):
             'pullback_alcista': bool(pullback_alcista), 'pullback_bajista': bool(pullback_bajista),
         }
 
-        _umbral_max = self.umbral_adaptativo(12, atr, atr_media)
-        _umbral_fue = self.umbral_adaptativo(11, atr, atr_media)  # subido de 9
-        _umbral_med = self.umbral_adaptativo(8,  atr, atr_media)  # subido de 6
-        _umbral_ale = self.umbral_adaptativo(6,  atr, atr_media)  # subido de 5
+        _umbral_max = self.umbral_adaptativo(15, atr, atr_media)   # antes: 12
+        _umbral_fue = self.umbral_adaptativo(13, atr, atr_media)   # antes: 11
+        _umbral_med = self.umbral_adaptativo(10, atr, atr_media)   # antes: 8
+        _umbral_ale = self.umbral_adaptativo(8,  atr, atr_media)   # antes: 6
         senal_sell_maxima = score_sell >= _umbral_max
         senal_sell_fuerte = score_sell >= _umbral_fue
         senal_sell_media  = score_sell >= _umbral_med
@@ -1221,7 +1221,11 @@ class GoldDetector1H(BaseDetector):
                         })
                     except Exception as e:
                         logger.error(f"  ⚠️ Error BD: {e}")
-                self.enviar(msg); marcar_enviada_live('LIVE_BUY')
+                _nivel_live_buy = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
+                if self._debe_suprimir_por_evento(_nivel_live_buy):
+                    logger.info(f"  🔕 [1H] BUY LIVE suprimida por evento macro")
+                else:
+                    self.enviar(msg); marcar_enviada_live('LIVE_BUY')
 
         if rechazo_resist_live and _prep_sell_alerta and not cancelar_sell and not cancelar_sell_rr and not ya_enviada_live('LIVE_SELL'):
             nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
@@ -1277,7 +1281,11 @@ class GoldDetector1H(BaseDetector):
                         })
                     except Exception as e:
                         logger.error(f"  ⚠️ Error BD: {e}")
-                self.enviar(msg); marcar_enviada_live('LIVE_SELL')
+                _nivel_live_sell = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
+                if self._debe_suprimir_por_evento(_nivel_live_sell):
+                    logger.info(f"  🔕 [1H] SELL LIVE suprimida por evento macro")
+                else:
+                    self.enviar(msg); marcar_enviada_live('LIVE_SELL')
 
         # ── ALERTAS DE APROXIMACIÓN → SEÑAL ACCIONABLE (pon la orden limit ahora) ──
         if aproximando_resist and not en_zona_resist and not cancelar_sell and not cancelar_sell_rr and _prep_sell_alerta and not self.ya_enviada(f"{clave_vela}_PREP_SELL"):
@@ -1320,9 +1328,13 @@ class GoldDetector1H(BaseDetector):
                         })
                     except Exception as e:
                         logger.error(f"  ⚠️ Error BD: {e}")
-                if _ctx_htf:
-                    msg += _ctx_htf
-                self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_SELL")
+                _nivel_prep_sell = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
+                if self._debe_suprimir_por_evento(_nivel_prep_sell):
+                    logger.info(f"  🔕 [1H] SELL PREP suprimida por evento macro")
+                else:
+                    if _ctx_htf:
+                        msg += _ctx_htf
+                    self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_SELL")
 
         if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not cancelar_buy_rr and _prep_buy_alerta and not self.ya_enviada(f"{clave_vela}_PREP_BUY"):
             nv = ("🔥 BUY MÁXIMA" if senal_buy_maxima else
@@ -1364,9 +1376,13 @@ class GoldDetector1H(BaseDetector):
                         })
                     except Exception as e:
                         logger.error(f"  ⚠️ Error BD: {e}")
-                if _ctx_htf:
-                    msg += _ctx_htf
-                self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
+                _nivel_prep_buy = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
+                if self._debe_suprimir_por_evento(_nivel_prep_buy):
+                    logger.info(f"  🔕 [1H] BUY PREP suprimida por evento macro")
+                else:
+                    if _ctx_htf:
+                        msg += _ctx_htf
+                    self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
 
         # ── SEÑALES SELL (en zona) — requiere mínimo MEDIA para enviar Telegram ──
         _tiene_rechazo_confirmado = en_zona_resist_any and (vela_rechazo or evening_star or intento_rotura_fallido)
@@ -1391,7 +1407,9 @@ class GoldDetector1H(BaseDetector):
                                f"💰 <b>Precio:</b> ${close:.2f}\n"
                                f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                                f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
-                        self.enviar(msg)
+                        _nivel_z_sell = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
+                        if not self._debe_suprimir_por_evento(_nivel_z_sell):
+                            self.enviar(msg)
                         self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
                     else:
                         # Precio saltó directo a la zona sin pre-alerta → señal completa con DB
@@ -1430,7 +1448,9 @@ class GoldDetector1H(BaseDetector):
                                 })
                             except Exception as e:
                                 logger.error(f"  ⚠️ Error BD: {e}")
-                        self.enviar(msg)
+                        _nivel_z_sell_d = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
+                        if not self._debe_suprimir_por_evento(_nivel_z_sell_d):
+                            self.enviar(msg)
                         self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
 
         # ── SEÑALES BUY (en zona) — requiere mínimo MEDIA para enviar Telegram ──
@@ -1457,7 +1477,9 @@ class GoldDetector1H(BaseDetector):
                                f"💰 <b>Precio:</b> ${close:.2f}\n"
                                f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                                f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
-                        self.enviar(msg)
+                        _nivel_z_buy = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
+                        if not self._debe_suprimir_por_evento(_nivel_z_buy):
+                            self.enviar(msg)
                         self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
                     else:
                         # Precio saltó directo a la zona sin pre-alerta → señal completa con DB
@@ -1496,7 +1518,9 @@ class GoldDetector1H(BaseDetector):
                                 })
                             except Exception as e:
                                 logger.error(f"  ⚠️ Error BD: {e}")
-                        self.enviar(msg)
+                        _nivel_z_buy_d = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
+                        if not self._debe_suprimir_por_evento(_nivel_z_buy_d):
+                            self.enviar(msg)
                         self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
 
         # ── SEÑALES RETEST DE CANAL ROTO (alta probabilidad) ─────────────────────
