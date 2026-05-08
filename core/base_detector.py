@@ -19,9 +19,12 @@ Funciones centralizadas:
 
 import os
 import time
+import logging
 import pandas as pd
 import numpy as np
 from abc import ABC, abstractmethod
+
+_logger = logging.getLogger('bottrading')
 
 import adapters.telegram as _telegram_mod
 # ── MT5 / VT Markets ─────────────────────────────────────────────────────────
@@ -71,8 +74,6 @@ class BaseDetector(ABC):
         self._current_candle_ts = None             # Timestamp de la vela analizada (lo asigna cada detector)
 
         # Inicializar BD si las variables están configuradas
-        import logging as _logging
-        _logger = _logging.getLogger('bottrading')
         try:
             from adapters.database import get_db
             self.db = get_db()
@@ -453,8 +454,7 @@ class BaseDetector(ABC):
                         _row['timeframe'] = str(_row['timeframe']).lower()
                     _mt5_broker.abrir_operacion(_row)
             except Exception as _e:
-                import logging as _log
-                _log.getLogger('bottrading').warning(
+                _logger.warning(
                     f"MT5 hook: error al intentar abrir operación — {_e}"
                 )
         # ── Fin hook MT5 ───────────────────────────────────────────────────────
