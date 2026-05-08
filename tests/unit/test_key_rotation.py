@@ -19,11 +19,14 @@ import pandas as pd
 # ── Helpers para parchear el estado interno del módulo ─────────────────────
 
 def _reset_module_state(dp):
-    """Limpia cooldowns y contadores del módulo data_provider."""
+    """Limpia cooldowns, contadores y cache de uso del módulo data_provider."""
     with dp._cooldown_lock:
         dp._key_cooldown.clear()
     with dp._minute_lock:
         dp._key_minute_window.clear()
+    with dp._uso_cache_lock:
+        dp._uso_cache.clear()
+        dp._uso_cache_ts = 0.0
 
 
 def _set_cooldown(dp, alias: str, seconds: int = 60):
@@ -137,6 +140,48 @@ class TestNextTdKey:
         finally:
             dp._td_keys = original
 
+    def test_devuelve_key1_como_ultimo_recurso_cuando_keys_free_agotan_cuota_diaria(
+        self, dp_fake_keys
+    ):
+        """
+        ÚLTIMO RECURSO: key1 en cooldown de minuto, pero key2 y key3 han agotado
+        su cuota diaria → debe devolver key1 igualmente (es la única ilimitada).
+        """
+        dp = dp_fake_keys
+        _set_cooldown(dp, 'key1', 60)  # key1 en cooldown de minuto
+
+        # Simular que key2 y key3 han agotado el límite diario
+        with dp._uso_cache_lock:
+            dp._uso_cache = {'key2': dp._MAX_DAILY_FREE + 1, 'key3': dp._MAX_DAILY_FREE + 1}
+            import time as _t
+            dp._uso_cache_ts = _t.time()  # cache fresco
+
+        alias, key = dp._next_td_key()
+        assert alias == 'key1', (
+            f"Se esperaba key1 como último recurso pero se recibió '{alias}'"
+        )
+        assert key == 'FAKE_K1'
+
+    def test_no_devuelve_key1_last_resort_si_solo_cooldown_de_minuto_en_keys_free(
+        self, dp_fake_keys
+    ):
+        """
+        Si key2/key3 están en cooldown de MINUTO (no límite diario),
+        NO debe activarse el último recurso de key1.
+        """
+        dp = dp_fake_keys
+        _set_cooldown(dp, 'key1', 60)
+        _set_cooldown(dp, 'key2', 60)
+        _set_cooldown(dp, 'key3', 60)
+        # Las keys free están en cooldown de minuto pero NO han agotado la cuota diaria
+        # (uso = 0 < _MAX_DAILY_FREE)
+
+        alias, key = dp._next_td_key()
+        assert alias is None, (
+            f"No debe activarse el último recurso si el bloqueo es por cooldown de minuto, "
+            f"pero se devolvió '{alias}'"
+        )
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # 2. _get_twelve_data — cooldown en values vacío
@@ -240,7 +285,8 @@ class TestGetOhlcvLoop:
 
         with patch.object(dp, '_get_twelve_data', side_effect=counting_get), \
              patch.object(dp, 'DIRECT_FETCH_MODE', True), \
-             patch.object(dp, '_reserve_minute_slot', return_value=True):
+             patch.object(dp, '_reserve_minute_slot', return_value=True), \
+             patch.object(dp, '_get_from_db', return_value=(pd.DataFrame(), False)):
             dp.get_ohlcv('GC=F', '1d', '1d')
 
         assert call_count <= n_keys, (
@@ -264,7 +310,8 @@ class TestGetOhlcvLoop:
 
         with patch.object(dp, '_get_twelve_data', side_effect=never_called), \
              patch.object(dp, 'DIRECT_FETCH_MODE', True), \
-             patch.object(dp, '_reserve_minute_slot', return_value=True):
+             patch.object(dp, '_reserve_minute_slot', return_value=True), \
+             patch.object(dp, '_get_from_db', return_value=(pd.DataFrame(), False)):
             result_df, _ = dp.get_ohlcv('GC=F', '1d', '1d')
 
         assert not api_llamada, "La API fue llamada aunque todas las keys estaban en cooldown"

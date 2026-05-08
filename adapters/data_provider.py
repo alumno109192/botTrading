@@ -224,12 +224,15 @@ def _next_td_key() -> tuple:
     Devuelve (alias, key) con prioridad:
     1. key1 (Plan Grow 55: ∞ req/día, 55 req/min) - SIEMPRE PRIMERO
     2. keys 2-11 (Plan Basic 8: 8 req/min, 800 req/día) - FALLBACK en round-robin
-    3. Todas bloqueadas → (None, None): el caller debe abortar, NO forzar key1
+    3. ÚLTIMO RECURSO: si todas las keys free (2-11) han agotado su cuota DIARIA,
+       devolver key1 aunque esté en cooldown de minuto (es la única con req ilimitadas).
+    4. Todas bloqueadas → (None, None): el caller debe abortar
 
     Estrategia:
     - Si key1 disponible (no en cooldown) → usar key1
     - Si key1 en cooldown → rotar entre key2-key11 disponibles y sin cuota diaria agotada
-    - Si todas bloqueadas → devolver (None, None) para que el loop se detenga
+    - Si todas las keys free agotaron cuota diaria → usar key1 como último recurso
+    - Si todas bloqueadas por cooldown de minuto → devolver (None, None)
     """
     if not _td_keys:
         return None, None
@@ -253,7 +256,20 @@ def _next_td_key() -> tuple:
                 continue
             return alias, key
 
-    # 3️⃣ TODAS BLOQUEADAS — no devolver key1 (evita bucle infinito)
+    # 3️⃣ ÚLTIMO RECURSO: si todas las keys free (2-11) han agotado su cuota diaria,
+    #    usar key1 aunque esté en cooldown de minuto. key1 tiene peticiones ilimitadas
+    #    (Plan Grow 55) y es la única opción cuando las demás han quedado bloqueadas.
+    free_keys = [(a, k) for a, k in _td_keys if a != 'key1']
+    if free_keys and all(_is_daily_limit_exceeded(a) for a, _ in free_keys):
+        for alias, key in _td_keys:
+            if alias == 'key1':
+                logger.warning(
+                    "[last-resort] Todas las keys free han agotado su cuota diaria "
+                    "— usando key1 como último recurso"
+                )
+                return alias, key
+
+    # 4️⃣ TODAS BLOQUEADAS — no hay opción disponible
     #    El caller tiene "if not key: break" que detendrá el loop.
     return None, None
 
