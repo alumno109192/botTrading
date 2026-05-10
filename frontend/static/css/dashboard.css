@@ -350,116 +350,98 @@ nav {
 .card-meta strong { color: #90a4ae; }
 
 /* ══════════════════════════════════════════════════════════
-   HISTORIAL CARDS
+   HISTORIAL — FAKE TABLE (CSS Grid)
 ══════════════════════════════════════════════════════════ */
-.hist-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
-.hist-card {
-  display: flex;
-  align-items: stretch;
-  background: var(--panel);
+/* 9 columnas: resultado · activo · dir · tf · fecha · entrada · tp1 · sl · pnl */
+.hlist {
+  --hcols: 90px 60px 72px 46px 90px 1fr 1fr 1fr 88px;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.hist-card:hover {
-  border-color: var(--border-2);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
 }
 
-/* Franja izquierda de color según dirección */
-.hist-card.hcard-buy  { border-left: 3px solid var(--buy); }
-.hist-card.hcard-sell { border-left: 3px solid var(--sell); }
-
-/* Columna izquierda: badge resultado */
-.hcard-side {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 14px;
-  background: rgba(0,0,0,0.15);
-  border-right: 1px solid var(--border);
-  flex-shrink: 0;
-  min-width: 72px;
+.hlist-header {
+  display: grid;
+  grid-template-columns: var(--hcols);
+  padding: 0 4px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
 }
-
-/* Cuerpo */
-.hcard-body {
-  flex: 1;
-  padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-/* Fila superior */
-.hcard-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.hcard-ticker {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: #cdd9e5;
-  letter-spacing: 0.02em;
-}
-
-.hcard-fecha {
-  font-size: 0.68rem;
-  color: var(--muted);
-}
-
-/* Fila precios */
-.hcard-prices {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.hcard-price-item {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.hcard-plabel {
-  font-size: 0.6rem;
+.hlist-header > span {
+  padding: 7px 10px;
+  font-size: 0.59rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--muted);
-}
-
-.hcard-pval {
-  font-size: 0.76rem;
   font-weight: 600;
-  color: #cdd9e5;
+  white-space: nowrap;
 }
 
-/* P&L grande */
-.hcard-pnl-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 1px;
+.hrow {
+  display: grid;
+  grid-template-columns: var(--hcols);
+  align-items: center;
+  padding: 0 4px;
+  border-bottom: 1px solid rgba(30,45,61,0.45);
+  transition: background 0.12s;
+  position: relative;
+}
+.hrow:last-child { border-bottom: none; }
+.hrow:hover { background: rgba(255,255,255,0.025); }
+.hrow.hrow-alt { background: rgba(0,0,0,0.12); }
+.hrow.hrow-alt:hover { background: rgba(255,255,255,0.02); }
+
+/* Franja izquierda de color */
+.hrow::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+}
+.hrow.hrow-buy::before  { background: var(--buy); }
+.hrow.hrow-sell::before { background: var(--sell); }
+
+/* Celdas */
+.hrow > span {
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.hcard-pnl {
-  font-size: 1rem;
+.hrow-ticker {
   font-weight: 700;
+  color: #cdd9e5;
+  font-size: 0.76rem !important;
+}
+
+.hrow-fecha {
+  color: var(--muted);
+  font-size: 0.68rem !important;
+}
+
+.hrow-num {
+  text-align: right;
+  font-size: 0.73rem !important;
+  color: #b0bec5;
+}
+
+.hrow-pnl {
+  text-align: right;
+  font-weight: 700;
+  font-size: 0.82rem !important;
   letter-spacing: -0.01em;
 }
-.hcard-pnl.pos { color: var(--buy); }
-.hcard-pnl.neg { color: var(--sell); }
+.hrow-pnl.pos { color: var(--buy); }
+.hrow-pnl.neg { color: var(--sell); }
+
+/* dir-badge compacto dentro de filas */
+.dir-badge.sm {
+  font-size: 0.62rem;
+  padding: 1px 6px;
+}
 
 .res-badge {
   display: inline-flex;

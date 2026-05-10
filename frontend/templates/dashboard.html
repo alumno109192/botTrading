@@ -201,56 +201,55 @@
         <p class="empty-text">Sin señales cerradas<br>para los timeframes seleccionados</p>
       </div>
 
-      <div class="hist-cards">
-        <template x-for="s in historialFiltrado" :key="s.id">
-          <div class="hist-card" :class="s.direccion === 'COMPRA' ? 'hcard-buy' : 'hcard-sell'">
+      <!-- Fake-table: header fijo + filas compactas -->
+      <div class="hlist" x-show="historialFiltrado.length > 0">
 
-            <!-- Franja izquierda + badge resultado -->
-            <div class="hcard-side">
+        <!-- Header -->
+        <div class="hlist-header">
+          <span>Resultado</span>
+          <span>Activo</span>
+          <span>Dir</span>
+          <span>TF</span>
+          <span>Fecha</span>
+          <span style="text-align:right">Entrada</span>
+          <span style="text-align:right">TP1</span>
+          <span style="text-align:right">SL</span>
+          <span style="text-align:right">P&amp;L</span>
+        </div>
+
+        <!-- Filas -->
+        <template x-for="(s, idx) in historialFiltrado" :key="s.id">
+          <div class="hrow" :class="[s.direccion === 'COMPRA' ? 'hrow-buy' : 'hrow-sell', idx % 2 === 1 ? 'hrow-alt' : '']">
+            <!-- Resultado -->
+            <span>
               <span class="res-badge"
                     :class="['TP1','TP2','TP3'].includes(s.estado) ? 'tp' : s.estado === 'SL' ? 'sl' : 'neu'"
                     x-text="estadoLabel(s.estado)"></span>
-            </div>
-
-            <!-- Cuerpo principal -->
-            <div class="hcard-body">
-              <!-- Fila 1: activo + tf + dirección + fecha -->
-              <div class="hcard-top">
-                <span class="hcard-ticker" x-text="s.asset || s.simbolo">GOLD</span>
-                <span class="tf-chip" x-text="s.timeframe">1H</span>
-                <span class="dir-badge" :class="s.direccion === 'COMPRA' ? 'buy' : 'sell'"
-                      x-text="s.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL'"></span>
-                <span style="flex:1"></span>
-                <span class="hcard-fecha" x-text="formatFecha(s.timestamp)"></span>
-              </div>
-
-              <!-- Fila 2: precios -->
-              <div class="hcard-prices">
-                <div class="hcard-price-item">
-                  <span class="hcard-plabel">Entrada</span>
-                  <span class="hcard-pval tabular" x-text="formatPrecio(s.precio_entrada)">—</span>
-                </div>
-                <div class="hcard-price-item">
-                  <span class="hcard-plabel">TP1</span>
-                  <span class="hcard-pval tabular" style="color:var(--buy)" x-text="formatPrecio(s.tp1)">—</span>
-                </div>
-                <div class="hcard-price-item">
-                  <span class="hcard-plabel">SL</span>
-                  <span class="hcard-pval tabular" style="color:var(--sell)" x-text="formatPrecio(s.sl)">—</span>
-                </div>
-                <!-- P&L grande a la derecha -->
-                <div style="flex:1"></div>
-                <div class="hcard-pnl-wrap">
-                  <span class="hcard-plabel">P&amp;L</span>
-                  <span class="hcard-pnl tabular"
-                        :class="(s.beneficio_final_pct || 0) >= 0 ? 'pos' : 'neg'"
-                        x-text="s.beneficio_final_pct != null ? formatPnl(s.beneficio_final_pct) : '—'">—</span>
-                </div>
-              </div>
-            </div>
-
+            </span>
+            <!-- Activo -->
+            <span class="hrow-ticker" x-text="s.asset || s.simbolo">GOLD</span>
+            <!-- Dirección -->
+            <span>
+              <span class="dir-badge sm" :class="s.direccion === 'COMPRA' ? 'buy' : 'sell'"
+                    x-text="s.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL'"></span>
+            </span>
+            <!-- TF -->
+            <span><span class="tf-chip" x-text="s.timeframe"></span></span>
+            <!-- Fecha -->
+            <span class="hrow-fecha" x-text="formatFecha(s.timestamp)"></span>
+            <!-- Entrada -->
+            <span class="hrow-num tabular" x-text="formatPrecio(s.precio_entrada)"></span>
+            <!-- TP1 -->
+            <span class="hrow-num tabular" style="color:var(--buy)" x-text="formatPrecio(s.tp1)"></span>
+            <!-- SL -->
+            <span class="hrow-num tabular" style="color:var(--sell)" x-text="formatPrecio(s.sl)"></span>
+            <!-- P&L -->
+            <span class="hrow-pnl tabular"
+                  :class="(s.beneficio_final_pct || 0) >= 0 ? 'pos' : 'neg'"
+                  x-text="s.beneficio_final_pct != null ? formatPnl(s.beneficio_final_pct) : '—'"></span>
           </div>
         </template>
+
       </div>
     </section>
 
