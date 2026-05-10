@@ -166,6 +166,26 @@ def create_app(estado_sistema, threads_detectores):
     @app.route('/api/v1/senales/activas')
     def v1_senales_activas():
         """Señales activas + pendientes con precio actual calculado."""
+        def _f(v, default=0.0):
+            """Convierte cualquier valor (incluyendo dicts Turso no procesados) a float."""
+            if v is None:
+                return default
+            if isinstance(v, (int, float)):
+                return float(v)
+            if isinstance(v, dict):
+                # dict Turso crudo: {"type": "float", "value": "2345.5"}
+                raw = v.get('value')
+                if raw is None:
+                    return default
+                try:
+                    return float(raw)
+                except (TypeError, ValueError):
+                    return default
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return default
+
         try:
             from adapters.database import get_db
             db = get_db()
@@ -182,8 +202,8 @@ def create_app(estado_sistema, threads_detectores):
 
             # Calcular PnL en tiempo real para cada señal
             for s in senales:
-                entrada = s.get('precio_entrada') or 0
-                actual = s.get('precio_actual') or entrada
+                entrada = _f(s.get('precio_entrada'))
+                actual  = _f(s.get('precio_actual')) or entrada
                 if entrada and actual:
                     if s.get('direccion') == 'COMPRA':
                         s['pnl_pct'] = round((actual - entrada) / entrada * 100, 3)
@@ -193,10 +213,10 @@ def create_app(estado_sistema, threads_detectores):
                     s['pnl_pct'] = 0.0
 
                 # Calcular progreso hacia TP1
-                tp1 = s.get('tp1') or 0
-                sl = s.get('sl') or 0
+                tp1 = _f(s.get('tp1'))
+                sl  = _f(s.get('sl'))
                 if tp1 and sl and entrada:
-                    rango = abs(tp1 - entrada)
+                    rango  = abs(tp1 - entrada)
                     avance = abs(actual - entrada) if actual else 0
                     s['tp1_progreso'] = min(round(avance / rango * 100, 1), 100) if rango else 0
                 else:
