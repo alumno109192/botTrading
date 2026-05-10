@@ -1,17 +1,25 @@
 """
 api/routes.py — Rutas Flask (extraídas de app.py)
 """
-from flask import Flask, jsonify, request
-from datetime import datetime
+from flask import Flask, jsonify, request, render_template
+from datetime import datetime, timedelta, timezone
 import logging
 import os
+import pathlib
 
 logger = logging.getLogger('bottrading')
+
+_FRONTEND_DIR = pathlib.Path(__file__).parent.parent / 'frontend'
 
 
 def create_app(estado_sistema, threads_detectores):
     """Factory pattern para crear la app Flask."""
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        template_folder=str(_FRONTEND_DIR / 'templates'),
+        static_folder=str(_FRONTEND_DIR / 'static'),
+        static_url_path='/static',
+    )
     CRON_TOKEN = os.environ.get('CRON_TOKEN', '')
 
     @app.route('/')
@@ -141,6 +149,272 @@ def create_app(estado_sistema, threads_detectores):
         except Exception as e:
             logger.error(f"❌ /api/performance/dashboard error: {e}")
             return f"<h2>Error: {e}</h2>", 500
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DASHBOARD FRONTEND
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/dashboard')
+    def dashboard():
+        """Sirve el dashboard HTML principal."""
+        return render_template('dashboard.html')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # API v1 — señales
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/api/v1/senales/activas')
+    def v1_senales_activas():
+        """Señales activas + pendientes con precio actual calculado."""
+        try:
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+
+            activas = db.obtener_senales_activas()
+            pendientes = db.obtener_senales_pendientes_confirm()
+            senales = activas + pendientes
+
+            tf_filter = request.args.get('tf')
+            if tf_filter:
+                senales = [s for s in senales if s.get('timeframe') == tf_filter]
+
+            # Calcular PnL en tiempo real para cada señal
+            for s in senales:
+                entrada = s.get('precio_entrada') or 0
+                actual = s.get('precio_actual') or entrada
+                if entrada and actual:
+                    if s.get('direccion') == 'COMPRA':
+                        s['pnl_pct'] = round((actual - entrada) / entrada * 100, 3)
+                    else:
+                        s['pnl_pct'] = round((entrada - actual) / entrada * 100, 3)
+                else:
+                    s['pnl_pct'] = 0.0
+
+                # Calcular progreso hacia TP1
+                tp1 = s.get('tp1') or 0
+                sl = s.get('sl') or 0
+                if tp1 and sl and entrada:
+                    rango = abs(tp1 - entrada)
+                    avance = abs(actual - entrada) if actual else 0
+                    s['tp1_progreso'] = min(round(avance / rango * 100, 1), 100) if rango else 0
+                else:
+                    s['tp1_progreso'] = 0
+
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'total': len(senales),
+                'senales': senales,
+            })
+        except Exception as e:
+            logger.error(f"❌ /api/v1/senales/activas error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/v1/senales/historial')
+    def v1_senales_historial():
+        """Últimas N señales cerradas. Parámetros: tf, limit (def 30), horas (def 168)."""
+        try:
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+
+            horas = int(request.args.get('horas', 168))   # 7 días por defecto
+            limit = int(request.args.get('limit', 30))
+            tf_filter = request.args.get('tf')
+
+            from adapters.database import DatabaseManager
+            query = f"""
+            SELECT id, timestamp, simbolo, asset, timeframe, direccion,
+                   precio_entrada, tp1, tp2, tp3, sl, score, estado,
+                   beneficio_final_pct, nivel, fecha_cierre
+            FROM senales
+            WHERE estado IN ('TP1','TP2','TP3','SL','CANCELADA','CADUCADA')
+              AND timestamp >= datetime('now', '-{int(horas)} hours')
+            {'AND timeframe = ?' if tf_filter else ''}
+            ORDER BY timestamp DESC
+            LIMIT {int(limit)}
+            """
+            params = (tf_filter,) if tf_filter else ()
+            result = db.ejecutar_query(query, params)
+            senales = [dict(row) for row in result.rows] if result.rows else []
+
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'total': len(senales),
+                'senales': senales,
+            })
+        except Exception as e:
+            logger.error(f"❌ /api/v1/senales/historial error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # API v1 — stats
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/api/v1/stats/global')
+    def v1_stats_global():
+        """Win rate global, P&L, señales hoy/semana/mes."""
+        try:
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+
+            ahora = datetime.now(timezone.utc)
+            stats_30d = db.obtener_estadisticas_periodo(ahora - timedelta(days=30), ahora)
+
+            # Señales hoy
+            inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+            stats_hoy = db.obtener_estadisticas_periodo(inicio_hoy, ahora)
+
+            # Señales semana
+            stats_semana = db.obtener_estadisticas_periodo(ahora - timedelta(days=7), ahora)
+
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'global_30d': stats_30d,
+                'hoy': stats_hoy,
+                'semana': stats_semana,
+            })
+        except Exception as e:
+            logger.error(f"❌ /api/v1/stats/global error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/v1/stats/equity_curve')
+    def v1_equity_curve():
+        """Serie temporal de P&L acumulado (últimos 30 días)."""
+        try:
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+
+            query = """
+            SELECT DATE(timestamp) as fecha,
+                   SUM(beneficio_final_pct) as pnl_dia,
+                   COUNT(*) as señales
+            FROM senales
+            WHERE estado IN ('TP1','TP2','TP3','SL')
+              AND timestamp >= datetime('now', '-30 days')
+              AND beneficio_final_pct IS NOT NULL
+            GROUP BY DATE(timestamp)
+            ORDER BY fecha ASC
+            """
+            result = db.ejecutar_query(query)
+            puntos = [dict(row) for row in result.rows] if result.rows else []
+
+            # Calcular acumulado
+            acumulado = 0.0
+            for p in puntos:
+                acumulado += (p.get('pnl_dia') or 0)
+                p['pnl_acumulado'] = round(acumulado, 4)
+
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'puntos': puntos,
+            })
+        except Exception as e:
+            logger.error(f"❌ /api/v1/stats/equity_curve error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/v1/stats/por_tf')
+    def v1_stats_por_tf():
+        """Stats de win rate agrupadas por timeframe."""
+        try:
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+
+            kpis = db.obtener_kpis_performance()
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'por_timeframe': kpis.get('por_timeframe', []),
+            })
+        except Exception as e:
+            logger.error(f"❌ /api/v1/stats/por_tf error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # API v1 — sistema
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/api/v1/status')
+    def v1_status():
+        """Estado del sistema: threads, evento macro próximo."""
+        try:
+            threads_estado = {
+                n: ('vivo' if t.is_alive() else 'muerto')
+                for n, t in threads_detectores.items()
+            }
+            vivos = len([v for v in threads_estado.values() if v == 'vivo'])
+
+            # Evento macro próximo (best-effort)
+            evento_proximo = None
+            try:
+                from services.economic_calendar import EconomicCalendar
+                cal = EconomicCalendar()
+                eventos = cal.proximos_eventos(horas=24)
+                if eventos:
+                    evento_proximo = eventos[0]
+            except Exception:
+                pass
+
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'iniciado': estado_sistema.get('iniciado'),
+                'threads': threads_estado,
+                'threads_vivos': vivos,
+                'threads_totales': len(threads_detectores),
+                'evento_proximo': evento_proximo,
+            })
+        except Exception as e:
+            logger.error(f"❌ /api/v1/status error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/v1/precio/<symbol>')
+    def v1_precio(symbol: str):
+        """Precio reciente de un símbolo desde la BD."""
+        try:
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+
+            # Obtener el precio más reciente de ohlcv
+            query = """
+            SELECT close, timestamp FROM ohlcv
+            WHERE symbol = ?
+            ORDER BY timestamp DESC LIMIT 1
+            """
+            result = db.ejecutar_query(query, (symbol.upper(),))
+            if result.rows:
+                row = dict(result.rows[0])
+                return jsonify({'symbol': symbol.upper(), 'precio': row['close'],
+                                'timestamp': row['timestamp']})
+            return jsonify({'symbol': symbol.upper(), 'precio': None, 'timestamp': None})
+        except Exception as e:
+            logger.error(f"❌ /api/v1/precio/{symbol} error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/v1/keys/uso')
+    def v1_keys_uso():
+        """Uso de API keys Twelve Data hoy."""
+        try:
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+            detalle = db.obtener_uso_keys_detalle_hoy()
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'keys': detalle,
+            })
+        except Exception as e:
+            logger.error(f"❌ /api/v1/keys/uso error: {e}")
+            return jsonify({'error': str(e)}), 500
 
     return app
 

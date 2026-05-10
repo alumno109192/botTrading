@@ -1,0 +1,149 @@
+/* ══════════════════════════════════════════════════════════════
+   BotTrading Dashboard — Custom Dark Mode Styles
+   Stack: TailwindCSS CDN + Alpine.js
+   ══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+/* ── Variables globales ─────────────────────────────────── */
+:root {
+  --surface:  #0f1117;
+  --panel:    #161b22;
+  --border:   #30363d;
+  --buy:      #00d26a;
+  --sell:     #ff4d4d;
+  --muted:    #8b949e;
+  --accent:   #58a6ff;
+}
+
+/* ── Reset / base ─────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  background-color: var(--surface);
+  color: #e6edf3;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar personalizada ─────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track  { background: var(--surface); }
+::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── Signal card ─────────────────────────────────────── */
+.signal-card {
+  background-color: var(--panel);
+  transition: box-shadow 0.2s ease;
+}
+
+.signal-card:hover {
+  box-shadow: 0 0 0 1px rgba(88, 166, 255, 0.2), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Tarjeta de compra: borde izquierdo verde */
+.signal-card.buy-card  { border-left: 3px solid var(--buy)  !important; }
+/* Tarjeta de venta: borde izquierdo rojo */
+.signal-card.sell-card { border-left: 3px solid var(--sell) !important; }
+
+/* ── Números / precios ────────────────────────────────── */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+/* ── Badges de nivel ────────────────────────────────── */
+.nivel-maxima {
+  background: rgba(255, 68,  68,  0.15);
+  color: #ff6b6b;
+  border-color: #ff4444;
+}
+.nivel-fuerte {
+  background: rgba(255, 136, 0,   0.15);
+  color: #ffa64d;
+  border-color: #ff8800;
+}
+.nivel-media {
+  background: rgba(255, 204, 0,   0.15);
+  color: #ffd633;
+  border-color: #ffcc00;
+}
+.nivel-alerta {
+  background: rgba(136, 204, 68,  0.15);
+  color: #aadd55;
+  border-color: #88cc44;
+}
+
+/* ── Barra de progreso ──────────────────────────────── */
+.progress-bar-track {
+  background: var(--border);
+  border-radius: 9999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.5s ease;
+}
+
+/* ── Tabla historial ────────────────────────────────── */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Animación de estado online ─────────────────────── */
+@keyframes statusPulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.2); }
+}
+
+.status-dot {
+  animation: statusPulse 1.5s ease infinite;
+}
+
+/* ── Toast notifications ─────────────────────────── */
+#toast-container {
+  pointer-events: none;
+}
+
+#toast-container > * {
+  pointer-events: auto;
+}
+
+/* ── Chart canvas ─────────────────────────────────── */
+#equityChart {
+  max-height: 220px;
+}
+
+/* ── Header sticky ────────────────────────────────── */
+header {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background-color: rgba(22, 27, 34, 0.92);
+}
+
+/* ── Mobile adjustments ───────────────────────────── */
+@media (max-width: 640px) {
+  .signal-card .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  header {
+    gap: 8px;
+  }
+}
