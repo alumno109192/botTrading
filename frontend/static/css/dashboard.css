@@ -350,94 +350,104 @@ nav {
 .card-meta strong { color: #90a4ae; }
 
 /* ══════════════════════════════════════════════════════════
-   HISTORIAL — FAKE TABLE (CSS Grid)
+   HISTORIAL — CARD GRID
 ══════════════════════════════════════════════════════════ */
 
-/* 9 columnas: resultado · activo · dir · tf · fecha · entrada · tp1 · sl · pnl */
-.hlist {
-  --hcols: 90px 60px 72px 46px 90px 1fr 1fr 1fr 88px;
+/* Grid: 1 col móvil → 2 col tablet → 3 col desktop */
+.hgrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+@media (min-width: 640px)  { .hgrid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1100px) { .hgrid { grid-template-columns: repeat(3, 1fr); } }
+
+/* Card individual */
+.hgcard {
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
+.hgcard:hover {
+  border-color: var(--border-2);
+  box-shadow: 0 2px 14px rgba(0,0,0,0.3);
+}
+.hgcard.hgcard-buy  { border-left: 3px solid var(--buy); }
+.hgcard.hgcard-sell { border-left: 3px solid var(--sell); }
 
-.hlist-header {
-  display: grid;
-  grid-template-columns: var(--hcols);
-  padding: 0 4px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-}
-.hlist-header > span {
-  padding: 7px 10px;
-  font-size: 0.59rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.hrow {
-  display: grid;
-  grid-template-columns: var(--hcols);
+/* Fila 1: activo + resultado */
+.hgcard-top {
+  display: flex;
   align-items: center;
-  padding: 0 4px;
-  border-bottom: 1px solid rgba(30,45,61,0.45);
-  transition: background 0.12s;
-  position: relative;
+  justify-content: space-between;
+  padding: 9px 12px 6px;
+  gap: 6px;
 }
-.hrow:last-child { border-bottom: none; }
-.hrow:hover { background: rgba(255,255,255,0.025); }
-.hrow.hrow-alt { background: rgba(0,0,0,0.12); }
-.hrow.hrow-alt:hover { background: rgba(255,255,255,0.02); }
-
-/* Franja izquierda de color */
-.hrow::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
+.hgcard-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
-.hrow.hrow-buy::before  { background: var(--buy); }
-.hrow.hrow-sell::before { background: var(--sell); }
-
-/* Celdas */
-.hrow > span {
-  padding: 6px 10px;
-  font-size: 0.74rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.hrow-ticker {
+.hgcard-ticker {
+  font-size: 0.82rem;
   font-weight: 700;
   color: #cdd9e5;
-  font-size: 0.76rem !important;
+  letter-spacing: 0.02em;
 }
 
-.hrow-fecha {
+/* Fila 2: precios en 3 columnas iguales */
+.hgcard-prices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 6px 12px;
+  border-top: 1px solid rgba(30,45,61,0.5);
+  border-bottom: 1px solid rgba(30,45,61,0.5);
+  background: rgba(0,0,0,0.1);
+}
+.hgcell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hgcell-label {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--muted);
-  font-size: 0.68rem !important;
 }
-
-.hrow-num {
-  text-align: right;
-  font-size: 0.73rem !important;
+.hgcell-val {
+  font-size: 0.75rem;
+  font-weight: 600;
   color: #b0bec5;
 }
 
-.hrow-pnl {
-  text-align: right;
+/* Fila 3: fecha + P&L */
+.hgcard-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 8px;
+}
+.hgcard-fecha {
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+.hgcard-pnl {
+  font-size: 0.9rem;
   font-weight: 700;
-  font-size: 0.82rem !important;
   letter-spacing: -0.01em;
 }
-.hrow-pnl.pos { color: var(--buy); }
-.hrow-pnl.neg { color: var(--sell); }
+.hgcard-pnl.pos { color: var(--buy); }
+.hgcard-pnl.neg { color: var(--sell); }
 
-/* dir-badge compacto dentro de filas */
+/* dir-badge compacto */
 .dir-badge.sm {
   font-size: 0.62rem;
   padding: 1px 6px;
