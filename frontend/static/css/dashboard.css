@@ -222,14 +222,32 @@ nav {
 .tf-sep { width: 1px; height: 14px; background: var(--border); }
 
 /* ══════════════════════════════════════════════════════════
-   SIGNAL CARDS
+   SIGNAL CARDS — GRID DE ACTIVAS
 ══════════════════════════════════════════════════════════ */
+
+/* Flex-wrap: las cards flotan igual que el historial */
+.activas-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+}
+
 .signal-card {
+  flex: 1 1 280px;
+  max-width: 420px;
+  min-width: 240px;
   background: var(--panel);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   overflow: hidden;
   transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+/* Card expandida ocupa fila completa */
+.signal-card.card-expanded {
+  flex: 1 1 100%;
+  max-width: 100%;
 }
 
 .signal-card.card-buy {

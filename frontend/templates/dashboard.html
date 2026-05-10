@@ -90,9 +90,10 @@
         <p class="empty-text">No hay señales activas<br>para los timeframes seleccionados</p>
       </div>
 
-      <!-- Cards -->
-      <template x-for="s in senalesFiltradas" :key="s.id">
-        <div class="signal-card" :class="s.direccion === 'COMPRA' ? 'card-buy' : 'card-sell'">
+      <!-- Grid de cards con expand/collapse -->
+      <div class="activas-grid">
+        <template x-for="s in senalesFiltradas" :key="s.id">
+          <div class="signal-card" :class="[s.direccion === 'COMPRA' ? 'card-buy' : 'card-sell', s._expanded ? 'card-expanded' : '']">
 
           <!-- Cabecera -->
           <div class="card-header" @click="s._expanded = !s._expanded">
@@ -184,9 +185,10 @@
               <span>Duración: <strong x-text="duracion(s.timestamp)"></strong></span>
               <span x-show="s.nivel">Nivel: <strong x-text="s.nivel"></strong></span>
             </div>
-          </div>
-        </div>
-      </template>
+          </div><!-- /.card-body -->
+          </div><!-- /.signal-card -->
+        </template>
+      </div>
     </section>
 
     <!-- ── HISTORIAL ──────────────────────────────────────── -->
