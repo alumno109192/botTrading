@@ -1,415 +1,358 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BotTrading Dashboard</title>
+  <title>BotTrading — Dashboard</title>
 
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: { mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'] },
-          colors: {
-            surface:  '#0f1117',
-            panel:    '#161b22',
-            border:   '#30363d',
-            buy:      '#00d26a',
-            sell:     '#ff4d4d',
-            muted:    '#8b949e',
-            accent:   '#58a6ff',
-          },
-          animation: {
-            'pulse-fast': 'pulse 1s cubic-bezier(0.4,0,0.6,1) infinite',
-          }
-        }
-      }
-    };
-  </script>
-
-  <!-- Alpine.js CDN -->
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <!-- Chart.js CDN -->
+  <!-- Chart.js (cargado ANTES de Alpine para que esté disponible al montar) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
   <link rel="stylesheet" href="/static/css/dashboard.css" />
 </head>
 
-<body class="bg-surface text-gray-100 font-mono min-h-screen"
-      x-data="dashboardApp()"
-      x-init="init()">
+<body x-data="dashboardApp()" x-init="init()" x-cloak>
 
-  <!-- ══════════════════════════════════════════════════════════════
-       BARRA DE ESTADO SUPERIOR
-  ══════════════════════════════════════════════════════════════ -->
-  <header class="sticky top-0 z-50 bg-panel border-b border-border px-4 py-2 flex flex-wrap items-center gap-3">
+  <!-- ════════════════════════════════════════
+       HEADER
+  ════════════════════════════════════════ -->
+  <header>
+    <!-- Logo -->
+    <span style="font-size:1.1rem;flex-shrink:0">📊</span>
+    <span class="logo-text">BotTrading</span>
 
-    <div class="flex items-center gap-2 mr-4">
-      <span class="text-xl">🤖</span>
-      <span class="text-accent font-bold text-sm tracking-wide">BotTrading</span>
-    </div>
+    <div class="header-sep"></div>
 
     <!-- Estado online -->
-    <div class="flex items-center gap-1.5">
-      <span class="w-2 h-2 rounded-full"
-            :class="status.threads_vivos > 0 ? 'bg-buy animate-pulse-fast' : 'bg-sell'"></span>
-      <span class="text-xs" :class="status.threads_vivos > 0 ? 'text-buy' : 'text-sell'"
+    <div class="header-chip">
+      <span class="status-dot"
+            :style="status.threads_vivos > 0
+              ? 'background:var(--buy);box-shadow:0 0 6px var(--buy-dim);animation:statusPulse 2s ease infinite'
+              : 'background:var(--sell)'"></span>
+      <span :style="status.threads_vivos > 0 ? 'color:var(--buy)' : 'color:var(--sell)'"
             x-text="status.threads_vivos > 0 ? 'ONLINE' : 'OFFLINE'">ONLINE</span>
-      <span class="text-muted text-xs"
-            x-text="`${status.threads_vivos}/${status.threads_totales} threads`">0/0</span>
+      <span class="val" x-text="`${status.threads_vivos}/${status.threads_totales}`">0/0</span>
     </div>
 
-    <!-- Separador -->
-    <span class="text-border">|</span>
+    <!-- Precio XAU/USD -->
+    <div class="header-chip" x-show="precioActual">
+      <span>XAU/USD</span>
+      <span class="price-val tabular" x-text="precioActual ? precioActual.toFixed(2) : '—'">—</span>
+    </div>
 
     <!-- Evento macro -->
-    <div class="flex items-center gap-1.5" x-show="status.evento_proximo">
-      <span class="text-yellow-400 text-xs">⚠️</span>
-      <span class="text-yellow-400 text-xs font-semibold"
-            x-text="status.evento_proximo ? status.evento_proximo.nombre : ''"></span>
+    <div class="header-chip" x-show="status.evento_proximo" style="border-color:rgba(255,145,0,0.3)">
+      <span>⚠️</span>
+      <span class="warn-val" x-text="status.evento_proximo?.nombre || ''"></span>
     </div>
 
-    <!-- Spacer -->
-    <div class="flex-1"></div>
-
-    <!-- Precio XAUUSD -->
-    <div class="flex items-center gap-1.5">
-      <span class="text-muted text-xs">XAU/USD</span>
-      <span class="text-accent text-xs font-bold tabular-nums"
-            x-text="precioActual ? precioActual.toFixed(2) : '—'">—</span>
-    </div>
-
-    <!-- Último update -->
-    <span class="text-muted text-xs" x-text="'↻ ' + ultimaActualizacion">↻ —</span>
+    <span class="update-badge" x-text="ultimaActualizacion ? '↻ ' + ultimaActualizacion : ''"></span>
   </header>
 
-  <!-- ══════════════════════════════════════════════════════════════
-       NAVEGACIÓN PRINCIPAL
-  ══════════════════════════════════════════════════════════════ -->
-  <nav class="flex gap-1 px-4 pt-3 pb-0 border-b border-border">
-    <button @click="vistaActual = 'activas'"
-            :class="vistaActual === 'activas'
-              ? 'border-b-2 border-accent text-accent'
-              : 'text-muted hover:text-gray-200'"
-            class="px-4 py-2 text-sm font-semibold transition-colors">
+  <!-- ════════════════════════════════════════
+       NAVEGACIÓN
+  ════════════════════════════════════════ -->
+  <nav style="display:flex;padding:0 1.5rem">
+    <button class="nav-tab" :class="vistaActual === 'activas' ? 'active' : ''"
+            @click="vistaActual = 'activas'">
       Señales Activas
-      <span class="ml-1.5 text-xs bg-accent/20 text-accent px-1.5 py-0.5 rounded-full"
-            x-text="senalesActivas.length" x-show="senalesActivas.length > 0"></span>
+      <span class="nav-badge" x-show="senalesActivas.length > 0" x-text="senalesActivas.length"></span>
     </button>
-    <button @click="vistaActual = 'historial'"
-            :class="vistaActual === 'historial'
-              ? 'border-b-2 border-accent text-accent'
-              : 'text-muted hover:text-gray-200'"
-            class="px-4 py-2 text-sm font-semibold transition-colors">
-      Historial
-    </button>
-    <button @click="vistaActual = 'stats'"
-            :class="vistaActual === 'stats'
-              ? 'border-b-2 border-accent text-accent'
-              : 'text-muted hover:text-gray-200'"
-            class="px-4 py-2 text-sm font-semibold transition-colors">
-      Stats &amp; Equity
-    </button>
+    <button class="nav-tab" :class="vistaActual === 'historial' ? 'active' : ''"
+            @click="vistaActual = 'historial'">Historial</button>
+    <button class="nav-tab" :class="vistaActual === 'stats' ? 'active' : ''"
+            @click="vistaActual = 'stats'">Stats &amp; Equity</button>
   </nav>
 
-  <!-- ══════════════════════════════════════════════════════════════
-       FILTROS TEMPORALIDAD (pills)
-  ══════════════════════════════════════════════════════════════ -->
-  <div class="flex items-center gap-2 px-4 py-3 flex-wrap">
+  <!-- ════════════════════════════════════════
+       TIMEFRAME PILLS
+  ════════════════════════════════════════ -->
+  <div class="tf-bar">
     <template x-for="tf in timeframes" :key="tf">
-      <button @click="toggleTF(tf)"
-              :class="tfSeleccionados.includes(tf)
-                ? 'bg-accent text-surface font-bold'
-                : 'bg-panel border border-border text-muted hover:border-accent hover:text-accent'"
-              class="px-3 py-1 rounded-full text-xs transition-all"
-              x-text="tf"></button>
+      <button class="tf-pill" :class="tfSeleccionados.includes(tf) ? 'tf-active' : ''"
+              @click="toggleTF(tf)" x-text="tf"></button>
     </template>
-    <button @click="tfSeleccionados = [...timeframes]"
-            class="px-3 py-1 rounded-full text-xs border border-border text-muted hover:text-gray-200 ml-2">
-      Todos
-    </button>
-    <button @click="tfSeleccionados = []"
-            class="px-3 py-1 rounded-full text-xs border border-border text-muted hover:text-gray-200">
-      Ninguno
-    </button>
+    <div class="tf-sep"></div>
+    <button class="tf-pill tf-ctrl" @click="tfSeleccionados = [...timeframes]">Todos</button>
+    <button class="tf-pill tf-ctrl" @click="tfSeleccionados = []">Ninguno</button>
   </div>
 
-  <!-- ══════════════════════════════════════════════════════════════
-       CONTENIDO PRINCIPAL
-  ══════════════════════════════════════════════════════════════ -->
-  <main class="px-4 pb-10 space-y-4">
+  <!-- ════════════════════════════════════════
+       MAIN
+  ════════════════════════════════════════ -->
+  <main class="main-content">
 
-    <!-- ── VISTA: SEÑALES ACTIVAS ─────────────────────────────── -->
-    <section x-show="vistaActual === 'activas'" x-transition>
+    <!-- ── SEÑALES ACTIVAS ──────────────────────────────── -->
+    <section x-show="vistaActual === 'activas'">
 
-      <!-- Sin señales -->
-      <div x-show="senalesFiltradas.length === 0"
-           class="mt-8 text-center text-muted text-sm py-12 border border-dashed border-border rounded-lg">
-        <span class="text-4xl block mb-3">📭</span>
-        No hay señales activas para los timeframes seleccionados.
+      <!-- Empty state -->
+      <div class="empty-state" x-show="senalesFiltradas.length === 0">
+        <span class="empty-icon">📭</span>
+        <p class="empty-text">No hay señales activas<br>para los timeframes seleccionados</p>
       </div>
 
-      <!-- Tarjetas de señales -->
+      <!-- Cards -->
       <template x-for="s in senalesFiltradas" :key="s.id">
-        <div class="signal-card border rounded-lg overflow-hidden transition-all"
-             :class="s.direccion === 'COMPRA' ? 'border-buy/30' : 'border-sell/30'">
+        <div class="signal-card" :class="s.direccion === 'COMPRA' ? 'card-buy' : 'card-sell'">
 
-          <!-- ── CABECERA (siempre visible) ── -->
-          <div class="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
-               :class="s.direccion === 'COMPRA' ? 'bg-buy/5 hover:bg-buy/10' : 'bg-sell/5 hover:bg-sell/10'"
-               @click="s._expanded = !s._expanded">
+          <!-- Cabecera -->
+          <div class="card-header" @click="s._expanded = !s._expanded">
+            <span class="dir-badge" :class="s.direccion === 'COMPRA' ? 'buy' : 'sell'"
+                  x-text="s.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL'">BUY</span>
 
-            <!-- Badge dirección -->
-            <span class="text-xs font-bold px-2 py-0.5 rounded"
-                  :class="s.direccion === 'COMPRA'
-                    ? 'bg-buy text-surface'
-                    : 'bg-sell text-surface'"
-                  x-text="s.direccion === 'COMPRA' ? 'BUY' : 'SELL'">BUY</span>
+            <span class="card-ticker" x-text="s.asset || s.simbolo">GOLD</span>
+            <span class="card-tf" x-text="s.timeframe">1H</span>
 
-            <!-- Ticker -->
-            <span class="font-bold text-sm"
-                  x-text="(s.asset || s.simbolo) + ' · ' + s.timeframe">GOLD 1H</span>
+            <span class="nivel-badge" x-show="s.nivel"
+                  :class="'nivel-' + s.nivel"
+                  x-text="s.nivel"></span>
 
-            <!-- Badge nivel -->
-            <span class="text-xs px-1.5 py-0.5 rounded border"
-                  :class="nivelClass(s.nivel)"
-                  x-text="s.nivel || '—'" x-show="s.nivel"></span>
+            <span x-show="s.estado === 'PENDIENTE_CONFIRM'"
+                  style="font-size:0.62rem;color:var(--warn);border:1px solid rgba(255,145,0,0.3);padding:1px 7px;border-radius:4px">
+              PENDING
+            </span>
 
-            <!-- Spacer -->
-            <div class="flex-1"></div>
+            <div style="flex:1"></div>
 
             <!-- PnL -->
-            <span class="tabular-nums text-sm font-bold"
-                  :class="(s.pnl_pct || 0) >= 0 ? 'text-buy' : 'text-sell'"
-                  x-text="formatPnl(s.pnl_pct)">+0.00%</span>
+            <span class="card-pnl"
+                  :class="(s.pnl_pct || 0) >= 0 ? 'pos' : 'neg'"
+                  x-text="formatPnl(s.pnl_pct)">+0.000%</span>
 
-            <!-- Estado -->
-            <span class="text-xs text-muted ml-2"
-                  x-text="s.estado === 'PENDIENTE_CONFIRM' ? 'CONFIRM…' : 'ACTIVA'"></span>
-
-            <!-- Expand icon -->
-            <span class="text-muted text-xs ml-2 transition-transform"
-                  :class="s._expanded ? 'rotate-180' : ''">▼</span>
+            <!-- Chevron -->
+            <span class="card-chevron" :class="s._expanded ? 'open' : ''">▼</span>
           </div>
 
-          <!-- ── CUERPO DESPLEGABLE ── -->
-          <div x-show="s._expanded"
+          <!-- Cuerpo desplegable -->
+          <div class="card-body" x-show="s._expanded"
                x-transition:enter="transition ease-out duration-150"
-               x-transition:enter-start="opacity-0 -translate-y-2"
-               x-transition:enter-end="opacity-100 translate-y-0"
-               class="px-4 py-4 border-t border-border grid grid-cols-2 gap-4 md:grid-cols-4">
+               x-transition:enter-start="opacity-0"
+               x-transition:enter-end="opacity-100">
 
             <!-- Entrada -->
-            <div class="flex flex-col gap-1">
-              <span class="text-muted text-xs uppercase tracking-wide">Entrada</span>
-              <span class="text-white font-bold tabular-nums"
-                    x-text="formatPrecio(s.precio_entrada)">—</span>
-              <span class="text-muted text-xs"
-                    x-text="formatFecha(s.timestamp)">—</span>
+            <div class="data-block">
+              <span class="data-label">Entrada</span>
+              <span class="data-value tabular" x-text="formatPrecio(s.precio_entrada)">—</span>
+              <span class="data-sub" x-text="formatFecha(s.timestamp)">—</span>
             </div>
 
             <!-- Stop Loss -->
-            <div class="flex flex-col gap-1">
-              <span class="text-muted text-xs uppercase tracking-wide">Stop Loss</span>
-              <span class="text-sell font-bold tabular-nums"
-                    x-text="formatPrecio(s.sl)">—</span>
+            <div class="data-block">
+              <span class="data-label">Stop Loss</span>
+              <span class="data-value sl-value tabular" x-text="formatPrecio(s.sl)">—</span>
             </div>
 
             <!-- Take Profits -->
-            <div class="flex flex-col gap-1 col-span-2">
-              <span class="text-muted text-xs uppercase tracking-wide">Take Profits</span>
-              <div class="flex flex-wrap gap-3">
-                <!-- TP1 -->
-                <div class="flex items-center gap-1.5">
-                  <span class="text-xs text-muted">TP1</span>
-                  <span class="tabular-nums text-sm font-semibold"
-                        :class="s.tp1_alcanzado ? 'text-buy line-through' : 'text-white'"
+            <div class="data-block">
+              <span class="data-label">Take Profits</span>
+              <div class="tp-list">
+                <div class="tp-item" x-show="s.tp1">
+                  <span class="tp-label">TP1</span>
+                  <span class="tp-price tabular" :class="s.tp1_alcanzado ? 'hit' : ''"
                         x-text="formatPrecio(s.tp1)">—</span>
-                  <span x-text="s.tp1_alcanzado ? '✅' : '○'" class="text-sm"></span>
+                  <span x-text="s.tp1_alcanzado ? '✅' : '○'" style="font-size:0.75rem"></span>
                 </div>
-                <!-- TP2 -->
-                <div class="flex items-center gap-1.5" x-show="s.tp2">
-                  <span class="text-xs text-muted">TP2</span>
-                  <span class="tabular-nums text-sm font-semibold"
-                        :class="s.tp2_alcanzado ? 'text-buy line-through' : 'text-white'"
+                <div class="tp-item" x-show="s.tp2">
+                  <span class="tp-label">TP2</span>
+                  <span class="tp-price tabular" :class="s.tp2_alcanzado ? 'hit' : ''"
                         x-text="formatPrecio(s.tp2)">—</span>
-                  <span x-text="s.tp2_alcanzado ? '✅' : '○'" class="text-sm"></span>
+                  <span x-text="s.tp2_alcanzado ? '✅' : '○'" style="font-size:0.75rem"></span>
                 </div>
-                <!-- TP3 -->
-                <div class="flex items-center gap-1.5" x-show="s.tp3">
-                  <span class="text-xs text-muted">TP3</span>
-                  <span class="tabular-nums text-sm font-semibold"
-                        :class="s.tp3_alcanzado ? 'text-buy line-through' : 'text-white'"
+                <div class="tp-item" x-show="s.tp3">
+                  <span class="tp-label">TP3</span>
+                  <span class="tp-price tabular" :class="s.tp3_alcanzado ? 'hit' : ''"
                         x-text="formatPrecio(s.tp3)">—</span>
-                  <span x-text="s.tp3_alcanzado ? '✅' : '○'" class="text-sm"></span>
-                </div>
-              </div>
-
-              <!-- Barra progreso TP1 -->
-              <div class="mt-2" x-show="s.tp1_progreso > 0">
-                <div class="flex justify-between text-xs text-muted mb-1">
-                  <span>Progreso TP1</span>
-                  <span x-text="(s.tp1_progreso || 0).toFixed(1) + '%'">0%</span>
-                </div>
-                <div class="h-1.5 bg-border rounded-full overflow-hidden">
-                  <div class="h-full rounded-full transition-all duration-500"
-                       :class="s.direccion === 'COMPRA' ? 'bg-buy' : 'bg-sell'"
-                       :style="`width: ${Math.min(s.tp1_progreso || 0, 100)}%`"></div>
+                  <span x-text="s.tp3_alcanzado ? '✅' : '○'" style="font-size:0.75rem"></span>
                 </div>
               </div>
             </div>
 
-            <!-- Score + duración (fila completa) -->
-            <div class="col-span-2 md:col-span-4 flex items-center gap-4 pt-1 border-t border-border/50 text-xs text-muted">
-              <span>Score: <strong class="text-white" x-text="s.score || '—'"></strong></span>
-              <span x-show="s.patron_velas">Patrón: <strong class="text-white" x-text="s.patron_velas"></strong></span>
-              <span>Duración: <strong class="text-white" x-text="duracion(s.timestamp)"></strong></span>
+            <!-- Progreso TP1 -->
+            <div class="data-block" x-show="s.tp1_progreso > 0">
+              <span class="data-label">Progreso TP1</span>
+              <span class="data-value tabular" x-text="(s.tp1_progreso || 0).toFixed(1) + '%'">0%</span>
+              <div class="progress-track" style="margin-top:6px">
+                <div class="progress-fill"
+                     :class="s.direccion === 'COMPRA' ? 'buy-fill' : 'sell-fill'"
+                     :style="`width:${Math.min(s.tp1_progreso || 0, 100)}%`"></div>
+              </div>
+            </div>
+
+            <!-- Meta row -->
+            <div class="card-meta">
+              <span>Score: <strong x-text="s.score || '—'"></strong></span>
+              <span x-show="s.patron_velas">Patrón: <strong x-text="s.patron_velas"></strong></span>
+              <span>Duración: <strong x-text="duracion(s.timestamp)"></strong></span>
+              <span x-show="s.nivel">Nivel: <strong x-text="s.nivel"></strong></span>
             </div>
           </div>
         </div>
       </template>
     </section>
 
-    <!-- ── VISTA: HISTORIAL ───────────────────────────────────── -->
-    <section x-show="vistaActual === 'historial'" x-transition>
-      <div class="overflow-x-auto mt-2">
-        <table class="w-full text-xs border-separate border-spacing-0">
+    <!-- ── HISTORIAL ──────────────────────────────────────── -->
+    <section x-show="vistaActual === 'historial'">
+      <div style="overflow-x:auto">
+        <table class="hist-table">
           <thead>
-            <tr class="text-muted uppercase tracking-wide">
-              <th class="text-left px-3 py-2 border-b border-border">#</th>
-              <th class="text-left px-3 py-2 border-b border-border">Fecha</th>
-              <th class="text-left px-3 py-2 border-b border-border">Activo</th>
-              <th class="text-left px-3 py-2 border-b border-border">TF</th>
-              <th class="text-left px-3 py-2 border-b border-border">Dir</th>
-              <th class="text-right px-3 py-2 border-b border-border">Entrada</th>
-              <th class="text-right px-3 py-2 border-b border-border">TP1</th>
-              <th class="text-right px-3 py-2 border-b border-border">SL</th>
-              <th class="text-center px-3 py-2 border-b border-border">Resultado</th>
-              <th class="text-right px-3 py-2 border-b border-border">P&amp;L %</th>
+            <tr>
+              <th>#</th>
+              <th>Fecha</th>
+              <th>Activo</th>
+              <th>TF</th>
+              <th>Dir</th>
+              <th style="text-align:right">Entrada</th>
+              <th style="text-align:right">TP1</th>
+              <th style="text-align:right">SL</th>
+              <th style="text-align:center">Resultado</th>
+              <th style="text-align:right">P&amp;L %</th>
             </tr>
           </thead>
           <tbody>
             <template x-for="s in historialFiltrado" :key="s.id">
-              <tr class="border-b border-border/40 hover:bg-panel/60 transition-colors">
-                <td class="px-3 py-2 text-muted" x-text="s.id"></td>
-                <td class="px-3 py-2 text-muted" x-text="formatFecha(s.timestamp)"></td>
-                <td class="px-3 py-2 font-semibold" x-text="s.asset || s.simbolo"></td>
-                <td class="px-3 py-2">
-                  <span class="px-1.5 py-0.5 bg-panel border border-border rounded text-muted"
-                        x-text="s.timeframe"></span>
+              <tr>
+                <td style="color:var(--muted)" x-text="s.id"></td>
+                <td style="color:var(--muted-2)" x-text="formatFecha(s.timestamp)"></td>
+                <td style="font-weight:700;color:#cdd9e5" x-text="s.asset || s.simbolo"></td>
+                <td><span class="tf-chip" x-text="s.timeframe"></span></td>
+                <td>
+                  <span :style="s.direccion === 'COMPRA' ? 'color:var(--buy)' : 'color:var(--sell)'"
+                        style="font-weight:700"
+                        x-text="s.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL'"></span>
                 </td>
-                <td class="px-3 py-2">
-                  <span class="font-bold"
-                        :class="s.direccion === 'COMPRA' ? 'text-buy' : 'text-sell'"
-                        x-text="s.direccion === 'COMPRA' ? 'BUY' : 'SELL'"></span>
-                </td>
-                <td class="px-3 py-2 text-right tabular-nums" x-text="formatPrecio(s.precio_entrada)"></td>
-                <td class="px-3 py-2 text-right tabular-nums text-buy" x-text="formatPrecio(s.tp1)"></td>
-                <td class="px-3 py-2 text-right tabular-nums text-sell" x-text="formatPrecio(s.sl)"></td>
-                <td class="px-3 py-2 text-center">
-                  <span class="px-1.5 py-0.5 rounded text-xs font-bold"
-                        :class="estadoClass(s.estado)"
+                <td class="text-right tabular" x-text="formatPrecio(s.precio_entrada)"></td>
+                <td class="text-right tabular text-buy" x-text="formatPrecio(s.tp1)"></td>
+                <td class="text-right tabular text-sell" x-text="formatPrecio(s.sl)"></td>
+                <td style="text-align:center">
+                  <span class="res-badge"
+                        :class="['TP1','TP2','TP3'].includes(s.estado) ? 'tp' : s.estado === 'SL' ? 'sl' : 'neu'"
                         x-text="estadoLabel(s.estado)"></span>
                 </td>
-                <td class="px-3 py-2 text-right tabular-nums font-bold"
-                    :class="(s.beneficio_final_pct || 0) >= 0 ? 'text-buy' : 'text-sell'"
-                    x-text="s.beneficio_final_pct ? formatPnl(s.beneficio_final_pct) : '—'"></td>
+                <td class="text-right tabular font-bold"
+                    :style="(s.beneficio_final_pct || 0) >= 0 ? 'color:var(--buy)' : 'color:var(--sell)'"
+                    x-text="s.beneficio_final_pct != null ? formatPnl(s.beneficio_final_pct) : '—'"></td>
               </tr>
             </template>
             <tr x-show="historialFiltrado.length === 0">
-              <td colspan="10" class="text-center text-muted py-8">Sin señales cerradas en los filtros seleccionados.</td>
+              <td colspan="10" style="text-align:center;color:var(--muted);padding:3rem 0">
+                Sin señales cerradas en el período seleccionado.
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <!-- ── VISTA: STATS & EQUITY ──────────────────────────────── -->
-    <section x-show="vistaActual === 'stats'" x-transition>
+    <!-- ── STATS & EQUITY ─────────────────────────────────── -->
+    <section x-show="vistaActual === 'stats'">
 
-      <!-- KPI cards -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
-        <div class="bg-panel border border-border rounded-lg px-4 py-3">
-          <div class="text-muted text-xs uppercase tracking-wide mb-1">Win Rate 30d</div>
-          <div class="text-xl font-bold"
-               :class="(statsGlobal.global_30d?.win_rate || 0) >= 50 ? 'text-buy' : 'text-sell'"
-               x-text="statsGlobal.global_30d?.win_rate ? statsGlobal.global_30d.win_rate.toFixed(1) + '%' : '—'">—</div>
+      <!-- KPI Cards -->
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px" class="kpi-grid-wrap">
+        <style>.kpi-grid-wrap{grid-template-columns:repeat(2,1fr)}@media(min-width:768px){.kpi-grid-wrap{grid-template-columns:repeat(4,1fr)}}</style>
+
+        <div class="kpi-card" :class="(statsGlobal.global_30d?.win_rate || 0) >= 50 ? 'kpi-pos' : 'kpi-neg'">
+          <span class="kpi-icon">🏆</span>
+          <div class="kpi-label">Win Rate 30d</div>
+          <div class="kpi-value" :class="(statsGlobal.global_30d?.win_rate || 0) >= 50 ? 'pos' : 'neg'"
+               x-text="statsGlobal.global_30d?.win_rate != null ? statsGlobal.global_30d.win_rate.toFixed(1) + '%' : '—'">—</div>
+          <div class="kpi-sub" x-text="`${statsGlobal.global_30d?.wins || 0} wins / ${statsGlobal.global_30d?.total || 0} señales`"></div>
         </div>
-        <div class="bg-panel border border-border rounded-lg px-4 py-3">
-          <div class="text-muted text-xs uppercase tracking-wide mb-1">Señales Hoy</div>
-          <div class="text-xl font-bold text-white"
-               x-text="statsGlobal.hoy?.total || 0">0</div>
+
+        <div class="kpi-card kpi-neutral">
+          <span class="kpi-icon">📅</span>
+          <div class="kpi-label">Señales Hoy</div>
+          <div class="kpi-value neutral" x-text="statsGlobal.hoy?.total || 0">0</div>
+          <div class="kpi-sub">activas incluidas</div>
         </div>
-        <div class="bg-panel border border-border rounded-lg px-4 py-3">
-          <div class="text-muted text-xs uppercase tracking-wide mb-1">Señales Semana</div>
-          <div class="text-xl font-bold text-white"
-               x-text="statsGlobal.semana?.total || 0">0</div>
+
+        <div class="kpi-card kpi-neutral">
+          <span class="kpi-icon">📆</span>
+          <div class="kpi-label">Señales Semana</div>
+          <div class="kpi-value neutral" x-text="statsGlobal.semana?.total || 0">0</div>
+          <div class="kpi-sub" x-text="`Win rate: ${statsGlobal.semana?.win_rate != null ? statsGlobal.semana.win_rate.toFixed(1) + '%' : '—'}`"></div>
         </div>
-        <div class="bg-panel border border-border rounded-lg px-4 py-3">
-          <div class="text-muted text-xs uppercase tracking-wide mb-1">P&L Promedio 30d</div>
-          <div class="text-xl font-bold tabular-nums"
-               :class="(statsGlobal.global_30d?.avg_profit || 0) >= 0 ? 'text-buy' : 'text-sell'"
-               x-text="statsGlobal.global_30d?.avg_profit ? formatPnl(statsGlobal.global_30d.avg_profit) : '—'">—</div>
+
+        <div class="kpi-card" :class="(statsGlobal.global_30d?.avg_profit || 0) >= 0 ? 'kpi-pos' : 'kpi-neg'">
+          <span class="kpi-icon">💰</span>
+          <div class="kpi-label">P&amp;L Promedio 30d</div>
+          <div class="kpi-value tabular"
+               :class="(statsGlobal.global_30d?.avg_profit || 0) >= 0 ? 'pos' : 'neg'"
+               x-text="statsGlobal.global_30d?.avg_profit != null ? formatPnl(statsGlobal.global_30d.avg_profit) : '—'">—</div>
+          <div class="kpi-sub">por señal cerrada</div>
         </div>
       </div>
 
       <!-- Equity Curve -->
-      <div class="bg-panel border border-border rounded-lg mt-4 p-4">
-        <div class="text-sm font-semibold text-muted mb-3">📈 Equity Curve — P&amp;L Acumulado (30 días)</div>
-        <canvas id="equityChart" height="120"></canvas>
+      <div class="chart-panel" style="margin-top:12px">
+        <div class="chart-title">
+          <span style="color:var(--buy)">▲</span>
+          <span>Equity Curve</span>
+          <span style="color:var(--muted)">— P&amp;L Acumulado (30 días)</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="equityChart"></canvas>
+        </div>
       </div>
 
-      <!-- Stats por timeframe -->
-      <div class="bg-panel border border-border rounded-lg mt-4 p-4 overflow-x-auto">
-        <div class="text-sm font-semibold text-muted mb-3">⏱️ Stats por Timeframe</div>
-        <table class="w-full text-xs">
-          <thead>
-            <tr class="text-muted uppercase tracking-wide border-b border-border">
-              <th class="text-left py-2 px-3">TF</th>
-              <th class="text-right py-2 px-3">Total</th>
-              <th class="text-right py-2 px-3">Wins</th>
-              <th class="text-right py-2 px-3">Losses</th>
-              <th class="text-right py-2 px-3">Win Rate</th>
-              <th class="text-right py-2 px-3">Avg PnL</th>
-              <th class="text-right py-2 px-3">Prof. Factor</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template x-for="row in statsPorTF" :key="row.grupo">
-              <tr class="border-b border-border/30 hover:bg-surface/50">
-                <td class="py-2 px-3 font-bold text-accent" x-text="row.grupo"></td>
-                <td class="py-2 px-3 text-right" x-text="row.total"></td>
-                <td class="py-2 px-3 text-right text-buy" x-text="row.wins"></td>
-                <td class="py-2 px-3 text-right text-sell" x-text="row.losses"></td>
-                <td class="py-2 px-3 text-right font-bold"
-                    :class="(row.win_rate || 0) >= 50 ? 'text-buy' : 'text-sell'"
-                    x-text="row.win_rate ? row.win_rate.toFixed(1) + '%' : '—'"></td>
-                <td class="py-2 px-3 text-right tabular-nums"
-                    :class="(row.avg_pnl || 0) >= 0 ? 'text-buy' : 'text-sell'"
-                    x-text="row.avg_pnl ? formatPnl(row.avg_pnl) : '—'"></td>
-                <td class="py-2 px-3 text-right" x-text="row.profit_factor ? row.profit_factor.toFixed(2) : '—'"></td>
+      <!-- Stats por TF -->
+      <div class="stats-panel" style="margin-top:12px">
+        <div class="stats-panel-title">
+          <span style="color:var(--accent)">⏱</span>
+          <span>Stats por Timeframe</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th>TF</th>
+                <th>Total</th>
+                <th>Wins</th>
+                <th>Losses</th>
+                <th>Win Rate</th>
+                <th>Avg P&amp;L</th>
+                <th>Prof. Factor</th>
               </tr>
-            </template>
-            <tr x-show="statsPorTF.length === 0">
-              <td colspan="7" class="text-center text-muted py-6">Sin datos suficientes aún.</td>
-            </tr>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <template x-for="row in statsPorTF" :key="row.grupo">
+                <tr>
+                  <td><span class="tf-chip" x-text="row.grupo"></span></td>
+                  <td x-text="row.total"></td>
+                  <td style="color:var(--buy);font-weight:600" x-text="row.wins"></td>
+                  <td style="color:var(--sell);font-weight:600" x-text="row.losses"></td>
+                  <td>
+                    <span :style="(row.win_rate || 0) >= 50 ? 'color:var(--buy);font-weight:700' : 'color:var(--sell);font-weight:700'"
+                          x-text="row.win_rate != null ? row.win_rate.toFixed(1) + '%' : '—'"></span>
+                    <span class="wr-bar-track" x-show="row.win_rate">
+                      <span class="wr-bar-fill" :style="`width:${Math.min(row.win_rate || 0, 100)}%`"></span>
+                    </span>
+                  </td>
+                  <td class="tabular"
+                      :style="(row.avg_pnl || 0) >= 0 ? 'color:var(--buy)' : 'color:var(--sell)'"
+                      x-text="row.avg_pnl != null ? formatPnl(row.avg_pnl) : '—'"></td>
+                  <td x-text="row.profit_factor != null ? row.profit_factor.toFixed(2) : '—'"></td>
+                </tr>
+              </template>
+              <tr x-show="statsPorTF.length === 0">
+                <td colspan="7" style="text-align:center;color:var(--muted);padding:2rem 0">Sin datos suficientes.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
+
     </section>
 
   </main>
 
-  <!-- ══════════════════════════════════════════════════════════════
-       TOAST CONTAINER
-  ══════════════════════════════════════════════════════════════ -->
-  <div id="toast-container" class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+  <!-- ════════════════════════════════════════
+       TOASTS
+  ════════════════════════════════════════ -->
+  <div id="toast-container">
     <template x-for="(toast, i) in toasts" :key="toast.id">
-      <div class="pointer-events-auto flex items-start gap-3 bg-panel border rounded-lg px-4 py-3 shadow-2xl max-w-xs"
-           :class="toast.tipo === 'nueva' ? 'border-accent' : toast.tipo === 'tp' ? 'border-buy' : 'border-sell'"
+      <div class="toast" :class="'tipo-' + toast.tipo"
            x-show="toast.visible"
            x-transition:enter="transition ease-out duration-300"
            x-transition:enter-start="opacity-0 translate-x-8"
@@ -417,12 +360,12 @@
            x-transition:leave="transition ease-in duration-200"
            x-transition:leave-start="opacity-100"
            x-transition:leave-end="opacity-0">
-        <span class="text-lg" x-text="toast.tipo === 'nueva' ? '🔔' : toast.tipo === 'tp' ? '✅' : '🛑'"></span>
-        <div class="flex-1 text-xs">
-          <div class="font-bold text-white" x-text="toast.titulo"></div>
-          <div class="text-muted" x-text="toast.mensaje"></div>
+        <span class="toast-icon" x-text="toast.tipo === 'nueva' ? '🔔' : toast.tipo === 'tp' ? '✅' : '🛑'"></span>
+        <div class="toast-body">
+          <div class="toast-title" x-text="toast.titulo"></div>
+          <div class="toast-message" x-text="toast.mensaje"></div>
         </div>
-        <button @click="cerrarToast(i)" class="text-muted hover:text-white text-xs ml-1">✕</button>
+        <button class="toast-close" @click="cerrarToast(i)">✕</button>
       </div>
     </template>
   </div>
