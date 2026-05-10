@@ -195,6 +195,14 @@
     <!-- ── HISTORIAL ──────────────────────────────────────── -->
     <section x-show="vistaActual === 'historial'">
 
+      <!-- Filtro BUY / SELL -->
+      <div class="hdir-bar">
+        <button class="hdir-btn" :class="histDirFiltro === 'todos'  ? 'active'    : ''" @click="histDirFiltro = 'todos'">Todos</button>
+        <button class="hdir-btn buy" :class="histDirFiltro === 'COMPRA' ? 'active-buy' : ''" @click="histDirFiltro = 'COMPRA'">▲ BUY</button>
+        <button class="hdir-btn sell" :class="histDirFiltro === 'VENTA'  ? 'active-sell': ''" @click="histDirFiltro = 'VENTA'">▼ SELL</button>
+        <span class="hdir-count" x-text="historialFiltrado.length + ' señales'"></span>
+      </div>
+
       <!-- Empty state -->
       <div class="empty-state" x-show="historialFiltrado.length === 0">
         <span class="empty-icon">📂</span>

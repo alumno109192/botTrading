@@ -353,6 +353,38 @@ nav {
    HISTORIAL — CARD GRID
 ══════════════════════════════════════════════════════════ */
 
+/* Barra de filtro BUY/SELL */
+.hdir-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.hdir-btn {
+  padding: 4px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted-2);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.hdir-btn:hover { border-color: var(--border-2); color: #cdd9e5; }
+
+.hdir-btn.active      { background: rgba(255,255,255,0.07); border-color: var(--border-2); color: #cdd9e5; }
+.hdir-btn.active-buy  { background: rgba(0,230,118,0.1); border-color: rgba(0,230,118,0.4); color: var(--buy); }
+.hdir-btn.active-sell { background: rgba(255,23,68,0.1);  border-color: rgba(255,23,68,0.4);  color: var(--sell); }
+
+.hdir-count {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
 /* Flex-wrap: las cards flotan y se colocan solas según el ancho disponible */
 .hgrid {
   display: flex;

@@ -26,6 +26,7 @@ function dashboardApp() {
     status:              { threads_vivos: 0, threads_totales: 0, evento_proximo: null },
     senalesActivas:      [],
     historial:           [],
+    histDirFiltro:       'todos',   // 'todos' | 'COMPRA' | 'VENTA'
     statsGlobal:         {},
     statsPorTF:          [],
     precioActual:        null,
@@ -172,8 +173,12 @@ function dashboardApp() {
     },
 
     get historialFiltrado() {
-      if (!this.tfSeleccionados.length) return this.historial;
-      return this.historial.filter(s => this.tfSeleccionados.includes(s.timeframe));
+      let h = this.historial;
+      if (this.tfSeleccionados.length)
+        h = h.filter(s => this.tfSeleccionados.includes(s.timeframe));
+      if (this.histDirFiltro !== 'todos')
+        h = h.filter(s => s.direccion === this.histDirFiltro);
+      return h;
     },
 
     /* ══════════════════════════════════════════
