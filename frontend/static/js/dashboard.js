@@ -45,7 +45,8 @@ function dashboardApp() {
     /* ══════════════════════════════════════════
        INIT
     ══════════════════════════════════════════ */
-    init() {
+    init(vistaInicial = 'activas') {
+      this.vistaActual = vistaInicial;
       this.cargarTodo();
       setInterval(() => this.cargarTodo(), POLL_INTERVAL_MS);
 

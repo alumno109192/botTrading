@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="/static/css/dashboard.css" />
 </head>
 
-<body x-data="dashboardApp()" x-init="init()" x-cloak>
+<body x-data="dashboardApp()" x-init="init('{{ vista_inicial|default('activas') }}')" x-cloak>
 
   <!-- ════════════════════════════════════════
        HEADER

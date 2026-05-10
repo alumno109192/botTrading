@@ -155,9 +155,17 @@ def create_app(estado_sistema, threads_detectores):
     # ─────────────────────────────────────────────────────────────────────────
 
     @app.route('/dashboard')
-    def dashboard():
-        """Sirve el dashboard HTML principal."""
-        return render_template('dashboard.html')
+    @app.route('/dashboard/activas')
+    def dashboard_activas():
+        return render_template('dashboard.html', vista_inicial='activas')
+
+    @app.route('/dashboard/historial')
+    def dashboard_historial():
+        return render_template('dashboard.html', vista_inicial='historial')
+
+    @app.route('/dashboard/stats')
+    def dashboard_stats():
+        return render_template('dashboard.html', vista_inicial='stats')
 
     # ─────────────────────────────────────────────────────────────────────────
     # API v1 — señales
