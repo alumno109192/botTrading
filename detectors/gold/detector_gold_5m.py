@@ -386,11 +386,11 @@ class GoldDetector5M(BaseDetector):
             v_rev_baj_5m, v_max_5m, v_precio_baj_5m = detectar_v_reversal_bajista(
                 df, atr, lookback=20, min_subida_atr=3.0, min_caida_atr=2.5)
             if v_rev_alc_5m:
-                score_buy += 1  # -4 vs antes: mide momentum ya ocurrido → señal tardía (38% SL histórico)
-                logger.info(f"  ⚡ [5M] V-REVERSAL ALCISTA detectado — mín ${v_min_5m:.2f} → ${v_precio_5m:.2f} — +1 pts BUY")
+                score_buy += 3
+                logger.info(f"  ⚡ [5M] V-REVERSAL ALCISTA detectado — mín ${v_min_5m:.2f} → ${v_precio_5m:.2f} — +3 pts BUY")
             if v_rev_baj_5m:
-                score_sell += 1  # -4 vs antes: mide momentum ya ocurrido → señal tardía (25% SL histórico)
-                logger.info(f"  ⚡ [5M] V-REVERSAL BAJISTA detectado — máx ${v_max_5m:.2f} → ${v_precio_baj_5m:.2f} — +1 pts SELL")
+                score_sell += 3
+                logger.info(f"  ⚡ [5M] V-REVERSAL BAJISTA detectado — máx ${v_max_5m:.2f} → ${v_precio_baj_5m:.2f} — +3 pts SELL")
 
             # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
             # Solo se consulta si estamos en zona de desempate (score cerca del umbral)
@@ -478,6 +478,13 @@ class GoldDetector5M(BaseDetector):
             _umbral_fue = self.umbral_adaptativo(14, atr, atr_media)   # antes: 12
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
+
+            # ── FILTRO ADX MÍNIMO 5M: mercado plano → bloquear señales ─────────
+            _ADX_MIN_5M = 15
+            if adx < _ADX_MIN_5M:
+                logger.info(f"  😴 [5M] ADX {round(adx, 1)} < {_ADX_MIN_5M} — mercado plano, señales bloqueadas")
+                senal_sell_fuerte = False
+                senal_buy_fuerte  = False
 
             # ── Snapshot completo de condiciones para backtesting/estudio ─────
             _condiciones_bd = {
@@ -588,6 +595,8 @@ class GoldDetector5M(BaseDetector):
             def marcar_enviada(tipo):
                 clave = f"{clave_vela}_{tipo}"
                 self.alertas_enviadas[clave] = time.time()
+                if self.db:
+                    self.db.set_antispam(clave, self.alertas_enviadas[clave])
 
             # Anti-spam para AVISO SETUP: clave fija por dirección (sin timestamp de vela)
             # Cooldown 30 min — evita spam entre velas consecutivas de la misma dirección
@@ -608,8 +617,6 @@ class GoldDetector5M(BaseDetector):
             def marcar_enviada_aviso(tipo):
                 clave = f"{simbolo}_aviso_setup_{tipo}"
                 self.alertas_enviadas[clave] = time.time()
-                if self.db:
-                    self.db.set_antispam(clave, self.alertas_enviadas[clave])
                 if self.db:
                     self.db.set_antispam(clave, self.alertas_enviadas[clave])
     
