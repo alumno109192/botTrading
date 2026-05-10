@@ -194,54 +194,63 @@
 
     <!-- ── HISTORIAL ──────────────────────────────────────── -->
     <section x-show="vistaActual === 'historial'">
-      <div style="overflow-x:auto">
-        <table class="hist-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Fecha</th>
-              <th>Activo</th>
-              <th>TF</th>
-              <th>Dir</th>
-              <th style="text-align:right">Entrada</th>
-              <th style="text-align:right">TP1</th>
-              <th style="text-align:right">SL</th>
-              <th style="text-align:center">Resultado</th>
-              <th style="text-align:right">P&amp;L %</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template x-for="s in historialFiltrado" :key="s.id">
-              <tr>
-                <td style="color:var(--muted)" x-text="s.id"></td>
-                <td style="color:var(--muted-2)" x-text="formatFecha(s.timestamp)"></td>
-                <td style="font-weight:700;color:#cdd9e5" x-text="s.asset || s.simbolo"></td>
-                <td><span class="tf-chip" x-text="s.timeframe"></span></td>
-                <td>
-                  <span :style="s.direccion === 'COMPRA' ? 'color:var(--buy)' : 'color:var(--sell)'"
-                        style="font-weight:700"
-                        x-text="s.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL'"></span>
-                </td>
-                <td class="text-right tabular" x-text="formatPrecio(s.precio_entrada)"></td>
-                <td class="text-right tabular text-buy" x-text="formatPrecio(s.tp1)"></td>
-                <td class="text-right tabular text-sell" x-text="formatPrecio(s.sl)"></td>
-                <td style="text-align:center">
-                  <span class="res-badge"
-                        :class="['TP1','TP2','TP3'].includes(s.estado) ? 'tp' : s.estado === 'SL' ? 'sl' : 'neu'"
-                        x-text="estadoLabel(s.estado)"></span>
-                </td>
-                <td class="text-right tabular font-bold"
-                    :style="(s.beneficio_final_pct || 0) >= 0 ? 'color:var(--buy)' : 'color:var(--sell)'"
-                    x-text="s.beneficio_final_pct != null ? formatPnl(s.beneficio_final_pct) : '—'"></td>
-              </tr>
-            </template>
-            <tr x-show="historialFiltrado.length === 0">
-              <td colspan="10" style="text-align:center;color:var(--muted);padding:3rem 0">
-                Sin señales cerradas en el período seleccionado.
-              </td>
-            </tr>
-          </tbody>
-        </table>
+
+      <!-- Empty state -->
+      <div class="empty-state" x-show="historialFiltrado.length === 0">
+        <span class="empty-icon">📂</span>
+        <p class="empty-text">Sin señales cerradas<br>para los timeframes seleccionados</p>
+      </div>
+
+      <div class="hist-cards">
+        <template x-for="s in historialFiltrado" :key="s.id">
+          <div class="hist-card" :class="s.direccion === 'COMPRA' ? 'hcard-buy' : 'hcard-sell'">
+
+            <!-- Franja izquierda + badge resultado -->
+            <div class="hcard-side">
+              <span class="res-badge"
+                    :class="['TP1','TP2','TP3'].includes(s.estado) ? 'tp' : s.estado === 'SL' ? 'sl' : 'neu'"
+                    x-text="estadoLabel(s.estado)"></span>
+            </div>
+
+            <!-- Cuerpo principal -->
+            <div class="hcard-body">
+              <!-- Fila 1: activo + tf + dirección + fecha -->
+              <div class="hcard-top">
+                <span class="hcard-ticker" x-text="s.asset || s.simbolo">GOLD</span>
+                <span class="tf-chip" x-text="s.timeframe">1H</span>
+                <span class="dir-badge" :class="s.direccion === 'COMPRA' ? 'buy' : 'sell'"
+                      x-text="s.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL'"></span>
+                <span style="flex:1"></span>
+                <span class="hcard-fecha" x-text="formatFecha(s.timestamp)"></span>
+              </div>
+
+              <!-- Fila 2: precios -->
+              <div class="hcard-prices">
+                <div class="hcard-price-item">
+                  <span class="hcard-plabel">Entrada</span>
+                  <span class="hcard-pval tabular" x-text="formatPrecio(s.precio_entrada)">—</span>
+                </div>
+                <div class="hcard-price-item">
+                  <span class="hcard-plabel">TP1</span>
+                  <span class="hcard-pval tabular" style="color:var(--buy)" x-text="formatPrecio(s.tp1)">—</span>
+                </div>
+                <div class="hcard-price-item">
+                  <span class="hcard-plabel">SL</span>
+                  <span class="hcard-pval tabular" style="color:var(--sell)" x-text="formatPrecio(s.sl)">—</span>
+                </div>
+                <!-- P&L grande a la derecha -->
+                <div style="flex:1"></div>
+                <div class="hcard-pnl-wrap">
+                  <span class="hcard-plabel">P&amp;L</span>
+                  <span class="hcard-pnl tabular"
+                        :class="(s.beneficio_final_pct || 0) >= 0 ? 'pos' : 'neg'"
+                        x-text="s.beneficio_final_pct != null ? formatPnl(s.beneficio_final_pct) : '—'">—</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </template>
       </div>
     </section>
 

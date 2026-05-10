@@ -350,36 +350,116 @@ nav {
 .card-meta strong { color: #90a4ae; }
 
 /* ══════════════════════════════════════════════════════════
-   HISTORIAL TABLE
+   HISTORIAL CARDS
 ══════════════════════════════════════════════════════════ */
-.hist-table { width: 100%; border-collapse: collapse; }
+.hist-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
-.hist-table th {
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.hist-card {
+  display: flex;
+  align-items: stretch;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.hist-card:hover {
+  border-color: var(--border-2);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+
+/* Franja izquierda de color según dirección */
+.hist-card.hcard-buy  { border-left: 3px solid var(--buy); }
+.hist-card.hcard-sell { border-left: 3px solid var(--sell); }
+
+/* Columna izquierda: badge resultado */
+.hcard-side {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  background: rgba(0,0,0,0.15);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
+/* Cuerpo */
+.hcard-body {
+  flex: 1;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Fila superior */
+.hcard-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hcard-ticker {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #cdd9e5;
+  letter-spacing: 0.02em;
+}
+
+.hcard-fecha {
+  font-size: 0.68rem;
   color: var(--muted);
-  font-weight: 600;
-  padding: 8px 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-  background: var(--surface-2);
-  position: sticky;
-  top: 52px;
 }
 
-.hist-table td {
-  padding: 7px 12px;
-  border-bottom: 1px solid rgba(30,45,61,0.5);
+/* Fila precios */
+.hcard-prices {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.hcard-price-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hcard-plabel {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.hcard-pval {
   font-size: 0.76rem;
-  white-space: nowrap;
-  vertical-align: middle;
+  font-weight: 600;
+  color: #cdd9e5;
 }
 
-.hist-table tbody tr { transition: background 0.1s; }
-.hist-table tbody tr:hover { background: rgba(255,255,255,0.02); }
-.hist-table tbody tr:last-child td { border-bottom: none; }
+/* P&L grande */
+.hcard-pnl-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.hcard-pnl {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.hcard-pnl.pos { color: var(--buy); }
+.hcard-pnl.neg { color: var(--sell); }
 
 .res-badge {
   display: inline-flex;
