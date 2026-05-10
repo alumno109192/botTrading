@@ -55,15 +55,12 @@
        NAVEGACIÓN
   ════════════════════════════════════════ -->
   <nav style="display:flex;padding:0 1.5rem">
-    <button class="nav-tab" :class="vistaActual === 'activas' ? 'active' : ''"
-            @click="vistaActual = 'activas'">
+    <a href="/dashboard/activas" class="nav-tab" :class="vistaActual === 'activas' ? 'active' : ''">
       Señales Activas
       <span class="nav-badge" x-show="senalesActivas.length > 0" x-text="senalesActivas.length"></span>
-    </button>
-    <button class="nav-tab" :class="vistaActual === 'historial' ? 'active' : ''"
-            @click="vistaActual = 'historial'">Historial</button>
-    <button class="nav-tab" :class="vistaActual === 'stats' ? 'active' : ''"
-            @click="vistaActual = 'stats'">Stats &amp; Equity</button>
+    </a>
+    <a href="/dashboard/historial" class="nav-tab" :class="vistaActual === 'historial' ? 'active' : ''">Historial</a>
+    <a href="/dashboard/stats" class="nav-tab" :class="vistaActual === 'stats' ? 'active' : ''">Stats &amp; Equity</a>
   </nav>
 
   <!-- ════════════════════════════════════════

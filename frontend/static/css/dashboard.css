@@ -139,6 +139,9 @@ nav {
 
 .nav-tab {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 0.72rem 1.25rem;
   font-size: 0.75rem;
   font-weight: 600;
@@ -149,6 +152,8 @@ nav {
   cursor: pointer;
   transition: color 0.2s;
   white-space: nowrap;
+  text-decoration: none;   /* <a> sin subrayado */
+  color: inherit;
 }
 
 .nav-tab::after {
