@@ -17,6 +17,7 @@ import services.signal_monitor as signal_monitor
 
 # Importar detectores Gold
 from detectors.gold import detector_gold_15m
+from detectors.gold import detector_gold_1m
 
 def ejecutar_detector(nombre, modulo):
     """Ejecuta un detector en un bucle de reintentos (sin recursión)."""
@@ -44,6 +45,7 @@ def main():
     print("  📈 SPX500 (S&P 500)   → detector_spx.py")
     print("  ₿  BTCUSD (Bitcoin)   → detector_bitcoin.py")
     print("  ⚡ XAUUSD SCALPING    → detector_gold_15m.py (15 minutos)")
+    print("  ⚡ XAUUSD IMPULSOS    → detector_gold_1m.py  (1 minuto)")
     print("  🔍 MONITOR SEÑALES    → signal_monitor.py")
     print()
     print("📈 Indicadores implementados:")
@@ -54,7 +56,7 @@ def main():
     print()
     print("💾 Base de datos: Turso (SQLite Cloud)")
     print("📊 Tracking: TP1, TP2, TP3, SL automático")
-    print("⏱️  Intervalo: 14 min (1D) | 2 min (15M Scalping)")
+    print("⏱️  Intervalo: 14 min (1D) | 2 min (15M Scalping) | 30s (1M Impulsos)")
     print("🔍 Monitor: Revisa señales cada 5 minutos")
     print("💚 Servidor: Siempre activo")
     print("✅ Anti-spam: Solo alertas en velas nuevas")
@@ -92,7 +94,7 @@ def main():
     )
     hilos.append(hilo_btc)
     
-    # ⚡ NUEVO: Hilo para detector de SCALPING 15M (GOLD)
+    # ⚡ Hilo para detector de SCALPING 15M (GOLD)
     hilo_scalp_15m = threading.Thread(
         target=ejecutar_detector,
         args=("DETECTOR GOLD 15M SCALPING", detector_gold_15m),
@@ -100,6 +102,24 @@ def main():
         daemon=True
     )
     hilos.append(hilo_scalp_15m)
+
+    # ⚡ Hilo para detector de IMPULSOS 1M (GOLD)
+    hilo_scalp_1m = threading.Thread(
+        target=ejecutar_detector,
+        args=("DETECTOR GOLD 1M IMPULSOS", detector_gold_1m),
+        name="DetectorGold1M",
+        daemon=True
+    )
+    hilos.append(hilo_scalp_1m)
+
+    # ⚡ Hilo para detector de IMPULSOS 1M (GOLD)
+    hilo_scalp_1m = threading.Thread(
+        target=ejecutar_detector,
+        args=("DETECTOR GOLD 1M IMPULSOS", detector_gold_1m),
+        name="DetectorGold1M",
+        daemon=True
+    )
+    hilos.append(hilo_scalp_1m)
     
     # ⭐ NUEVO: Hilo para monitor de señales
     hilo_monitor = threading.Thread(

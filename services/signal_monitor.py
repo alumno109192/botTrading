@@ -40,6 +40,7 @@ _TIMEOUT_PENDIENTE_CONFIRM_HORAS = 4
 # Vigencia máxima de señales en estado ACTIVA por timeframe
 # Pasado este tiempo sin que el precio toque SL/TP, la señal se caduca automáticamente
 _MAX_VIGENCIA_ACTIVA_HORAS: dict = {
+    '1M':  2,    # Micro-scalp ultra: contexto válido máx 2 horas
     '5M':  4,    # Micro-scalp: contexto válido máx 4 horas
     '15M': 12,   # Scalp: una jornada de trading
     '1H':  48,   # Intraday: 2 días
@@ -49,6 +50,7 @@ _MAX_VIGENCIA_ACTIVA_HORAS: dict = {
 
 # Horas RESTANTES para caducar a partir de las cuales se envía el aviso previo
 _AVISO_CADUCIDAD_HORAS_RESTANTES: dict = {
+    '1M':  0.5,  # Avisa con 30 min de antelación
     '5M':  1,    # Avisa con 1h de antelación
     '15M': 2,    # Avisa con 2h de antelación
     '1H':  6,    # Avisa con 6h de antelación
@@ -59,7 +61,7 @@ _AVISO_CADUCIDAD_HORAS_RESTANTES: dict = {
 def obtener_thread_id(simbolo: str):
     """Devuelve el message_thread_id de Telegram según el timeframe del símbolo."""
     sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
-    if sufijo in ('15M', '5M'):
+    if sufijo in ('1M', '15M', '5M'):
         return THREAD_ID_SCALPING
     if sufijo == '1H':
         return THREAD_ID_INTRADAY
