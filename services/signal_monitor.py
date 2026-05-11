@@ -42,10 +42,10 @@ _TIMEOUT_PENDIENTE_CONFIRM_HORAS = 4
 _MAX_VIGENCIA_ACTIVA_HORAS: dict = {
     '1M':  2,    # Micro-scalp ultra: contexto válido máx 2 horas
     '5M':  4,    # Micro-scalp: contexto válido máx 4 horas
-    '15M': 12,   # Scalp: una jornada de trading
-    '1H':  48,   # Intraday: 2 días
-    '4H':  168,  # Swing corto: 7 días
-    '1D':  336,  # Swing largo: 14 días
+    '15M': 8,    # Scalp: una sesión de trading (~8h)
+    '1H':  16,   # Intraday: sesión completa + asiática nocturna, sin solapar día siguiente
+    '4H':  72,   # Swing corto: 3 días (3 sesiones de 4H)
+    '1D':  120,  # Swing largo: 5 días hábiles (1 semana de mercado)
 }
 
 # Horas RESTANTES para caducar a partir de las cuales se envía el aviso previo
@@ -53,7 +53,7 @@ _AVISO_CADUCIDAD_HORAS_RESTANTES: dict = {
     '1M':  0.5,  # Avisa con 30 min de antelación
     '5M':  1,    # Avisa con 1h de antelación
     '15M': 2,    # Avisa con 2h de antelación
-    '1H':  6,    # Avisa con 6h de antelación
+    '1H':  4,    # Avisa con 4h de antelación
     '4H':  24,   # Avisa con 24h de antelación
     '1D':  48,   # Avisa con 48h de antelación
 }
@@ -1254,6 +1254,95 @@ def _avisar_proximas_a_caducar(db: DatabaseManager, _aviso_caducidad_enviado: se
         logger.info(f"  ⚠️ Aviso caducidad señal {senal_id} ({simbolo}) — caduca en {tiempo_txt}")
 
 
+def _invalidar_por_alejamiento_atr(db: DatabaseManager) -> None:
+    """
+    Invalida señales ACTIVA cuyo precio actual se alejó más de 1 ATR del entry.
+
+    Concepto para entender:
+    ─────────────────────────────────────────────────────────────────────────────
+    ATR (Average True Range) mide la volatilidad media del activo en las últimas
+    N velas. Si el precio ya se movió MÁS de 1 ATR desde el entry sin entrar en
+    la señal, significa que:
+      1. El R/R original ya no es el mismo — el SL queda muy lejos del precio
+      2. El nivel que generó la señal perdió relevancia — el mercado ya lo ignoró
+      3. Entrar ahora sería "perseguir el precio", un error clásico en trading
+
+    Ejemplo concreto con Gold 1H:
+      - Entry: 3100, SL: 3090, TP: 3115, ATR(14) del 1H ≈ 15 puntos
+      - Si el precio actual es 3115 (= entry + 1 ATR) y nunca tocó el SL → señal
+        BUY con entry en 3100 ya no tiene sentido porque el precio ya subió toda
+        la amplitud media esperada sin ejecutar la entrada
+    ─────────────────────────────────────────────────────────────────────────────
+
+    Multiplier configurable: _ATR_INVALIDACION_MULTIPLIER
+      - 1.0 = invalida al alejarse 1 ATR completo (conservador)
+      - 1.5 = más tolerante, útil para TFs altos con mucho ruido
+    """
+    _ATR_INVALIDACION_MULTIPLIER = 1.0   # 1 ATR de distancia máxima desde el entry
+
+    query = """
+    SELECT id, simbolo, direccion, entry, sl, tp1, atr
+    FROM senales
+    WHERE estado = 'ACTIVA' AND atr IS NOT NULL AND atr > 0
+    """
+    result = db.ejecutar_query(query)
+    if not result.rows:
+        return
+
+    for row in result.rows:
+        senal     = dict(row)
+        senal_id  = senal['id']
+        simbolo   = senal['simbolo']
+        direccion = senal['direccion']
+        entry     = senal.get('entry')
+        atr       = senal.get('atr')
+
+        if not entry or not atr:
+            continue
+
+        # Obtener precio actual
+        simbolo_base = simbolo.split('_')[0]
+        ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
+        if not ticker:
+            continue
+        precios = _fetch_precios_ticker(ticker, db)
+        if not precios:
+            continue
+        precio_actual = precios[0]
+
+        distancia = abs(precio_actual - entry)
+        umbral    = atr * _ATR_INVALIDACION_MULTIPLIER
+
+        if distancia <= umbral:
+            continue  # Precio sigue cerca del entry → señal válida
+
+        # El precio se alejó demasiado → invalidar
+        db.cerrar_senal(senal_id, 'CADUCADA', 0.0)
+        _nombre   = simbolo_a_nombre(simbolo)
+        sufijo    = simbolo.split('_')[-1].upper() if '_' in simbolo else 'N/A'
+        lado      = '🟢' if direccion == 'COMPRA' else '🔴'
+
+        logger.info(
+            f"📏 Señal {senal_id} ({simbolo} {direccion}) invalidada por alejamiento ATR: "
+            f"distancia={distancia:.2f} > umbral={umbral:.2f} (ATR={atr:.2f})"
+        )
+
+        msg = (
+            f"📏 <b>Señal invalidada — precio lejos del entry</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{lado} <b>{_nombre} {sufijo} {direccion}</b>\n"
+            f"\n"
+            f"🎯 Entry original: <b>{entry:.2f}</b>\n"
+            f"📍 Precio actual:  <b>{precio_actual:.2f}</b>\n"
+            f"📐 Distancia:      <b>{distancia:.2f} pts</b>\n"
+            f"📊 ATR({sufijo}):  <b>{atr:.2f} pts</b>\n"
+            f"\n"
+            f"ℹ️ El precio se alejó más de <b>1 ATR</b> del entry.\n"
+            f"Entrar ahora cambiaría el R/R original — señal cerrada."
+        )
+        enviar_notificacion_telegram(msg, simbolo)
+
+
 def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
     """
     Caduca señales ACTIVA que superaron el límite de vigencia para su timeframe.
@@ -1777,6 +1866,11 @@ def monitor_senales():
             if ciclo % 120 == 0:
                 _avisar_proximas_a_caducar(db, _aviso_caducidad_enviado)
                 cerrar_senales_antiguas(db, dias=14)
+
+            # Cada ~30 min (cada 60 ticks × 30s) revisar si el precio se alejó
+            # más de 1 ATR del entry → R/R invalidado aunque no haya expirado el tiempo
+            if ciclo % 60 == 0:
+                _invalidar_por_alejamiento_atr(db)
 
             # Heartbeat cada 10 ticks (~5 min) → puebla bot_logs y confirma que el monitor corre
             if ciclo % 10 == 0:

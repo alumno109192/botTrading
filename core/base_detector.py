@@ -23,6 +23,7 @@ import logging
 import pandas as pd
 import numpy as np
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone, timedelta
 
 _logger = logging.getLogger('bottrading')
 
@@ -36,6 +37,15 @@ from core.indicators import (
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
 )
 
+# Vigencia máxima por timeframe — debe mantenerse sincronizado con signal_monitor.py
+_VIGENCIA_HORAS: dict = {
+    '1M':  2,
+    '5M':  4,
+    '15M': 8,
+    '1H':  16,
+    '4H':  72,
+    '1D':  120,
+}
 
 _NOMBRES_DISPLAY: dict = {
     'XAUUSD': 'ORO (XAUUSD)',
@@ -473,7 +483,15 @@ class BaseDetector(ABC):
         self._last_senal_esperando = False  # consumir siempre
 
         if senal_id:
-            mensaje = mensaje.rstrip() + f"\n━━━━━━━━━━━━━━━━━━━━\n🔖 <b>#{senal_id}</b>"
+            # Calcular hora estimada de caducidad según timeframe del símbolo
+            _sufijo_tf = self.simbolo.split('_')[-1].upper() if '_' in self.simbolo else ''
+            _max_horas = _VIGENCIA_HORAS.get(_sufijo_tf, 24)
+            _caduca_utc = datetime.now(timezone.utc) + timedelta(hours=_max_horas)
+            _caduca_local = _caduca_utc.strftime('%d/%m %H:%M') + ' UTC'
+            _caduca_info = f"⏰ Caduca: <b>{_caduca_local}</b> (en {_max_horas}h)"
+            mensaje = (mensaje.rstrip()
+                       + f"\n━━━━━━━━━━━━━━━━━━━━"
+                       + f"\n🔖 <b>#{senal_id}</b>  |  {_caduca_info}")
         sufijo = (f"\n⚠️ <b>Evento macro próximo:</b> {self.aviso_macro}"
                   if self.aviso_macro else "")
         sufijo_pb = (f"\n{self.contexto_pullback}"
