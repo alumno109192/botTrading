@@ -47,6 +47,15 @@ _MAX_VIGENCIA_ACTIVA_HORAS: dict = {
     '1D':  336,  # Swing largo: 14 días
 }
 
+# Horas RESTANTES para caducar a partir de las cuales se envía el aviso previo
+_AVISO_CADUCIDAD_HORAS_RESTANTES: dict = {
+    '5M':  1,    # Avisa con 1h de antelación
+    '15M': 2,    # Avisa con 2h de antelación
+    '1H':  6,    # Avisa con 6h de antelación
+    '4H':  24,   # Avisa con 24h de antelación
+    '1D':  48,   # Avisa con 48h de antelación
+}
+
 def obtener_thread_id(simbolo: str):
     """Devuelve el message_thread_id de Telegram según el timeframe del símbolo."""
     sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
@@ -1170,6 +1179,79 @@ def _cancelar_orden_pendiente(senal: dict, precio_actual: float, sl: float,
     return False
 
 
+def _avisar_proximas_a_caducar(db: DatabaseManager, _aviso_caducidad_enviado: set) -> None:
+    """
+    Envía un aviso por Telegram cuando una señal ACTIVA está próxima a caducar.
+    Se dispara cuando las horas restantes hasta el límite bajan de _AVISO_CADUCIDAD_HORAS_RESTANTES.
+    Solo envía el aviso una vez por señal (controlado con _aviso_caducidad_enviado).
+    """
+    ahora = datetime.now(timezone.utc)
+    max_horas_fallback = 336
+
+    result = db.ejecutar_query("SELECT id, simbolo, direccion, timestamp, precio_entrada, sl, tp1, tp2, tp3 FROM senales WHERE estado = 'ACTIVA'")
+    if not result.rows:
+        return
+
+    for row in result.rows:
+        senal    = dict(row)
+        senal_id = senal['id']
+        if senal_id in _aviso_caducidad_enviado:
+            continue
+
+        simbolo  = senal['simbolo']
+        ts_raw   = senal['timestamp']
+
+        try:
+            ts = datetime.fromisoformat(ts_raw.replace('Z', '+00:00')) if isinstance(ts_raw, str) else ts_raw
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            antiguedad_h = (ahora - ts).total_seconds() / 3600
+        except Exception:
+            continue
+
+        sufijo   = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
+        max_h    = _MAX_VIGENCIA_ACTIVA_HORAS.get(sufijo, max_horas_fallback)
+        umbral_h = _AVISO_CADUCIDAD_HORAS_RESTANTES.get(sufijo, 24)
+        restantes_h = max_h - antiguedad_h
+
+        if restantes_h > umbral_h or restantes_h <= 0:
+            continue  # Aún no toca avisar (o ya caducó)
+
+        # Enviar aviso
+        _aviso_caducidad_enviado.add(senal_id)
+        _nombre  = simbolo_a_nombre(simbolo)
+        tf_label = sufijo if sufijo else 'N/A'
+        icono    = '🟢' if senal['direccion'] == 'COMPRA' else '🔴'
+        try:
+            entrada = float(senal['precio_entrada'] or 0)
+            sl      = float(senal['sl'] or 0)
+            tp1     = float(senal['tp1'] or 0)
+            tp2     = float(senal['tp2'] or 0)
+            tp3     = float(senal['tp3'] or 0)
+            niveles = (f"📌 Entrada: ${entrada:.2f}  SL: ${sl:.2f}\n"
+                       f"🎯 TP1: ${tp1:.2f}  TP2: ${tp2:.2f}  TP3: ${tp3:.2f}")
+        except (TypeError, ValueError):
+            niveles = ''
+
+        if restantes_h < 1:
+            tiempo_txt = f"{int(restantes_h * 60)} min"
+        else:
+            tiempo_txt = f"{restantes_h:.1f}h"
+
+        msg = (
+            f"⚠️ <b>SEÑAL PRÓXIMA A CADUCAR — {_nombre} {tf_label}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{icono} <b>{senal['direccion']}</b> | ID #{senal_id}\n"
+            f"⌛ Caduca en: <b>{tiempo_txt}</b> (abierta {antiguedad_h:.1f}h / límite {max_h}h)\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{niveles}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"ℹ️ Si no hay actividad se cerrará automáticamente"
+        )
+        enviar_notificacion_telegram(msg, simbolo)
+        logger.info(f"  ⚠️ Aviso caducidad señal {senal_id} ({simbolo}) — caduca en {tiempo_txt}")
+
+
 def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
     """
     Caduca señales ACTIVA que superaron el límite de vigencia para su timeframe.
@@ -1303,6 +1385,8 @@ def monitor_senales():
     _ultimo_check_trampa: dict = {}
     # Set de IDs de señales cuya orden LIMIT ya fue ejecutada (precio tocó la entrada)
     _ordenes_ejecutadas: set = set()
+    # Set de IDs de señales para las que ya se envió el aviso de caducidad próxima
+    _aviso_caducidad_enviado: set = set()
     ciclo = 0
     # ISO week numbers de la última apertura/cierre notificados (evita mensajes duplicados)
     _semana_apertura_enviada: int = -1
@@ -1589,6 +1673,7 @@ def monitor_senales():
             _reversal_tp1_avisado.intersection_update(ids_activos)
             _reversal_tp2_avisado.intersection_update(ids_activos)
             _ordenes_ejecutadas.intersection_update(ids_activos)
+            _aviso_caducidad_enviado.intersection_update(ids_activos)
             for sid in list(_ultimo_check_trampa):
                 if sid not in ids_activos:
                     del _ultimo_check_trampa[sid]
@@ -1599,7 +1684,9 @@ def monitor_senales():
 
             # Cada ~hora (cada 120 ticks × 30s = 60 min) caducar señales que
             # superaron su vigencia máxima según timeframe (_MAX_VIGENCIA_ACTIVA_HORAS)
+            # y avisar de las que están próximas a caducar
             if ciclo % 120 == 0:
+                _avisar_proximas_a_caducar(db, _aviso_caducidad_enviado)
                 cerrar_senales_antiguas(db, dias=14)
 
             # Heartbeat cada 10 ticks (~5 min) → puebla bot_logs y confirma que el monitor corre
