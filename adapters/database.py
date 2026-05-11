@@ -157,15 +157,19 @@ class DatabaseManager:
                         # al tipo nativo correcto, si no `not senal['tp1_alcanzado']` donde
                         # tp1_alcanzado = "0" siempre es False (string no vacío = truthy).
                         cell = row[i] if i < len(row) else None
-                        if isinstance(cell, dict) and 'value' in cell:
+                        if isinstance(cell, dict):
                             cell_type = cell.get('type', 'text')
-                            cell_val  = cell['value']
-                            if cell_type == 'integer':
-                                row_dict[col] = int(cell_val) if cell_val is not None else 0
-                            elif cell_type in ('float', 'real'):
-                                row_dict[col] = float(cell_val) if cell_val is not None else 0.0
+                            # Turso null → Python None
+                            if cell_type == 'null' or cell.get('value') is None:
+                                row_dict[col] = None
                             else:
-                                row_dict[col] = cell_val
+                                cell_val = cell['value']
+                                if cell_type == 'integer':
+                                    row_dict[col] = int(cell_val) if cell_val is not None else None
+                                elif cell_type in ('float', 'real'):
+                                    row_dict[col] = float(cell_val) if cell_val is not None else None
+                                else:
+                                    row_dict[col] = cell_val
                         else:
                             row_dict[col] = cell
                     rows_dicts.append(row_dict)
