@@ -37,6 +37,16 @@ THREAD_ID_SCALPING  = _parse_thread_id(os.environ.get('THREAD_ID_SCALPING'))   #
 # Tiempo máximo que una señal puede estar en estado PENDIENTE_CONFIRMACION
 _TIMEOUT_PENDIENTE_CONFIRM_HORAS = 4
 
+# Vigencia máxima de señales en estado ACTIVA por timeframe
+# Pasado este tiempo sin que el precio toque SL/TP, la señal se caduca automáticamente
+_MAX_VIGENCIA_ACTIVA_HORAS: dict = {
+    '5M':  4,    # Micro-scalp: contexto válido máx 4 horas
+    '15M': 12,   # Scalp: una jornada de trading
+    '1H':  48,   # Intraday: 2 días
+    '4H':  168,  # Swing corto: 7 días
+    '1D':  336,  # Swing largo: 14 días
+}
+
 def obtener_thread_id(simbolo: str):
     """Devuelve el message_thread_id de Telegram según el timeframe del símbolo."""
     sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
@@ -1162,28 +1172,62 @@ def _cancelar_orden_pendiente(senal: dict, precio_actual: float, sl: float,
 
 def cerrar_senales_antiguas(db: DatabaseManager, dias: int = 7):
     """
-    Cierra automáticamente señales que llevan más de X días activas
-    
-    Args:
-        db: Instancia de DatabaseManager
-        dias: Días después de los cuales cerrar señal
+    Caduca señales ACTIVA que superaron el límite de vigencia para su timeframe.
+    Usa _MAX_VIGENCIA_ACTIVA_HORAS; el parámetro `dias` actúa como techo absoluto
+    para TFs sin sufijo reconocido.
     """
-    fecha_limite = datetime.now(timezone.utc) - timedelta(days=dias)
-    
+    ahora = datetime.now(timezone.utc)
+    # Techo absoluto: señales sin sufijo reconocido usan `dias` como fallback
+    max_horas_fallback = dias * 24
+
     query = """
     SELECT id, simbolo, direccion, timestamp
     FROM senales
     WHERE estado = 'ACTIVA'
-    AND timestamp < ?
     """
-    
-    result = db.ejecutar_query(query, (fecha_limite.isoformat(),))
-    
-    if result.rows:
-        for row in result.rows:
-            senal = dict(row)
-            db.cerrar_senal(senal['id'], 'CANCELADA', 0.0)
-            logger.info(f"🗓️ Señal {senal['id']} cerrada por antigüedad (>{dias} días)")
+    result = db.ejecutar_query(query)
+    if not result.rows:
+        return
+
+    for row in result.rows:
+        senal    = dict(row)
+        senal_id = senal['id']
+        simbolo  = senal['simbolo']
+        ts_raw   = senal['timestamp']
+
+        # Calcular antigüedad en horas
+        try:
+            ts = datetime.fromisoformat(ts_raw.replace('Z', '+00:00')) if isinstance(ts_raw, str) else ts_raw
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            antiguedad_h = (ahora - ts).total_seconds() / 3600
+        except Exception:
+            continue
+
+        # Límite de vigencia según TF del símbolo
+        sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
+        max_horas = _MAX_VIGENCIA_ACTIVA_HORAS.get(sufijo, max_horas_fallback)
+
+        if antiguedad_h <= max_horas:
+            continue
+
+        # Caducar señal
+        db.cerrar_senal(senal_id, 'CADUCADA', 0.0)
+        logger.info(f"⏰ Señal {senal_id} ({simbolo} {senal['direccion']}) caducada "
+                    f"por vigencia máxima {max_horas}h (abierta {antiguedad_h:.1f}h)")
+
+        # Notificar por Telegram
+        _nombre = simbolo_a_nombre(simbolo)
+        tf_label = sufijo if sufijo else 'N/A'
+        msg = (
+            f"⏰ <b>Señal caducada — {_nombre} {tf_label}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{'🟢' if senal['direccion'] == 'COMPRA' else '🔴'} "
+            f"<b>{senal['direccion']}</b> abierta hace <b>{antiguedad_h:.0f}h</b>\n"
+            f"⌛ Vigencia máxima para {tf_label}: {max_horas}h\n"
+            f"ℹ️ Sin actividad — señal cerrada automáticamente"
+        )
+        enviar_notificacion_telegram(msg, simbolo)
 
 
 
@@ -1553,9 +1597,10 @@ def monitor_senales():
             if ciclo % 2 == 0:
                 _verificar_pendientes_confirm(db)
 
-            # Cada ~hora (cada 120 ticks × 30s = 60 min) cerrar señales antiguas
+            # Cada ~hora (cada 120 ticks × 30s = 60 min) caducar señales que
+            # superaron su vigencia máxima según timeframe (_MAX_VIGENCIA_ACTIVA_HORAS)
             if ciclo % 120 == 0:
-                cerrar_senales_antiguas(db, dias=2)
+                cerrar_senales_antiguas(db, dias=14)
 
             # Heartbeat cada 10 ticks (~5 min) → puebla bot_logs y confirma que el monitor corre
             if ciclo % 10 == 0:
