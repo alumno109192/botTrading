@@ -22,6 +22,7 @@ Uso (descomentado cuando se quiera activar):
 
 import os
 import logging
+import requests as _requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -52,6 +53,14 @@ class MT5Broker:
         self.server        = os.getenv('MT5_SERVER', 'VTMarkets-Demo')
         self.symbol        = os.getenv('MT5_SYMBOL', 'XAUUSD')
         self.lotes_fijos   = float(os.getenv('MT5_LOTES', '0.01'))
+
+        # ── Modo bridge (Render → puente Windows local) ────────────────────
+        self.bridge_url   = os.getenv('MT5_BRIDGE_URL', '').rstrip('/')
+        self.bridge_token = os.getenv('MT5_BRIDGE_TOKEN', '')
+        self._modo_bridge = bool(self.bridge_url and self.auto_trade)
+        if self._modo_bridge:
+            logger.info(f"✅ MT5Broker: modo BRIDGE activo → {self.bridge_url}")
+            return  # no necesita librería local en modo bridge
 
         # ── Importar MetaTrader5 opcionalmente ─────────────────────────────
         if self.auto_trade:
@@ -147,7 +156,14 @@ class MT5Broker:
 
         Retorna el ticket de la orden abierta, o None si no se ejecutó.
         """
-        if not self.auto_trade or not self._mt5:
+        if not self.auto_trade:
+            return None
+
+        # ── Modo bridge: delegar al puente Windows local ──────────────────
+        if self._modo_bridge:
+            return self._abrir_via_bridge(senal_data)
+
+        if not self._mt5:
             return None
 
         direccion = str(senal_data.get('direccion', '')).upper()
@@ -169,6 +185,9 @@ class MT5Broker:
         if lotes <= 0:
             logger.error("MT5Broker: lotes = 0, operación cancelada")
             return None
+
+        tf    = str(senal_data.get('timeframe', ''))
+        score = int(senal_data.get('score', 0))
 
         order_type = (
             self._mt5.ORDER_TYPE_BUY
@@ -217,6 +236,13 @@ class MT5Broker:
 
         Retorna True si el cierre fue exitoso.
         """
+        if not self.auto_trade:
+            return False
+
+        # ── Modo bridge ───────────────────────────────────────────────────
+        if self._modo_bridge:
+            return self._cerrar_via_bridge(ticket)
+
         if not self._mt5 or not self._asegurar_conexion():
             return False
 
@@ -282,8 +308,59 @@ class MT5Broker:
             "tickets":    [p.ticket for p in posiciones],
         }
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # Métodos privados — modo bridge HTTP
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _headers_bridge(self) -> dict:
+        h = {'Content-Type': 'application/json'}
+        if self.bridge_token:
+            h['X-Bridge-Token'] = self.bridge_token
+        return h
+
+    def _abrir_via_bridge(self, senal_data: dict) -> int | None:
+        """Delega la apertura al puente local Windows vía HTTP."""
+        try:
+            r = _requests.post(
+                f"{self.bridge_url}/abrir",
+                json=senal_data,
+                headers=self._headers_bridge(),
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            if data.get('ok'):
+                ticket = data.get('ticket')
+                logger.info(f"✅ MT5Broker [bridge]: orden abierta — ticket {ticket}")
+                return ticket
+            else:
+                logger.error(f"❌ MT5Broker [bridge]: {data.get('error')}")
+                return None
+        except Exception as e:
+            logger.error(f"❌ MT5Broker [bridge] abrir_operacion: {e}")
+            return None
+
+    def _cerrar_via_bridge(self, ticket: int) -> bool:
+        """Delega el cierre al puente local Windows vía HTTP."""
+        try:
+            r = _requests.post(
+                f"{self.bridge_url}/cerrar",
+                json={'ticket': ticket},
+                headers=self._headers_bridge(),
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            ok = bool(data.get('ok'))
+            if ok:
+                logger.info(f"✅ MT5Broker [bridge]: posición {ticket} cerrada")
+            else:
+                logger.error(f"❌ MT5Broker [bridge]: {data.get('error')}")
+            return ok
+        except Exception as e:
+            logger.error(f"❌ MT5Broker [bridge] cerrar_operacion: {e}")
+            return False
+
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
-# Instancia única que se importa desde el resto del código.
-# La clase se instancia siempre; el flag MT5_AUTO_TRADE controla si opera.
 broker = MT5Broker()
