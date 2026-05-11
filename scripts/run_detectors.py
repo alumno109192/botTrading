@@ -16,6 +16,7 @@ from detectors.gold import detector_gold_1d as detector_gold
 import services.signal_monitor as signal_monitor
 
 # Importar detectores Gold
+from detectors.gold import detector_gold_5m
 from detectors.gold import detector_gold_15m
 from detectors.gold import detector_gold_1m
 
@@ -40,12 +41,11 @@ def main():
     print("="*60)
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
-    print("📊 Detectores activos (con indicadores de alta prioridad):")
-    print("  🥇 XAUUSD (Oro)       → detector_gold.py")
-    print("  📈 SPX500 (S&P 500)   → detector_spx.py")
-    print("  ₿  BTCUSD (Bitcoin)   → detector_bitcoin.py")
-    print("  ⚡ XAUUSD SCALPING    → detector_gold_15m.py (15 minutos)")
-    print("  ⚡ XAUUSD IMPULSOS    → detector_gold_1m.py  (1 minuto)")
+    print("📊 Detectores activos:")
+    print("  🥇 XAUUSD 1D (Swing)  → detector_gold_1d.py")
+    print("  ⚡ XAUUSD SCALPING 1M  → detector_gold_1m.py  (1 minuto)")
+    print("  ⚡ XAUUSD SCALPING 5M  → detector_gold_5m.py  (5 minutos)")
+    print("  ⚡ XAUUSD SCALPING 15M → detector_gold_15m.py (15 minutos)")
     print("  🔍 MONITOR SEÑALES    → signal_monitor.py")
     print()
     print("📈 Indicadores implementados:")
@@ -76,24 +76,6 @@ def main():
     )
     hilos.append(hilo_gold)
     
-    # Hilo para detector de SPX500
-    hilo_spx = threading.Thread(
-        target=ejecutar_detector,
-        args=("DETECTOR SPX (SPX500)", detector_spx_copy),
-        name="DetectorSPX",
-        daemon=True
-    )
-    hilos.append(hilo_spx)
-    
-    # Hilo para detector de Bitcoin
-    hilo_btc = threading.Thread(
-        target=ejecutar_detector,
-        args=("DETECTOR BITCOIN (BTCUSD)", detector_bitcoin),
-        name="DetectorBitcoin",
-        daemon=True
-    )
-    hilos.append(hilo_btc)
-    
     # ⚡ Hilo para detector de SCALPING 15M (GOLD)
     hilo_scalp_15m = threading.Thread(
         target=ejecutar_detector,
@@ -103,14 +85,14 @@ def main():
     )
     hilos.append(hilo_scalp_15m)
 
-    # ⚡ Hilo para detector de IMPULSOS 1M (GOLD)
-    hilo_scalp_1m = threading.Thread(
+    # ⚡ Hilo para detector de MICRO-SCALP 5M (GOLD)
+    hilo_scalp_5m = threading.Thread(
         target=ejecutar_detector,
-        args=("DETECTOR GOLD 1M IMPULSOS", detector_gold_1m),
-        name="DetectorGold1M",
+        args=("DETECTOR GOLD 5M MICRO-SCALP", detector_gold_5m),
+        name="DetectorGold5M",
         daemon=True
     )
-    hilos.append(hilo_scalp_1m)
+    hilos.append(hilo_scalp_5m)
 
     # ⚡ Hilo para detector de IMPULSOS 1M (GOLD)
     hilo_scalp_1m = threading.Thread(
