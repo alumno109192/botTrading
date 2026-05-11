@@ -111,10 +111,6 @@
                   style="font-size:0.62rem;color:var(--warn);border:1px solid rgba(255,145,0,0.3);padding:1px 7px;border-radius:4px">
               PENDING
             </span>
-            <span x-show="s.estado === 'BREAKEVEN'"
-                  style="font-size:0.62rem;color:#69f0ae;border:1px solid rgba(0,230,118,0.3);padding:1px 7px;border-radius:4px">
-              BREAKEVEN
-            </span>
 
             <div style="flex:1"></div>
 
@@ -376,7 +372,7 @@
            x-transition:leave-start="opacity-100"
            x-transition:leave-end="opacity-0">
         <span class="toast-icon" x-text="toast.tipo === 'nueva' ? '🔔' : toast.tipo === 'tp' ? '✅' : '🛑'"></span>
-        <div class="toast-body">
+        <div class="toast-body" @click="window.location.href = toast.url || '/dashboard/activas'" style="cursor:pointer;flex:1">
           <div class="toast-title" x-text="toast.titulo"></div>
           <div class="toast-message" x-text="toast.mensaje"></div>
         </div>

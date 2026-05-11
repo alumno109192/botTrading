@@ -610,8 +610,8 @@ class DatabaseManager:
 
     def obtener_senales_activas(self) -> List[Dict]:
         """
-        Obtiene todas las señales que aún están abiertas (no cerradas).
-        Incluye ACTIVA, PENDIENTE_CONFIRM y BREAKEVEN (SL movido a entry, trade sigue vivo).
+        Obtiene señales en estado ACTIVA o PENDIENTE_CONFIRM (trades abiertos sin SL movido).
+        Las señales BREAKEVEN se excluyen — ya no son "activas" en sentido estricto.
         
         Returns:
             Lista de diccionarios con datos de señales activas
@@ -619,7 +619,7 @@ class DatabaseManager:
         query = """
         SELECT *
         FROM senales
-        WHERE estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'BREAKEVEN')
+        WHERE estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
         ORDER BY timestamp DESC
         """
         

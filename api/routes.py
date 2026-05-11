@@ -200,7 +200,7 @@ def create_app(estado_sistema, threads_detectores):
             if db is None:
                 return jsonify({'error': 'BD no disponible'}), 503
 
-            activas = db.obtener_senales_activas()  # incluye ACTIVA, PENDIENTE_CONFIRM, BREAKEVEN
+            activas = db.obtener_senales_activas()  # ACTIVA + PENDIENTE_CONFIRM
             senales = activas
 
             tf_filter = request.args.get('tf')

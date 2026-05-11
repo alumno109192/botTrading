@@ -47,6 +47,7 @@ function dashboardApp() {
     ══════════════════════════════════════════ */
     init(vistaInicial = 'activas') {
       this.vistaActual = vistaInicial;
+      _solicitarNotifPermiso();
       this.cargarTodo();
       setInterval(() => this.cargarTodo(), POLL_INTERVAL_MS);
 
@@ -93,7 +94,8 @@ function dashboardApp() {
             if (this._idsConocidos.size > 0) {
               this.toast('nueva',
                 `Nueva señal ${s.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL'}`,
-                `${s.asset || s.simbolo} ${s.timeframe} @ ${this.formatPrecio(s.precio_entrada)}`
+                `${s.asset || s.simbolo} ${s.timeframe} @ ${this.formatPrecio(s.precio_entrada)}`,
+                `/dashboard/activas#s${s.id}`
               );
             }
             this._idsConocidos.add(s.id);
@@ -236,10 +238,10 @@ function dashboardApp() {
     /* ══════════════════════════════════════════
        TOAST SYSTEM
     ══════════════════════════════════════════ */
-    toast(tipo, titulo, mensaje) {
+    toast(tipo, titulo, mensaje, url = '/dashboard/activas') {
       const id = ++this._toastCounter;
-      this.toasts.push({ id, tipo, titulo, mensaje, visible: true });
-      _browserNotify(titulo, mensaje);
+      this.toasts.push({ id, tipo, titulo, mensaje, url, visible: true });
+      _browserNotify(titulo, mensaje, url);
       setTimeout(() => {
         const idx = this.toasts.findIndex(t => t.id === id);
         this.cerrarToast(idx);
@@ -351,15 +353,30 @@ function _tpAlcanzado(s, campo) {
 
 let _notifPermiso = (typeof Notification !== 'undefined') ? Notification.permission : 'denied';
 
-function _browserNotify(titulo, cuerpo) {
-  if (typeof Notification === 'undefined' || _notifPermiso === 'denied') return;
-  if (_notifPermiso === 'default') {
-    Notification.requestPermission().then(p => {
-      _notifPermiso = p;
-      if (p === 'granted') new Notification(titulo, { body: cuerpo });
-    });
-    return;
+function _solicitarNotifPermiso() {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().then(p => { _notifPermiso = p; });
+  } else {
+    _notifPermiso = Notification.permission;
   }
-  try { new Notification(titulo, { body: cuerpo }); } catch (_) {}
+}
+
+function _browserNotify(titulo, cuerpo, url = '/dashboard/activas') {
+  if (typeof Notification === 'undefined' || _notifPermiso !== 'granted') return;
+  try {
+    const n = new Notification(titulo, {
+      body:  cuerpo,
+      icon:  '/static/img/icon-192.png',
+      badge: '/static/img/icon-192.png',
+      tag:   titulo,
+      renotify: true,
+    });
+    n.onclick = () => {
+      window.focus();
+      window.location.href = url;
+      n.close();
+    };
+  } catch (_) {}
 }
 
