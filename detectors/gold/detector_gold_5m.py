@@ -543,12 +543,18 @@ class GoldDetector5M(BaseDetector):
             sell_limit = close * (1 + offset_pct / 100)
             buy_limit  = close * (1 - offset_pct / 100)
 
-            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'], 2)
-            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'], 2)
-            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'], 2)
-            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'], 2)
-            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'], 2)
-            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'], 2)
+            # VATR: factor de volumen — amplía TPs en mercados con impulso, los reduce en apáticos
+            _vol_avg20  = float(df['Volume'].rolling(20).mean().iloc[-1])
+            _vol_last   = float(df['Volume'].iloc[-1])
+            _vol_factor = min(max(_vol_last / _vol_avg20, 0.75), 1.50) if _vol_avg20 > 0 else 1.0
+
+            # TPs dinámicos basados en ATR ajustado por volumen (VATR)
+            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'] * _vol_factor, 2)
+            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'] * _vol_factor, 2)
+            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'] * _vol_factor, 2)
+            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'] * _vol_factor, 2)
+            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'] * _vol_factor, 2)
+            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'] * _vol_factor, 2)
 
             def rr(limit, sl, tp):
                 return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0

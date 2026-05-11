@@ -270,12 +270,16 @@ class EURUSDDetector4H(BaseDetector):
             sell_limit = close * (1 + offset_pct / 100)
             buy_limit  = close * (1 - offset_pct / 100)
 
-            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'], 5)
-            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'], 5)
-            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'], 5)
-            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'], 5)
-            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'], 5)
-            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'], 5)
+            # VATR: factor de volumen — amplía TPs en mercados con impulso, los reduce en apáticos
+            _vol_factor = min(max(vol_actual / vol_medio, 0.75), 1.50) if vol_medio > 0 else 1.0
+
+            # TPs dinámicos basados en ATR ajustado por volumen (VATR)
+            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'] * _vol_factor, 5)
+            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'] * _vol_factor, 5)
+            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'] * _vol_factor, 5)
+            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'] * _vol_factor, 5)
+            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'] * _vol_factor, 5)
+            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'] * _vol_factor, 5)
 
             def rr(limit, sl, tp):
                 return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0

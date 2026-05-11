@@ -374,22 +374,27 @@ class GoldDetector1H(BaseDetector):
             )   # menor primero = más cercano a tp_anterior = precio lo toca primero subiendo
             return round(blockers[0], 2) if blockers else round(tp_objetivo, 2)
 
+        # VATR: factor de volumen — amplía TPs en mercados con impulso, los reduce en apáticos
+        _vol_avg20  = float(df['vol_avg'].iloc[-1])
+        _vol_last   = float(df['Volume'].iloc[-1])
+        _vol_factor = min(max(_vol_last / _vol_avg20, 0.75), 1.50) if _vol_avg20 > 0 else 1.0
+
         tp1_v = _tp1_viable_sell(soportes_sr, sell_entry, sl_venta, 1.2,
-                                 sell_entry - atr * params['atr_tp1_mult'])
+                                 sell_entry - atr * params['atr_tp1_mult'] * _vol_factor)
         tp2_v = _recortar_tp_venta(
-                    _tp_desde_sr(soportes_sr, 2, sell_entry - atr * params['atr_tp2_mult']),
+                    _tp_desde_sr(soportes_sr, 2, sell_entry - atr * params['atr_tp2_mult'] * _vol_factor),
                     tp1_v, soportes_sr, atr)
         tp3_v = _recortar_tp_venta(
-                    _tp_desde_sr(soportes_sr, 3, sell_entry - atr * params['atr_tp3_mult']),
+                    _tp_desde_sr(soportes_sr, 3, sell_entry - atr * params['atr_tp3_mult'] * _vol_factor),
                     tp2_v, soportes_sr, atr)
         tp1_c = _tp1_viable_buy(resistencias_sr, buy_entry, sl_compra, 1.2,
-                                buy_entry + atr * params['atr_tp1_mult'])
+                                buy_entry + atr * params['atr_tp1_mult'] * _vol_factor)
         _resis_sobre = sorted([v for v in resistencias_sr if v > buy_entry])
         tp2_c = _recortar_tp_compra(
-                    _tp_desde_sr(_resis_sobre, 2, buy_entry + atr * params['atr_tp2_mult']),
+                    _tp_desde_sr(_resis_sobre, 2, buy_entry + atr * params['atr_tp2_mult'] * _vol_factor),
                     tp1_c, resistencias_sr, atr)
         tp3_c = _recortar_tp_compra(
-                    _tp_desde_sr(_resis_sobre, 3, buy_entry + atr * params['atr_tp3_mult']),
+                    _tp_desde_sr(_resis_sobre, 3, buy_entry + atr * params['atr_tp3_mult'] * _vol_factor),
                     tp2_c, resistencias_sr, atr)
 
         avg_candle_range    = df['total_range'].iloc[-6:-1].mean()
