@@ -103,6 +103,7 @@ class BaseDetector(ABC):
         self.aviso_macro: str = ""
         self.contexto_pullback: str = ""  # contexto pullback multi-TF; se appendea en cada mensaje
         self._last_senal_id: int | None = None  # ID de la última señal guardada en BD
+        self._last_senal_esperando: bool = False  # True si la última señal quedó en estado ESPERANDO
         self._current_candle_ts = None             # Timestamp de la vela analizada (lo asigna cada detector)
 
         # Inicializar BD si las variables están configuradas
@@ -168,8 +169,11 @@ class BaseDetector(ABC):
         if 'nivel' not in senal_data:
             score = senal_data.get('score', 0) or 0
             senal_data['nivel'] = self._derivar_nivel(score, self.tf_label)
+        # Por defecto, las señales se guardan como ESPERANDO hasta que el precio alcance la entrada
+        senal_data.setdefault('estado', 'ESPERANDO')
         senal_id = self.db.guardar_senal(senal_data)
         self._last_senal_id = senal_id  # lo consumirá el próximo enviar()
+        self._last_senal_esperando = senal_data.get('estado') == 'ESPERANDO'
         return senal_id
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -458,9 +462,16 @@ class BaseDetector(ABC):
         Si justo antes se guardó una señal en BD, añade su #ID al mensaje
         y guarda el message_id de Telegram en la BD para reply posterior.
         Delega en adapters.telegram.enviar_telegram para facilitar el mocking.
+
+        Para señales ESPERANDO (orden LIMIT): se envía la notificación BUY/SELL LIMIT
+        a Telegram de inmediato para que el trader coloque la orden, pero la señal
+        no aparecerá en el dashboard web hasta que el precio llegue a la entrada
+        y el signal_monitor la transite a ACTIVA.
         """
         senal_id = self._last_senal_id
-        self._last_senal_id = None  # consumir siempre, incluso si no se usa
+        self._last_senal_id = None          # consumir siempre
+        self._last_senal_esperando = False  # consumir siempre
+
         if senal_id:
             mensaje = mensaje.rstrip() + f"\n━━━━━━━━━━━━━━━━━━━━\n🔖 <b>#{senal_id}</b>"
         sufijo = (f"\n⚠️ <b>Evento macro próximo:</b> {self.aviso_macro}"

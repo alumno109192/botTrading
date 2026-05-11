@@ -1344,6 +1344,109 @@ def _intervalo_para(categoria: str) -> int:
     }.get(categoria, _INTERVALO_SWING)
 
 
+def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
+    """
+    Revisa todas las señales en estado ESPERANDO (orden LIMIT colocada, precio aún no llegó).
+
+    Para cada una:
+      - BUY LIMIT ejecutado cuando precio_min <= precio_entrada → activa la señal
+      - SELL LIMIT ejecutado cuando precio_max >= precio_entrada → activa la señal
+      - Si el SL fue cruzado sin ejecución → cancela
+      - Si expiró el tiempo límite según TF → cancela
+
+    Al activar envía un mensaje "✅ ORDEN ACTIVADA" a Telegram como reply al mensaje original.
+    """
+    esperando = db.obtener_senales_esperando()
+    if not esperando:
+        return
+
+    logger.info(f"  ⏳ Señales ESPERANDO: {len(esperando)}")
+
+    for senal in esperando:
+        senal_id       = senal['id']
+        simbolo        = senal['simbolo']
+        direccion      = senal['direccion']
+        reply_msg_id   = senal.get('telegram_message_id')
+
+        try:
+            precio_entrada = float(senal['precio_entrada'])
+            tp1 = float(senal['tp1'])
+            tp2 = float(senal['tp2'])
+            tp3 = float(senal['tp3'])
+            sl  = float(senal['sl'])
+        except (TypeError, ValueError):
+            logger.warning(f"  ⚠️ [#{senal_id}] Precios inválidos en ESPERANDO — saltando")
+            continue
+
+        base   = simbolo.split('_')[0]
+        ticker = SIMBOLO_TO_TICKER.get(base)
+        if not ticker:
+            logger.warning(f"  ⚠️ [#{senal_id}] Ticker desconocido para {simbolo} — saltando")
+            continue
+
+        precios = _fetch_precios_ticker(ticker, db=db)
+        if precios is None:
+            logger.warning(f"  ⚠️ [#{senal_id}] Sin precio para {simbolo}")
+            continue
+
+        precio_actual, precio_max, precio_min = precios
+
+        # ── Cancelar si SL fue cruzado antes de ejecutarse ───────────────
+        categoria = _categoria_senal(simbolo)
+        if _cancelar_orden_pendiente(senal, precio_actual, sl, categoria, ahora, db):
+            continue  # ya cancelada
+
+        # ── Verificar si la orden fue ejecutada ──────────────────────────
+        ejecutada = False
+        if direccion == 'COMPRA':
+            # BUY LIMIT: el precio baja hasta la entrada
+            ejecutada = precio_min <= precio_entrada
+        else:
+            # SELL LIMIT: el precio sube hasta la entrada
+            ejecutada = precio_max >= precio_entrada
+
+        if not ejecutada:
+            logger.info(
+                f"  ⏳ [#{senal_id}] {simbolo} {direccion} — "
+                f"esperando entrada ${precio_entrada:.2f} "
+                f"(actual ${precio_actual:.2f}  H:{precio_max:.2f}  L:{precio_min:.2f})"
+            )
+            continue
+
+        # ── ¡Ejecutada! → activar señal y notificar ──────────────────────
+        db.activar_senal_esperando(senal_id)
+        logger.info(
+            f"  ✅ [#{senal_id}] {simbolo} {direccion} — "
+            f"ORDEN ACTIVADA: precio tocó entrada ${precio_entrada:.2f}"
+        )
+
+        _nombre     = simbolo_a_nombre(simbolo)
+        sufijo      = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
+        icono       = '🟢' if direccion == 'COMPRA' else '🔴'
+        flecha_dir  = '📈 COMPRA' if direccion == 'COMPRA' else '📉 VENTA'
+        decimales   = 2 if precio_entrada > 100 else 5
+
+        def _fmt(v):
+            return f"${v:.{decimales}f}" if decimales == 2 else f"{v:.{decimales}f}"
+
+        msg = (
+            f"✅ <b>ORDEN ACTIVADA — {_nombre} {sufijo}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{icono} <b>{flecha_dir}</b>\n"
+            f"💰 <b>Entrada ejecutada:</b> {_fmt(precio_entrada)}\n"
+            f"📍 <b>Precio actual:</b> {_fmt(precio_actual)}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 <b>TP1:</b> {_fmt(tp1)}\n"
+            f"🎯 <b>TP2:</b> {_fmt(tp2)}\n"
+            f"🎯 <b>TP3:</b> {_fmt(tp3)}\n"
+            f"🛑 <b>Stop Loss:</b> {_fmt(sl)}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚡ <b>El trade está ahora activo.</b> Gestiona tu posición.\n"
+            f"🔖 <code>#{senal_id}</code>"
+        )
+        enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
+
+
 def monitor_senales():
     """
     Loop principal con revisión diferenciada por timeframe:
@@ -1528,6 +1631,9 @@ def monitor_senales():
                 except Exception as _e_ac:
                     logger.error(f"  ❌ Error en auto-cierre macro: {_e_ac}")
 
+            # ── Verificar señales ESPERANDO (orden LIMIT no ejecutada aún) ──
+            _verificar_senales_esperando(db, ahora)
+
             senales_activas = db.obtener_senales_activas()
 
             if not senales_activas:
@@ -1630,29 +1736,10 @@ def monitor_senales():
                         pass
 
                     if direccion == 'COMPRA':
-                        # ── Verificar que la orden LIMIT fue ejecutada ──
-                        # BUY LIMIT: el precio tiene que haber bajado hasta la entrada.
-                        # Si el precio nunca toca el nivel de entrada, la orden no fue llenada.
-                        if senal_id not in _ordenes_ejecutadas:
-                            if precio_min <= precio_entrada:
-                                _ordenes_ejecutadas.add(senal_id)
-                                logger.info(f"  ✅ [#{senal_id}] Orden BUY LIMIT ejecutada — precio tocó ${precio_entrada:.2f}")
-                            else:
-                                logger.info(f"  ⏳ [#{senal_id}] Orden BUY LIMIT pendiente — esperando precio ≤ ${precio_entrada:.2f} (actual ${precio_actual:.2f})")
-                                _cancelar_orden_pendiente(senal, precio_actual, sl, categoria, ahora, db)
-                                continue
+                        # Señal ACTIVA = orden ya ejecutada (llegó a la entrada desde ESPERANDO)
                         verificar_niveles_compra(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
                     else:
-                        # ── Verificar que la orden SELL LIMIT fue ejecutada ──
-                        # SELL LIMIT: el precio tiene que haber subido hasta la entrada.
-                        if senal_id not in _ordenes_ejecutadas:
-                            if precio_max >= precio_entrada:
-                                _ordenes_ejecutadas.add(senal_id)
-                                logger.info(f"  ✅ [#{senal_id}] Orden SELL LIMIT ejecutada — precio tocó ${precio_entrada:.2f}")
-                            else:
-                                logger.info(f"  ⏳ [#{senal_id}] Orden SELL LIMIT pendiente — esperando precio ≥ ${precio_entrada:.2f} (actual ${precio_actual:.2f})")
-                                _cancelar_orden_pendiente(senal, precio_actual, sl, categoria, ahora, db)
-                                continue
+                        # Señal ACTIVA = orden ya ejecutada (llegó a la entrada desde ESPERANDO)
                         verificar_niveles_venta(senal, precio_actual, precio_min, precio_max, db, _progreso_50_enviado)
 
                     # ── Verificar trampa de patrón (cada 10 ticks ≈ 5 min, sin TP1) ──

@@ -112,16 +112,10 @@
               PENDING
             </span>
 
-            <span x-show="s.pendiente_entrada"
-                  style="font-size:0.62rem;color:#546e7a;border:1px solid rgba(84,110,122,0.4);padding:1px 7px;border-radius:4px">
-              LIMIT ORDER
-            </span>
-
             <div style="flex:1"></div>
 
-            <!-- PnL (solo cuando la orden ya fue ejecutada) -->
+            <!-- PnL -->
             <span class="card-pnl"
-                  x-show="!s.pendiente_entrada"
                   :class="(s.pnl_pct || 0) >= 0 ? 'pos' : 'neg'"
                   x-text="formatPnl(s.pnl_pct)">+0.000%</span>
 
@@ -137,12 +131,9 @@
 
             <!-- Entrada -->
             <div class="data-block">
-              <span class="data-label" x-text="s.pendiente_entrada ? 'Limit Order' : 'Entrada'">Entrada</span>
+              <span class="data-label">Entrada</span>
               <span class="data-value tabular" x-text="formatPrecio(s.precio_entrada)">—</span>
-              <span class="data-sub" x-show="s.pendiente_entrada && s.precio_actual"
-                    :style="s.direccion === 'COMPRA' ? 'color:var(--sell)' : 'color:var(--buy)'"
-                    x-text="'Precio actual: ' + formatPrecio(s.precio_actual)">—</span>
-              <span class="data-sub" x-show="!s.pendiente_entrada" x-text="formatFecha(s.timestamp)">—</span>
+              <span class="data-sub" x-text="formatFecha(s.timestamp)">—</span>
             </div>
 
             <!-- Stop Loss -->

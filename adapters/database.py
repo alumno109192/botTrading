@@ -390,6 +390,7 @@ class DatabaseManager:
         # Ciclo de vida simplificado
         _ciclo_map = {
             'PENDIENTE_CONFIRM': 'PREPARADA',
+            'ESPERANDO': 'PREPARADA',   # orden LIMIT en espera de que el precio llegue a la entrada
             'ACTIVA': 'ACTIVA',
         }
         ciclo_vida = _ciclo_map.get(estado, 'PREPARADA')
@@ -466,7 +467,7 @@ class DatabaseManager:
         FROM senales
         WHERE simbolo = ?
         AND direccion = ?
-        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'TP1', 'TP2', 'TP3', 'SL')
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'ESPERANDO', 'TP1', 'TP2', 'TP3', 'SL')
         AND timestamp > ?
         """
 
@@ -491,7 +492,7 @@ class DatabaseManager:
         FROM senales
         WHERE simbolo = ?
         AND direccion = ?
-        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'TP1', 'TP2', 'TP3', 'SL')
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'ESPERANDO', 'TP1', 'TP2', 'TP3', 'SL')
         AND timestamp > ?
         """
         result = self.ejecutar_query(query, (simbolo, opuesta, cutoff))
@@ -513,7 +514,7 @@ class DatabaseManager:
         FROM senales
         WHERE simbolo = ?
         AND direccion = ?
-        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'ESPERANDO')
         """
         result = self.ejecutar_query(query, (simbolo, opuesta))
         if result.rows and int(result.rows[0]['count']) > 0:
@@ -531,7 +532,7 @@ class DatabaseManager:
         FROM senales
         WHERE simbolo = ?
         AND direccion = ?
-        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'ESPERANDO')
         """
         result = self.ejecutar_query(query, (simbolo, direccion))
         if result.rows and int(result.rows[0]['count']) > 0:
@@ -610,7 +611,8 @@ class DatabaseManager:
 
     def obtener_senales_activas(self) -> List[Dict]:
         """
-        Obtiene señales en estado ACTIVA o PENDIENTE_CONFIRM (trades abiertos sin SL movido).
+        Obtiene señales en estado ACTIVA o PENDIENTE_CONFIRM (trades abiertos).
+        NO incluye ESPERANDO (orden LIMIT no ejecutada aún).
         Las señales BREAKEVEN se excluyen — ya no son "activas" en sentido estricto.
         
         Returns:
@@ -625,6 +627,36 @@ class DatabaseManager:
         
         result = self.ejecutar_query(query)
         return [dict(row) for row in result.rows] if result.rows else []
+
+    def obtener_senales_esperando(self) -> List[Dict]:
+        """
+        Obtiene señales en estado ESPERANDO (orden LIMIT colocada, precio aún no llego a la entrada).
+        El signal_monitor las revisa cada ciclo para activarlas cuando el precio toca la entrada.
+        """
+        query = """
+        SELECT *
+        FROM senales
+        WHERE estado = 'ESPERANDO'
+        ORDER BY timestamp DESC
+        """
+        result = self.ejecutar_query(query)
+        return [dict(row) for row in result.rows] if result.rows else []
+
+    def activar_senal_esperando(self, senal_id: int) -> None:
+        """Transiciona una señal de ESPERANDO a ACTIVA cuando el precio alcanza la entrada."""
+        self.ejecutar_query(
+            "UPDATE senales SET estado = 'ACTIVA', ciclo_vida = 'ACTIVA' WHERE id = ?",
+            (senal_id,)
+        )
+        logger.info(f"  ✅ Señal #{senal_id} activada: ESPERANDO → ACTIVA")
+
+    def cancelar_senal_esperando(self, senal_id: int) -> None:
+        """Cancela una señal ESPERANDO que venció o cuyo SL fue cruzado sin ejecución."""
+        self.ejecutar_query(
+            "UPDATE senales SET estado = 'CANCELADA', ciclo_vida = 'CANCELADA' WHERE id = ?",
+            (senal_id,)
+        )
+        logger.info(f"  ❌ Señal #{senal_id} cancelada (ESPERANDO → CANCELADA)")
 
     def obtener_senales_pendientes_confirm(self) -> List[Dict]:
         """Obtiene señales 1H en espera de confirmación por 5M/15M."""
