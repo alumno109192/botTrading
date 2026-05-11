@@ -211,7 +211,19 @@ def create_app(estado_sistema, threads_detectores):
             for s in senales:
                 entrada = _f(s.get('precio_entrada'))
                 actual  = _f(s.get('precio_actual')) or entrada
+
+                # Detectar si la orden LIMIT aún no fue ejecutada
+                # BUY LIMIT: el precio tiene que BAJAR hasta la entrada → activa cuando actual <= entrada
+                # SELL LIMIT: el precio tiene que SUBIR hasta la entrada → activa cuando actual >= entrada
                 if entrada and actual:
+                    if s.get('direccion') == 'COMPRA':
+                        s['pendiente_entrada'] = actual > entrada  # precio aún por encima del limit BUY
+                    else:
+                        s['pendiente_entrada'] = actual < entrada  # precio aún por debajo del limit SELL
+                else:
+                    s['pendiente_entrada'] = False
+
+                if entrada and actual and not s['pendiente_entrada']:
                     if s.get('direccion') == 'COMPRA':
                         s['pnl_pct'] = round((actual - entrada) / entrada * 100, 3)
                     else:
@@ -219,10 +231,10 @@ def create_app(estado_sistema, threads_detectores):
                 else:
                     s['pnl_pct'] = 0.0
 
-                # Calcular progreso hacia TP1
+                # Calcular progreso hacia TP1 solo si la orden ya fue ejecutada
                 tp1 = _f(s.get('tp1'))
                 sl  = _f(s.get('sl'))
-                if tp1 and sl and entrada:
+                if tp1 and sl and entrada and not s['pendiente_entrada']:
                     rango  = abs(tp1 - entrada)
                     avance = abs(actual - entrada) if actual else 0
                     s['tp1_progreso'] = min(round(avance / rango * 100, 1), 100) if rango else 0
