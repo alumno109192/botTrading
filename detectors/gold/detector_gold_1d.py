@@ -1225,7 +1225,7 @@ class GoldDetector1D(BaseDetector):
 
         # ── CANCELACIONES ──
         if cancelar_sell and not self.ya_enviada(f"{clave_vela}_CANCEL_SELL"):
-            msg = (f"❌ <b>CANCELAR SELL LIMIT — ORO (XAUUSD) 1D</b> ❌\n"
+            msg = (f"❌ <b>CANCELAR SELL LIMIT — {self.nombre_display} {self.tf_label}</b> ❌\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 <b>Orden prevista:</b> SELL LIMIT ${sell_entry:.2f}\n"
                    f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
@@ -1242,7 +1242,7 @@ class GoldDetector1D(BaseDetector):
             self.marcar_enviada(f"{clave_vela}_CANCEL_SELL")
 
         if cancelar_buy and not self.ya_enviada(f"{clave_vela}_CANCEL_BUY"):
-            msg = (f"❌ <b>CANCELAR BUY LIMIT — ORO (XAUUSD) 1D</b> ❌\n"
+            msg = (f"❌ <b>CANCELAR BUY LIMIT — {self.nombre_display} {self.tf_label}</b> ❌\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 <b>Orden prevista:</b> BUY LIMIT ${buy_entry:.2f}\n"
                    f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
@@ -1273,7 +1273,7 @@ class GoldDetector1D(BaseDetector):
                 nivel_break = ("🔥 ROTURA MÁXIMA" if score_buy >= 10 else
                                "🟢 ROTURA FUERTE" if score_buy >= 7  else
                                "⚡ ROTURA MEDIA")
-                msg = (f"🚀 <b>ROTURA ALCISTA — ORO (XAUUSD) 1D</b>\n"
+                msg = (f"🚀 <b>ROTURA ALCISTA — {self.nombre_display} {self.tf_label}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📊 <b>Nivel:</b> {nivel_break}\n"
                        f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
@@ -1313,7 +1313,7 @@ class GoldDetector1D(BaseDetector):
                 nivel_break = ("🔥 ROTURA MÁXIMA" if score_sell >= 10 else
                                "🔴 ROTURA FUERTE" if score_sell >= 7  else
                                "⚡ ROTURA MEDIA")
-                msg = (f"📉 <b>ROTURA BAJISTA — ORO (XAUUSD) 1D</b>\n"
+                msg = (f"📉 <b>ROTURA BAJISTA — {self.nombre_display} {self.tf_label}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📊 <b>Nivel:</b> {nivel_break}\n"
                        f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
@@ -1356,7 +1356,7 @@ class GoldDetector1D(BaseDetector):
             tp3_dt     = round(dt_neckline - altura_dt * 1.5, 2)
             rr_dt1     = rr(entrada_dt, sl_dt, tp1_dt)
             if rr_dt1 >= 1.2:
-                msg = (f"🔻 <b>DOBLE TECHO (M) — ORO (XAUUSD) 1D</b>\n"
+                msg = (f"🔻 <b>DOBLE TECHO (M) — {self.nombre_display} {self.tf_label}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📐 <b>Patrón:</b> Doble Techo confirmado\n"
                        f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
@@ -1396,7 +1396,7 @@ class GoldDetector1D(BaseDetector):
             tp3_ds     = round(ds_neckline + altura_ds * 1.5, 2)
             rr_ds1     = rr(entrada_ds, sl_ds, tp1_ds)
             if rr_ds1 >= 1.2:
-                msg = (f"🔺 <b>DOBLE SUELO (W) — ORO (XAUUSD) 1D</b>\n"
+                msg = (f"🔺 <b>DOBLE SUELO (W) — {self.nombre_display} {self.tf_label}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📐 <b>Patrón:</b> Doble Suelo confirmado\n"
                        f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"

@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from adapters.database import DatabaseManager
 from adapters.data_provider import get_ohlcv as _get_ohlcv
+from core.base_detector import simbolo_a_nombre
 
 import logging
 logger = logging.getLogger('bottrading')
@@ -915,7 +916,7 @@ def _verificar_reversal_post_tp2(senal: dict, _reversal_tp2_avisado: set) -> Non
         logger.debug(f"  [reversal_tp2] Error analizando {simbolo}: {e}")
 
 
-(ticker: str, direccion: str, precio_entrada: float) -> tuple:
+def _confirmar_con_velas_1m(ticker: str, direccion: str, precio_entrada: float) -> tuple:
     """
     Analiza las últimas velas de 1M para verificar que el momentum actual
     confirma la dirección de la señal 1H.
@@ -1054,10 +1055,12 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
         # ✅ Confirmación recibida — activar señal y notificar
         db.confirmar_senal_pendiente(senal_id)
 
+        _nombre     = simbolo_a_nombre(simbolo)
+        _tf_display = senal.get('timeframe', '1H')
         flecha = '📌 BUY LIMIT' if direccion == 'COMPRA' else '📌 SELL LIMIT'
         icono  = '🟢' if direccion == 'COMPRA' else '🔴'
         msg_confirm = (
-            f"✅ <b>ENTRADA CONFIRMADA — ORO (XAUUSD) 1H</b>\n"
+            f"✅ <b>ENTRADA CONFIRMADA — {_nombre} {_tf_display}</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{icono} <b>Dirección:</b> {direccion}\n"
             f"🕐 <b>Confirmado por:</b> análisis velas 1M\n"
@@ -1068,7 +1071,7 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
             f"🎯 <b>TP2:</b> ${tp2:.2f}\n"
             f"🎯 <b>TP3:</b> ${tp3:.2f}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 <b>Score 1H:</b> {score}/21  ⏱️ <b>TF:</b> 1H+1M\n"
+            f"📊 <b>Score {_tf_display}:</b> {score}/21  ⏱️ <b>TF:</b> {_tf_display}+1M\n"
             f"<code>{desc_1m}</code>"
         )
         enviar_notificacion_telegram(msg_confirm, simbolo, reply_to_message_id=senal.get('telegram_message_id'))

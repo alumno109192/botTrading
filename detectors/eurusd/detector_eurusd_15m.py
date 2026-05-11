@@ -396,7 +396,7 @@ class EURUSDDetector15M(BaseDetector):
                 else:
                     hora_envio = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
                     msg = (
-                        f"🔥 SELL FUERTE — <b>EUR/USD 15M SCALP</b>\n"
+                        f"🔥 SELL FUERTE — <b>{self.nombre_display} {self.tf_label} SCALP</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"💰 <b>Precio:</b>     {close:.5f}\n"
                         f"📌 <b>SELL LIMIT:</b> {sell_limit:.5f}\n"
@@ -438,7 +438,7 @@ class EURUSDDetector15M(BaseDetector):
                 else:
                     hora_envio = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
                     msg = (
-                        f"🔥 BUY FUERTE — <b>EUR/USD 15M SCALP</b>\n"
+                        f"🔥 BUY FUERTE — <b>{self.nombre_display} {self.tf_label} SCALP</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"💰 <b>Precio:</b>    {close:.5f}\n"
                         f"📌 <b>BUY LIMIT:</b> {buy_limit:.5f}\n"

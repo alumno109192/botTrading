@@ -938,7 +938,7 @@ class GoldDetector4H(BaseDetector):
         if (_prob_buy > 0.70 and not senal_buy_alerta and abs(dist_to_support) < _dist_max_pred and
                 _sin_conflicto_buy and not self.ya_enviada(f"{_clave_pred}_PRED_BUY")):
             _ml_msg_buy = (
-                f"🤖 <b>PREDICCIÓN ML — ORO (XAUUSD) 4H</b>\n"
+                f"🤖 <b>PREDICCIÓN ML — {self.nombre_display} {self.tf_label}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⚡ El modelo detecta condiciones pre-señal de COMPRA\n"
                 f"📊 Probabilidad: {round(_prob_buy * 100)}%\n"
@@ -976,7 +976,7 @@ class GoldDetector4H(BaseDetector):
         if (_prob_sell > 0.70 and not senal_sell_alerta and abs(dist_to_resist) < _dist_max_pred and
                 _sin_conflicto_sell and not self.ya_enviada(f"{_clave_pred}_PRED_SELL")):
             _ml_msg_sell = (
-                f"🤖 <b>PREDICCIÓN ML — ORO (XAUUSD) 4H</b>\n"
+                f"🤖 <b>PREDICCIÓN ML — {self.nombre_display} {self.tf_label}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⚡ El modelo detecta condiciones pre-señal de VENTA\n"
                 f"📊 Probabilidad: {round(_prob_sell * 100)}%\n"
@@ -1127,7 +1127,7 @@ class GoldDetector4H(BaseDetector):
                   "🔴 SELL FUERTE" if senal_sell_fuerte else
                   "⚡ SELL MEDIA"  if senal_sell_media  else
                   "👀 SELL ALERTA")
-            msg = (f"⚡ <b>SEÑAL SELL — ORO (XAUUSD) 4H</b> | PON ORDEN LIMIT AHORA\n"
+            msg = (f"⚡ <b>SEÑAL SELL — {self.nombre_display} {self.tf_label}</b> | PON ORDEN LIMIT AHORA\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv}\n"
                    f"💰 <b>Precio actual:</b> ${round(close, 2)}\n"
@@ -1165,7 +1165,7 @@ class GoldDetector4H(BaseDetector):
                   "🟢 BUY FUERTE"  if senal_buy_fuerte else
                   "⚡ BUY MEDIA"   if senal_buy_media  else
                   "👀 BUY ALERTA")
-            msg = (f"⚡ <b>SEÑAL BUY — ORO (XAUUSD) 4H</b> | PON ORDEN LIMIT AHORA\n"
+            msg = (f"⚡ <b>SEÑAL BUY — {self.nombre_display} {self.tf_label}</b> | PON ORDEN LIMIT AHORA\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv}\n"
                    f"💰 <b>Precio actual:</b> ${round(close, 2)}\n"
@@ -1212,7 +1212,7 @@ class GoldDetector4H(BaseDetector):
                               "SELL_MED" if senal_sell_media  else "SELL_ALE")
                 if not self.ya_enviada(f"{clave_vela}_{tipo_clave}"):
                     if self.ya_enviada(f"{clave_vela}_PREP_SELL"):
-                        msg = (f"✅ <b>CONFIRMACIÓN SELL — ORO 4H</b>\n"
+                        msg = (f"✅ <b>CONFIRMACIÓN SELL — {self.nombre_display} {self.tf_label}</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"{nivel} — precio ahora en zona\n"
                                f"💰 <b>Precio:</b> ${round(close, 2)}\n"
@@ -1225,7 +1225,7 @@ class GoldDetector4H(BaseDetector):
                     else:
                         if self.db and self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                             logger.info(f"  ℹ️  Señal VENTA duplicada - No se guarda"); return
-                        msg = (f"{nivel} — <b>ORO (XAUUSD) 🔒 SWING</b>\n"
+                        msg = (f"{nivel} — <b>{self.nombre_display} 🔒 SWING</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>     ${round(close, 2)}\n"
                                f"📌 <b>SELL LIMIT:</b> ${sell_entry}  (spread ${spread:.2f} incluido)\n"
@@ -1272,7 +1272,7 @@ class GoldDetector4H(BaseDetector):
                               "BUY_MED" if senal_buy_media  else "BUY_ALE")
                 if not self.ya_enviada(f"{clave_vela}_{tipo_clave}"):
                     if self.ya_enviada(f"{clave_vela}_PREP_BUY"):
-                        msg = (f"✅ <b>CONFIRMACIÓN BUY — ORO 4H</b>\n"
+                        msg = (f"✅ <b>CONFIRMACIÓN BUY — {self.nombre_display} {self.tf_label}</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"{nivel} — precio ahora en zona\n"
                                f"💰 <b>Precio:</b> ${round(close, 2)}\n"
@@ -1285,7 +1285,7 @@ class GoldDetector4H(BaseDetector):
                     else:
                         if self.db and self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                             logger.info(f"  ℹ️  Señal COMPRA duplicada - No se guarda"); return
-                        msg = (f"{nivel} — <b>ORO (XAUUSD) 🔒 SWING</b>\n"
+                        msg = (f"{nivel} — <b>{self.nombre_display} 🔒 SWING</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>    ${round(close, 2)}\n"
                                f"📌 <b>BUY LIMIT:</b> ${buy_entry}  (spread ${spread:.2f} incluido)\n"
@@ -1321,7 +1321,7 @@ class GoldDetector4H(BaseDetector):
 
         # ── CANCELACIONES ──────────────────────────────────────────────────────
         if cancelar_sell and not self.ya_enviada(f"{clave_vela}_CANCEL_SELL"):
-            msg = (f"❌ <b>CANCELAR SELL LIMIT — ORO (XAUUSD) 4H</b> ❌\n"
+            msg = (f"❌ <b>CANCELAR SELL LIMIT — {self.nombre_display} {self.tf_label}</b> ❌\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 <b>Orden prevista:</b> SELL LIMIT ${sell_entry:.2f}  (spread incluido)\n"
                    f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
@@ -1338,7 +1338,7 @@ class GoldDetector4H(BaseDetector):
             self.marcar_enviada(f"{clave_vela}_CANCEL_SELL")
 
         if cancelar_buy and not self.ya_enviada(f"{clave_vela}_CANCEL_BUY"):
-            msg = (f"❌ <b>CANCELAR BUY LIMIT — ORO (XAUUSD) 4H</b> ❌\n"
+            msg = (f"❌ <b>CANCELAR BUY LIMIT — {self.nombre_display} {self.tf_label}</b> ❌\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 <b>Orden prevista:</b> BUY LIMIT ${buy_entry:.2f}  (spread incluido)\n"
                    f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
@@ -1370,7 +1370,7 @@ class GoldDetector4H(BaseDetector):
                 nivel_break = ("🔥 ROTURA MÁXIMA" if score_buy >= 14 else
                                "🟢 ROTURA FUERTE" if score_buy >= 10 else
                                "⚡ ROTURA MEDIA")
-                msg = (f"🚀 <b>ROTURA ALCISTA — ORO (XAUUSD) 4H</b>\n"
+                msg = (f"🚀 <b>ROTURA ALCISTA — {self.nombre_display} {self.tf_label}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📊 <b>Nivel:</b> {nivel_break}\n"
                        f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
@@ -1410,7 +1410,7 @@ class GoldDetector4H(BaseDetector):
                 nivel_break = ("🔥 ROTURA MÁXIMA" if score_sell >= 14 else
                                "🔴 ROTURA FUERTE" if score_sell >= 10 else
                                "⚡ ROTURA MEDIA")
-                msg = (f"📉 <b>ROTURA BAJISTA — ORO (XAUUSD) 4H</b>\n"
+                msg = (f"📉 <b>ROTURA BAJISTA — {self.nombre_display} {self.tf_label}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📊 <b>Nivel:</b> {nivel_break}\n"
                        f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
@@ -1454,7 +1454,7 @@ class GoldDetector4H(BaseDetector):
             tp3_dt       = round(dt_neckline - altura_dt * 1.5, 2)   # 150% extensión
             rr_dt1       = rr(entrada_dt, sl_dt, tp1_dt)
             if rr_dt1 >= 1.2:
-                msg = (f"🔻 <b>DOBLE TECHO (M) — ORO (XAUUSD) 4H</b>\n"
+                msg = (f"🔻 <b>DOBLE TECHO (M) — {self.nombre_display} {self.tf_label}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📐 <b>Patrón:</b> Doble Techo confirmado\n"
                        f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"
@@ -1494,7 +1494,7 @@ class GoldDetector4H(BaseDetector):
             tp3_ds       = round(ds_neckline + altura_ds * 1.5, 2)
             rr_ds1       = rr(entrada_ds, sl_ds, tp1_ds)
             if rr_ds1 >= 1.2:
-                msg = (f"🔺 <b>DOBLE SUELO (W) — ORO (XAUUSD) 4H</b>\n"
+                msg = (f"🔺 <b>DOBLE SUELO (W) — {self.nombre_display} {self.tf_label}</b>\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
                        f"📐 <b>Patrón:</b> Doble Suelo confirmado\n"
                        f"💰 <b>Precio actual:</b>  ${round(close, 2)}\n"

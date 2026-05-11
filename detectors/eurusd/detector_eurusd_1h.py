@@ -380,7 +380,7 @@ class EURUSDDetector1H(BaseDetector):
                 else:
                     hora_envio = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
                     msg = (
-                        f"⚡ SELL INTRADAY — <b>EUR/USD 1H</b>\n"
+                        f"⚡ SELL INTRADAY — <b>{self.nombre_display} {self.tf_label}</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"💰 <b>Precio:</b>     {close:.5f}\n"
                         f"📌 <b>SELL LIMIT:</b> {sell_limit:.5f}\n"
@@ -421,7 +421,7 @@ class EURUSDDetector1H(BaseDetector):
                 else:
                     hora_envio = datetime.now(timezone.utc).strftime('%H:%M:%S UTC')
                     msg = (
-                        f"⚡ BUY INTRADAY — <b>EUR/USD 1H</b>\n"
+                        f"⚡ BUY INTRADAY — <b>{self.nombre_display} {self.tf_label}</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"💰 <b>Precio:</b>    {close:.5f}\n"
                         f"📌 <b>BUY LIMIT:</b> {buy_limit:.5f}\n"

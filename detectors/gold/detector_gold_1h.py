@@ -27,6 +27,7 @@ def enviar_telegram(mensaje):
 
 from adapters.database import get_db
 from core.base_detector_gold import GoldBaseDetector as BaseDetector
+from core.base_detector import simbolo_a_nombre
 from core.predictor import GoldPredictor
 import logging
 logger = logging.getLogger('bottrading')
@@ -1168,7 +1169,7 @@ class GoldDetector1H(BaseDetector):
         if (_prob_buy > 0.70 and not senal_buy_alerta and _dist_buy < _dist_max_pred and
                 _sin_conflicto_buy and not self.ya_enviada(f"{_clave_pred}_PRED_BUY")):
             _ml_msg_buy = (
-                f"🤖 <b>PREDICCIÓN ML — ORO (XAUUSD) 1H</b>\n"
+                f"🤖 <b>PREDICCIÓN ML — {self.nombre_display} {self.tf_label}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⚡ El modelo detecta condiciones pre-señal de COMPRA\n"
                 f"📊 Probabilidad: {round(_prob_buy * 100)}%\n"
@@ -1206,7 +1207,7 @@ class GoldDetector1H(BaseDetector):
         if (_prob_sell > 0.70 and not senal_sell_alerta and _dist_sell < _dist_max_pred and
                 _sin_conflicto_sell and not self.ya_enviada(f"{_clave_pred}_PRED_SELL")):
             _ml_msg_sell = (
-                f"🤖 <b>PREDICCIÓN ML — ORO (XAUUSD) 1H</b>\n"
+                f"🤖 <b>PREDICCIÓN ML — {self.nombre_display} {self.tf_label}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⚡ El modelo detecta condiciones pre-señal de VENTA\n"
                 f"📊 Probabilidad: {round(_prob_sell * 100)}%\n"
@@ -1341,7 +1342,7 @@ class GoldDetector1H(BaseDetector):
             rr_live = rr(close_live, sl_live, tp1_live)
             fecha_live = timestamp_vela_live.strftime('%Y-%m-%d %H:%M')
             hora_envio = timestamp_envio.strftime('%H:%M:%S')
-            msg = (f"⚡ <b>REBOTE EN SOPORTE — ORO (XAUUSD) 1H</b>  ← VELA EN CURSO\n"
+            msg = (f"⚡ <b>REBOTE EN SOPORTE — {self.nombre_display} {self.tf_label}</b>  ← VELA EN CURSO\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv} | V-REVERSAL ACTIVO\n"
                    f"💰 <b>Precio actual:</b>  ${close_live:.2f}  (ENTRADA MARKET)\n"
@@ -1401,7 +1402,7 @@ class GoldDetector1H(BaseDetector):
             rr_live = rr(close_live, sl_live, tp1_live)
             fecha_live = timestamp_vela_live.strftime('%Y-%m-%d %H:%M')
             hora_envio = timestamp_envio.strftime('%H:%M:%S')
-            msg = (f"⚡ <b>RECHAZO EN RESISTENCIA — ORO (XAUUSD) 1H</b>  ← VELA EN CURSO\n"
+            msg = (f"⚡ <b>RECHAZO EN RESISTENCIA — {self.nombre_display} {self.tf_label}</b>  ← VELA EN CURSO\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv} | V-REVERSAL ACTIVO\n"
                    f"💰 <b>Precio actual:</b>  ${close_live:.2f}  (ENTRADA MARKET)\n"
@@ -1446,7 +1447,7 @@ class GoldDetector1H(BaseDetector):
                   "🔴 SELL FUERTE" if senal_sell_fuerte else
                   "⚡ SELL MEDIA"  if senal_sell_media  else
                   "👀 SELL ALERTA")
-            msg = (f"⏳ <b>SETUP SELL 1H — ORO (XAUUSD)</b> | ESPERANDO CONFIRMACIÓN 15M/5M\n"
+            msg = (f"⏳ <b>SETUP SELL {self.tf_label} — {self.nombre_display}</b> | ESPERANDO CONFIRMACIÓN 15M/5M\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv}\n"
                    f"💰 <b>Precio actual:</b> ${close:.2f}\n"
@@ -1494,7 +1495,7 @@ class GoldDetector1H(BaseDetector):
                   "🟢 BUY FUERTE" if senal_buy_fuerte else
                   "⚡ BUY MEDIA"  if senal_buy_media  else
                   "👀 BUY ALERTA")
-            msg = (f"⏳ <b>SETUP BUY 1H — ORO (XAUUSD)</b> | ESPERANDO CONFIRMACIÓN 15M/5M\n"
+            msg = (f"⏳ <b>SETUP BUY {self.tf_label} — {self.nombre_display}</b> | ESPERANDO CONFIRMACIÓN 15M/5M\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📊 <b>Nivel:</b> {nv}\n"
                    f"💰 <b>Precio actual:</b> ${close:.2f}\n"
@@ -1554,7 +1555,7 @@ class GoldDetector1H(BaseDetector):
                 if not self.ya_enviada(f"{clave_vela}_{tipo_clave}"):
                     if self.ya_enviada(f"{clave_vela}_PREP_SELL"):
                         # Breve confirmación — señal accionable ya fue enviada antes
-                        msg = (f"✅ <b>CONFIRMACIÓN SELL — ORO 1H</b>\n"
+                        msg = (f"✅ <b>CONFIRMACIÓN SELL — {self.nombre_display} {self.tf_label}</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"{nivel} — precio ahora en zona\n"
                                f"💰 <b>Precio:</b> ${close:.2f}\n"
@@ -1570,7 +1571,7 @@ class GoldDetector1H(BaseDetector):
                             self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1) or
                             self.db.existe_senal_reciente_opuesta(simbolo_db, "VENTA", horas=1)):
                             logger.warning(f"  ⚠️  Señal VENTA 1H bloqueada — conflicto en BD"); return
-                        msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
+                        msg = (f"{nivel} — <b>{self.nombre_display} ⏰ INTRADÍA</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>     ${close:.2f}\n"
                                f"📌 <b>SELL LIMIT:</b> ${sell_entry:.2f}  (spread ${spread:.2f} incluido)\n"
@@ -1624,7 +1625,7 @@ class GoldDetector1H(BaseDetector):
                 if not self.ya_enviada(f"{clave_vela}_{tipo_clave}"):
                     if self.ya_enviada(f"{clave_vela}_PREP_BUY"):
                         # Breve confirmación — señal accionable ya fue enviada antes
-                        msg = (f"✅ <b>CONFIRMACIÓN BUY — ORO 1H</b>\n"
+                        msg = (f"✅ <b>CONFIRMACIÓN BUY — {self.nombre_display} {self.tf_label}</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"{nivel} — precio ahora en zona\n"
                                f"💰 <b>Precio:</b> ${close:.2f}\n"
@@ -1640,7 +1641,7 @@ class GoldDetector1H(BaseDetector):
                             self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1) or
                             self.db.existe_senal_reciente_opuesta(simbolo_db, "COMPRA", horas=1)):
                             logger.warning(f"  ⚠️  Señal COMPRA 1H bloqueada — conflicto en BD"); return
-                        msg = (f"{nivel} — <b>ORO (XAUUSD) ⏰ INTRADÍA</b>\n"
+                        msg = (f"{nivel} — <b>{self.nombre_display} ⏰ INTRADÍA</b>\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"💰 <b>Precio:</b>    ${close:.2f}\n"
                                f"📌 <b>BUY LIMIT:</b> ${buy_entry:.2f}  (spread ${spread:.2f} incluido)\n"
@@ -1689,7 +1690,7 @@ class GoldDetector1H(BaseDetector):
                 if not self.ya_enviada(f"{clave_vela}_PULLBACK_BUY"):
                     _dir_str = f"1D: {_dir_1d}" + (f" | 1W: {_dir_1w}" if _dir_1w != tf_bias.BIAS_NEUTRAL else "")
                     msg = (
-                        f"⚠️ <b>PULLBACK EN TENDENCIA ALCISTA — ORO (XAUUSD) 1H</b>\n"
+                        f"⚠️ <b>PULLBACK EN TENDENCIA ALCISTA — {self.nombre_display} {self.tf_label}</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"🔻 Canal 1H roto a la baja — PERO tendencia superior es ALCISTA\n"
                         f"🔺 Contexto: <b>{_dir_str}</b> → corrección dentro de uptrend\n"
@@ -1726,7 +1727,7 @@ class GoldDetector1H(BaseDetector):
                     _conf_htf_sell = (f"\n{_htf_conf_sell_lines}  ← multi-TF confirmado"
                                       if _htf_conf_sell_lines else "")
                     msg = (
-                        f"🎯 <b>RETEST CANAL SELL — ORO (XAUUSD) 1H</b>\n"
+                        f"🎯 <b>RETEST CANAL SELL — {self.nombre_display} {self.tf_label}</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"🔻 Canal alcista ROTO — precio retestea línea{_conf_htf_sell}\n"
                         f"📌 <b>SELL MARKET:</b> ${entry_rt:.2f}  ← ENTRA AHORA\n"
@@ -1764,7 +1765,7 @@ class GoldDetector1H(BaseDetector):
                 if not self.ya_enviada(f"{clave_vela}_PULLBACK_SELL"):
                     _dir_str = f"1D: {_dir_1d}" + (f" | 1W: {_dir_1w}" if _dir_1w != tf_bias.BIAS_NEUTRAL else "")
                     msg = (
-                        f"⚠️ <b>PULLBACK EN TENDENCIA BAJISTA — ORO (XAUUSD) 1H</b>\n"
+                        f"⚠️ <b>PULLBACK EN TENDENCIA BAJISTA — {self.nombre_display} {self.tf_label}</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"🔺 Canal 1H roto al alza — PERO tendencia superior es BAJISTA\n"
                         f"🔻 Contexto: <b>{_dir_str}</b> → rebote dentro de downtrend\n"
@@ -1802,7 +1803,7 @@ class GoldDetector1H(BaseDetector):
                     _conf_htf_buy = (f"\n{_htf_conf_buy_lines}  ← multi-TF confirmado"
                                      if _htf_conf_buy_lines else "")
                     msg = (
-                        f"🎯 <b>RETEST CANAL BUY — ORO (XAUUSD) 1H</b>\n"
+                        f"🎯 <b>RETEST CANAL BUY — {self.nombre_display} {self.tf_label}</b>\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"🔺 Canal bajista ROTO — precio retestea línea{_conf_htf_buy}\n"
                         f"📌 <b>BUY MARKET:</b> ${entry_rt:.2f}  ← ENTRA AHORA\n"
@@ -1836,7 +1837,7 @@ class GoldDetector1H(BaseDetector):
 
         # ── CANCELACIONES ───────────────────────────────────────────
         if cancelar_sell and not self.ya_enviada(f"{clave_vela}_CANCEL_SELL"):
-            msg = (f"❌ <b>CANCELAR SELL LIMIT — ORO (XAUUSD) 1H</b> ❌\n"
+            msg = (f"❌ <b>CANCELAR SELL LIMIT — {self.nombre_display} {self.tf_label}</b> ❌\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 <b>Orden prevista:</b> SELL LIMIT ${sell_limit:.2f}\n"
                    f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
@@ -1853,7 +1854,7 @@ class GoldDetector1H(BaseDetector):
             self.marcar_enviada(f"{clave_vela}_CANCEL_SELL")
 
         if cancelar_buy and not self.ya_enviada(f"{clave_vela}_CANCEL_BUY"):
-            msg = (f"❌ <b>CANCELAR BUY LIMIT — ORO (XAUUSD) 1H</b> ❌\n"
+            msg = (f"❌ <b>CANCELAR BUY LIMIT — {self.nombre_display} {self.tf_label}</b> ❌\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"📌 <b>Orden prevista:</b> BUY LIMIT ${buy_limit:.2f}\n"
                    f"💰 <b>Precio actual:</b>  ${close:.2f}\n"
@@ -1874,7 +1875,7 @@ class GoldDetector1H(BaseDetector):
 def main():
     global _last_ml_retrain_1h
     logger.info("🚀 Detector ORO 1H intradía iniciado")
-    enviar_telegram("🚀 <b>Detector ORO (XAUUSD) 1H — INTRADÍA iniciado</b>\n"
+    enviar_telegram(f"🚀 <b>Detector {simbolo_a_nombre('XAUUSD')} 1H — INTRADÍA iniciado</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "📊 Monitorizando: GC=F (Gold Futures)\n"
                     "⏱️ Timeframe: 1H  |  Modo: ⏰ INTRADÍA\n"

@@ -37,6 +37,27 @@ from core.indicators import (
 )
 
 
+_NOMBRES_DISPLAY: dict = {
+    'XAUUSD': 'ORO (XAUUSD)',
+    'EURUSD': 'EUR/USD',
+    'GBPUSD': 'GBP/USD',
+    'USDJPY': 'USD/JPY',
+    'US30':   'DOW JONES (US30)',
+    'NAS100': 'NASDAQ (NAS100)',
+    'BTCUSD': 'BTC/USD',
+}
+
+
+def simbolo_a_nombre(simbolo: str) -> str:
+    """Devuelve el nombre legible de un símbolo para mensajes Telegram.
+
+    Acepta tanto 'XAUUSD' como 'XAUUSD_1H' (extrae el símbolo base).
+    Fallback: devuelve el símbolo tal cual.
+    """
+    base = simbolo.split('_')[0]
+    return _NOMBRES_DISPLAY.get(base, base)
+
+
 class BaseDetector(ABC):
     """
     Clase base abstracta para detectores de señales de trading.
@@ -57,6 +78,17 @@ class BaseDetector(ABC):
     _TTL_ALERTA = 172_800   # 48 horas en segundos — TTL para el anti-spam
     _SR_WING = 3            # velas a cada lado para confirmar un swing high/low
     _SR_MIN_DIST_ATR = 0.3  # distancia mínima (en ATR) entre precio actual y un pivote válido
+
+    # Mapeo símbolo → nombre legible para mensajes Telegram
+    _NOMBRES_DISPLAY: dict = {
+        'XAUUSD': 'ORO (XAUUSD)',
+        'EURUSD': 'EUR/USD',
+        'GBPUSD': 'GBP/USD',
+        'USDJPY': 'USD/JPY',
+        'US30':   'DOW JONES (US30)',
+        'NAS100': 'NASDAQ (NAS100)',
+        'BTCUSD': 'BTC/USD',
+    }
 
     def __init__(self, simbolo: str, tf_label: str, params: dict,
                  telegram_thread_id):
@@ -88,6 +120,15 @@ class BaseDetector(ABC):
                     self.alertas_enviadas[clave] = ts
             except Exception:
                 pass  # Fallo no crítico; se parte de estado vacío
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Nombre display — símbolo legible para mensajes Telegram
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @property
+    def nombre_display(self) -> str:
+        """Devuelve el nombre legible del símbolo para mensajes Telegram."""
+        return simbolo_a_nombre(self.simbolo)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Helper BD — inyecta telegram_thread_id automáticamente

@@ -780,9 +780,9 @@ class GoldDetector5M(BaseDetector):
 
             # Títulos dinámicos según modo
             _titulo_sell = ("⚡ ENTRADA PRECISA — <b>Setup 1H / Entrada 5M</b>"
-                            if _modo_caza_sell else "🔥 SELL FUERTE — <b>GOLD 5M MICRO-SCALP</b>")
+                            if _modo_caza_sell else f"🔥 SELL FUERTE — <b>{self.nombre_display} 5M MICRO-SCALP</b>")
             _titulo_buy  = ("⚡ ENTRADA PRECISA — <b>Setup 1H / Entrada 5M</b>"
-                            if _modo_caza_buy  else "🔥 BUY FUERTE — <b>GOLD 5M MICRO-SCALP</b>")
+                            if _modo_caza_buy  else f"🔥 BUY FUERTE — <b>{self.nombre_display} 5M MICRO-SCALP</b>")
 
             # ── FILTRO R:R MÍNIMO 1.5 (Micro-Scalp 5M) ──
             RR_MINIMO = 1.5
