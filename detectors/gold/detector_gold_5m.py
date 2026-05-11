@@ -325,12 +325,17 @@ class GoldDetector5M(BaseDetector):
                 df, atr, lookback=_lkb5_h, wing=3)
             _retest_sop_5m, _niv_retest_sop_5m = detectar_retest_soporte(
                 df, atr, lookback=_lkb5_h, wing=3)
-            if _retest_res_5m:
+            # Anti-apilamiento: retest y ruptura del mismo nivel no suman doble
+            if _retest_res_5m and not _rup_sop_5m:
                 score_sell += 5
                 logger.info(f"  🔁 [5M] RETEST RESISTENCIA ${_niv_retest_res_5m:.2f} — +5 pts SELL")
-            if _retest_sop_5m:
+            elif _retest_res_5m and _rup_sop_5m:
+                logger.info(f"  🔁 [5M] RETEST RESISTENCIA ${_niv_retest_res_5m:.2f} — suprimido (ruptura ya puntuó)")
+            if _retest_sop_5m and not _rup_res_5m:
                 score_buy += 5
                 logger.info(f"  🔁 [5M] RETEST SOPORTE ${_niv_retest_sop_5m:.2f} — +5 pts BUY")
+            elif _retest_sop_5m and _rup_res_5m:
+                logger.info(f"  🔁 [5M] RETEST SOPORTE ${_niv_retest_sop_5m:.2f} — suprimido (ruptura ya puntuó)")
 
             # ── Rechazo en directriz (5M) ────────────────────────────────────────
             _rec_dir_baj_5m, _precio_dir_baj_5m = detectar_rechazo_en_directriz(
@@ -475,7 +480,7 @@ class GoldDetector5M(BaseDetector):
             elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
                 score_buy = min(score_buy + 1, 23)
                 logger.info(f"  🔺 [5M] Momentum alcista en soporte — +1 BUY")
-            _umbral_fue = self.umbral_adaptativo(14, atr, atr_media)   # antes: 12
+            _umbral_fue = self.umbral_adaptativo(16, atr, atr_media)   # antes: 14
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
@@ -739,14 +744,14 @@ class GoldDetector5M(BaseDetector):
                             logger.info(f"  ⚡ [5M] AVISO SETUP BUY enviado (score {score_buy}) — BD ya tiene señal activa")
 
             if senal_sell_fuerte:
-                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BEARISH)
+                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BEARISH, score_sell)
                 if not _ok:
                     logger.info(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
                     senal_sell_fuerte = False
                 else:
                     _conf_sell = _desc
             if senal_buy_fuerte:
-                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BULLISH)
+                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '5M', tf_bias.BIAS_BULLISH, score_buy)
                 if not _ok:
                     logger.info(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
                     senal_buy_fuerte = False
@@ -760,7 +765,7 @@ class GoldDetector5M(BaseDetector):
             _zona_1h_sell = tf_bias.obtener_zona_activa(simbolo, tf_bias.BIAS_BEARISH)
             _modo_caza_buy  = False
             _modo_caza_sell = False
-            _UMBRAL_CAZA    = 4   # mitad del umbral normal — el 1H ya confirmó
+            _UMBRAL_CAZA    = 8   # el 1H confirma el contexto pero necesitamos señal sólida
 
             if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima():
                 _tol_1h = _zona_1h_buy['atr'] * 0.6

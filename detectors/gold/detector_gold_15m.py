@@ -388,12 +388,17 @@ class GoldDetector15M(BaseDetector):
                 df, atr, lookback=_lkb15_h, wing=3)
             _retest_sop_15m, _niv_retest_sop_15m = detectar_retest_soporte(
                 df, atr, lookback=_lkb15_h, wing=3)
-            if _retest_res_15m:
+            # Anti-apilamiento: retest y ruptura del mismo nivel no suman doble
+            if _retest_res_15m and not _rup_sop_15m:
                 score_sell += 5
                 logger.info(f"  🔁 [15M] RETEST RESISTENCIA ${_niv_retest_res_15m:.2f} — +5 pts SELL")
-            if _retest_sop_15m:
+            elif _retest_res_15m and _rup_sop_15m:
+                logger.info(f"  🔁 [15M] RETEST RESISTENCIA ${_niv_retest_res_15m:.2f} — suprimido (ruptura ya puntuó)")
+            if _retest_sop_15m and not _rup_res_15m:
                 score_buy += 5
                 logger.info(f"  🔁 [15M] RETEST SOPORTE ${_niv_retest_sop_15m:.2f} — +5 pts BUY")
+            elif _retest_sop_15m and _rup_res_15m:
+                logger.info(f"  🔁 [15M] RETEST SOPORTE ${_niv_retest_sop_15m:.2f} — suprimido (ruptura ya puntuó)")
 
             # ── Rechazo en directriz (15M) ───────────────────────────────────────
             _rec_dir_baj_15m, _precio_dir_baj_15m = detectar_rechazo_en_directriz(
@@ -519,7 +524,7 @@ class GoldDetector15M(BaseDetector):
             elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
                 score_buy = min(score_buy + 1, 23)
                 logger.info(f"  🔺 [15M] Momentum alcista en soporte — +1 BUY")
-            _umbral_fue = self.umbral_adaptativo(10, atr, atr_media)   # antes: 8
+            _umbral_fue = self.umbral_adaptativo(14, atr, atr_media)   # antes: 10
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
@@ -561,6 +566,13 @@ class GoldDetector15M(BaseDetector):
             # ── Filtro de sesión: fuera de 08-21 UTC solo FUERTE (TF corto = ruido nocturno) ──
             if not self.en_sesion_optima():
                 logger.info(f"  🌙 [15M] Fuera sesión óptima — señal suprimida (08-21 UTC)")
+                senal_sell_fuerte = False
+                senal_buy_fuerte  = False
+
+            # ── Filtro ADX mínimo 15M: mercado plano → bloquear señales ─────────
+            _ADX_MIN_15M = 20
+            if adx < _ADX_MIN_15M:
+                logger.info(f"  😴 [15M] ADX {round(adx, 1)} < {_ADX_MIN_15M} — mercado plano, señales bloqueadas")
                 senal_sell_fuerte = False
                 senal_buy_fuerte  = False
 
@@ -682,14 +694,14 @@ class GoldDetector15M(BaseDetector):
             tf_bias.publicar_sesgo(simbolo, '15M', _sesgo_dir, max(score_sell, score_buy))
             _conf_sell = ""; _conf_buy = ""
             if senal_sell_fuerte:
-                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BEARISH)
+                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BEARISH, score_sell)
                 if not _ok:
                     logger.info(f"  🚫 SELL bloqueada por TF superior: {_desc[:80]}")
                     senal_sell_fuerte = False
                 else:
                     _conf_sell = _desc
             if senal_buy_fuerte:
-                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BULLISH)
+                _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BULLISH, score_buy)
                 if not _ok:
                     logger.info(f"  🚫 BUY bloqueada por TF superior: {_desc[:80]}")
                     senal_buy_fuerte = False
@@ -717,7 +729,7 @@ class GoldDetector15M(BaseDetector):
             _zona_1h_sell = tf_bias.obtener_zona_activa(simbolo, tf_bias.BIAS_BEARISH)
             _modo_caza_buy  = False
             _modo_caza_sell = False
-            _UMBRAL_CAZA    = 4   # mitad del umbral normal — el 1H ya confirmó
+            _UMBRAL_CAZA    = 8   # el 1H confirma el contexto pero necesitamos señal sólida
 
             if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima():
                 _tol_1h = _zona_1h_buy['atr'] * 0.6
