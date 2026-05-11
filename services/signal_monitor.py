@@ -1188,7 +1188,7 @@ def _avisar_proximas_a_caducar(db: DatabaseManager, _aviso_caducidad_enviado: se
     ahora = datetime.now(timezone.utc)
     max_horas_fallback = 336
 
-    result = db.ejecutar_query("SELECT id, simbolo, direccion, timestamp, precio_entrada, sl, tp1, tp2, tp3 FROM senales WHERE estado = 'ACTIVA'")
+    result = db.ejecutar_query("SELECT id, simbolo, direccion, timestamp, precio_entrada, sl, tp1, tp2, tp3, telegram_message_id FROM senales WHERE estado = 'ACTIVA'")
     if not result.rows:
         return
 
@@ -1248,7 +1248,7 @@ def _avisar_proximas_a_caducar(db: DatabaseManager, _aviso_caducidad_enviado: se
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"ℹ️ Si no hay actividad se cerrará automáticamente"
         )
-        enviar_notificacion_telegram(msg, simbolo)
+        enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=senal.get('telegram_message_id'))
         logger.info(f"  ⚠️ Aviso caducidad señal {senal_id} ({simbolo}) — caduca en {tiempo_txt}")
 
 
