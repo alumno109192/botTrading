@@ -1137,7 +1137,7 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
 
 # Tiempo máximo (horas) que una orden LIMIT puede estar pendiente sin ejecutarse
 _EXPIRY_PENDIENTE_H = {
-    'scalping': 4,    # 5M / 15M → 4 horas
+    'scalping': 1,    # 5M / 15M → 1 hora
     'intraday': 12,   # 1H      → 12 horas
     'swing':    48,   # 4H / 1D → 2 días
 }
