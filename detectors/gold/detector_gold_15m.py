@@ -415,7 +415,7 @@ class GoldDetector15M(BaseDetector):
         
             logger.info(f"  📅 Vela:  {fecha}")
             logger.info(f"  💰 Close: {round(close, 2)}")
-            logger.info(f"  📊 Score SELL: {score_sell}/{max_score} | Score BUY: {score_buy}/{max_score}")
+            logger.info(f"  📊 Score SELL: {score_sell}/5 | Score BUY: {score_buy}/5")
             logger.info(f"  🔴 SELL Fuerte:{senal_sell_fuerte}  🟢 BUY Fuerte:{senal_buy_fuerte}")
             logger.info(f"  📉 RSI: {round(rsi, 1)} | ADX: {round(adx, 1)} | ATR: {round(atr, 2)}")
         
@@ -604,7 +604,7 @@ class GoldDetector15M(BaseDetector):
                            f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
                            f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                           f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                           f"📊 <b>Score:</b> {score_sell}/5  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                            f"⏱️ <b>TF:</b> 15M\n"
                            f"📅 <b>Estudio:</b> {hora_estudio}\n"
                            f"🕐 <b>Envío:</b> {hora_envio}\n"
@@ -653,7 +653,7 @@ class GoldDetector15M(BaseDetector):
                            f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
                            f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                           f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                           f"📊 <b>Score:</b> {score_buy}/5  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                            f"⏱️ <b>TF:</b> 15M\n"
                            f"📅 <b>Estudio:</b> {hora_estudio}\n"
                            f"🕐 <b>Envío:</b> {hora_envio}\n"
