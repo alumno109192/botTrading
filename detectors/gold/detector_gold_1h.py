@@ -1079,10 +1079,11 @@ class GoldDetector1H(BaseDetector):
         for _k, _v in (_pred_features or {}).items():
             _condiciones_bd[_k] = float(_v) if isinstance(_v, (int, float, np.floating)) else _v
 
-        _umbral_max = self.umbral_adaptativo(15, atr, atr_media)   # antes: 12
-        _umbral_fue = self.umbral_adaptativo(13, atr, atr_media)   # antes: 11
-        _umbral_med = self.umbral_adaptativo(10, atr, atr_media)   # antes: 8
-        _umbral_ale = self.umbral_adaptativo(8,  atr, atr_media)   # antes: 6
+        # ── Opción A: umbrales elevados — filtrar setups débiles (<13 puntos) ──
+        _umbral_max = self.umbral_adaptativo(17, atr, atr_media)   # antes: 15
+        _umbral_fue = self.umbral_adaptativo(15, atr, atr_media)   # antes: 13
+        _umbral_med = self.umbral_adaptativo(13, atr, atr_media)   # antes: 10 → mínimo real para señal
+        _umbral_ale = self.umbral_adaptativo(10, atr, atr_media)   # antes: 8  → solo PREP/LIVE
         senal_sell_maxima = score_sell >= _umbral_max
         senal_sell_fuerte = score_sell >= _umbral_fue
         senal_sell_media  = score_sell >= _umbral_med
@@ -1100,6 +1101,19 @@ class GoldDetector1H(BaseDetector):
             logger.info(f"  😴 [1H] ADX {round(adx, 1)} < {_ADX_MIN} — mercado plano, todas las señales bloqueadas")
             senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
             senal_buy_maxima  = senal_buy_fuerte  = senal_buy_media  = senal_buy_alerta  = False
+
+        # ── Opción C: FILTRO HTF OBLIGATORIO — operar a favor de tendencia ────────
+        # Si 4H y 1D son ambos BULLISH → bloquear SELL (precio rompiendo máximos).
+        # Si 4H y 1D son ambos BEARISH → bloquear BUY (precio en caída estructural).
+        # Basta con que UNO de los dos sea contrario para no bloquear (sesgo mixto → OK).
+        if _dir_4h == tf_bias.BIAS_BULLISH and _dir_1d == tf_bias.BIAS_BULLISH:
+            if senal_sell_alerta or senal_sell_media or senal_sell_fuerte or senal_sell_maxima:
+                logger.warning(f"  🚫 [1H] SELL bloqueada: HTF alcista (4H={_dir_4h} + 1D={_dir_1d}) — no operar contra tendencia")
+                senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+        if _dir_4h == tf_bias.BIAS_BEARISH and _dir_1d == tf_bias.BIAS_BEARISH:
+            if senal_buy_alerta or senal_buy_media or senal_buy_fuerte or senal_buy_maxima:
+                logger.warning(f"  🚫 [1H] BUY bloqueada: HTF bajista (4H={_dir_4h} + 1D={_dir_1d}) — no operar contra tendencia")
+                senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
 
         # ── Filtro de sesión 1H: fuera de 08-21 UTC bloquear ALERTA (tf largo: MEDIA+ pasa) ──
         if not self.en_sesion_optima():
