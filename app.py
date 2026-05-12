@@ -100,6 +100,13 @@ try:
     logger.info("✅ Tablas api_key_usage, ohlcv, canal_roto_state, macro_events_log, bot_logs, nivel_touches, senal_analisis, bot_antispam listas")
 except Exception as _e:
     logger.warning(f"⚠️ No se pudo inicializar tablas BD: {_e}")
+
+# Inicializar tabla push_subscriptions (Web Push Notifications)
+try:
+    from services.push_notifications import crear_tabla_push_si_no_existe
+    crear_tabla_push_si_no_existe()
+except Exception as _e:
+    logger.warning(f"⚠️ No se pudo inicializar tabla push_subscriptions: {_e}")
 threads_detectores = {}
 
 # Credenciales de Telegram (para keep-alive alerts)

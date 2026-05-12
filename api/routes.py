@@ -443,6 +443,72 @@ def create_app(estado_sistema, threads_detectores):
             logger.error(f"❌ /api/v1/keys/uso error: {e}")
             return jsonify({'error': str(e)}), 500
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Web Push Notifications (VAPID)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/api/v1/push/vapid-public-key')
+    def push_vapid_public_key():
+        """Devuelve la clave pública VAPID para que el navegador pueda suscribirse."""
+        key = os.environ.get('VAPID_PUBLIC_KEY', '')
+        if not key:
+            return jsonify({'error': 'VAPID no configurado'}), 503
+        return jsonify({'publicKey': key})
+
+    @app.route('/api/v1/push/subscribe', methods=['POST'])
+    def push_subscribe():
+        """Guarda la suscripción push del navegador en BD."""
+        try:
+            sub = request.get_json(force=True)
+            if not sub or 'endpoint' not in sub:
+                return jsonify({'error': 'Payload inválido'}), 400
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+            import json as _json
+            db.ejecutar_query(
+                """INSERT OR REPLACE INTO push_subscriptions
+                   (endpoint, subscription_json, created_at)
+                   VALUES (?, ?, datetime('now'))""",
+                (sub['endpoint'], _json.dumps(sub))
+            )
+            logger.info(f"📲 Push: nueva suscripción registrada ({sub['endpoint'][:60]}...)")
+            return jsonify({'ok': True}), 201
+        except Exception as e:
+            logger.error(f"❌ /api/v1/push/subscribe error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/v1/push/unsubscribe', methods=['POST'])
+    def push_unsubscribe():
+        """Elimina la suscripción push del navegador de la BD."""
+        try:
+            sub = request.get_json(force=True)
+            if not sub or 'endpoint' not in sub:
+                return jsonify({'error': 'Payload inválido'}), 400
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+            db.ejecutar_query(
+                "DELETE FROM push_subscriptions WHERE endpoint = ?",
+                (sub['endpoint'],)
+            )
+            return jsonify({'ok': True})
+        except Exception as e:
+            logger.error(f"❌ /api/v1/push/unsubscribe error: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    # Servir el Service Worker desde la raíz (requerido por la spec)
+    @app.route('/sw.js')
+    def service_worker():
+        from flask import send_from_directory
+        return send_from_directory(
+            str(_FRONTEND_DIR / 'static' / 'js'),
+            'sw.js',
+            mimetype='application/javascript'
+        )
+
     return app
 
 

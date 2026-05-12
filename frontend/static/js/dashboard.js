@@ -38,16 +38,16 @@ function dashboardApp() {
     _equityChart:        null,
     _equityPuntos:       [],   // guardamos para re-render al cambiar de pestaña
 
+    /* ── Push ── */
+    pushEstado:          'desconocido',  // 'desconocido' | 'activo' | 'inactivo' | 'no-soportado'
+
     /* ── Seguimiento ── */
     _idsConocidos:       new Set(),
     _estadosConocidos:   {},
-
-    /* ══════════════════════════════════════════
-       INIT
-    ══════════════════════════════════════════ */
     init(vistaInicial = 'activas') {
       this.vistaActual = vistaInicial;
       _solicitarNotifPermiso();
+      this.initPush();
       this.cargarTodo();
       setInterval(() => this.cargarTodo(), POLL_INTERVAL_MS);
 
@@ -339,6 +339,93 @@ function dashboardApp() {
         },
       });
     },
+
+    /* ══════════════════════════════════════════
+       WEB PUSH NOTIFICATIONS
+    ══════════════════════════════════════════ */
+
+    /** Inicializa el estado del botón push leyendo la suscripción activa. */
+    async initPush() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        this.pushEstado = 'no-soportado';
+        return;
+      }
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        this.pushEstado = sub ? 'activo' : 'inactivo';
+      } catch (e) {
+        console.warn('Push init error:', e);
+        this.pushEstado = 'inactivo';
+      }
+    },
+
+    /** Activa o desactiva las notificaciones push al hacer clic en el botón. */
+    async togglePushNotif() {
+      if (this.pushEstado === 'no-soportado') return;
+
+      if (this.pushEstado === 'activo') {
+        await this._desactivarPush();
+      } else {
+        await this._activarPush();
+      }
+    },
+
+    async _activarPush() {
+      try {
+        const permiso = await Notification.requestPermission();
+        if (permiso !== 'granted') {
+          this.mostrarToast('⚠️ Notificaciones bloqueadas', 'Actívalas en los ajustes del navegador', 'warn');
+          return;
+        }
+        // Obtener clave pública VAPID del servidor
+        const r = await fetch('/api/v1/push/vapid-public-key');
+        if (!r.ok) { this.mostrarToast('❌ Error', 'Servidor no devolvió clave VAPID', 'error'); return; }
+        const { publicKey } = await r.json();
+
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: _urlBase64ToUint8Array(publicKey),
+        });
+
+        // Guardar suscripción en el servidor
+        const save = await fetch('/api/v1/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub.toJSON()),
+        });
+        if (save.ok) {
+          this.pushEstado = 'activo';
+          this.mostrarToast('🔔 Notificaciones activadas', 'Recibirás alertas de nuevas señales', 'ok');
+        } else {
+          this.mostrarToast('❌ Error al guardar suscripción', '', 'error');
+        }
+      } catch (e) {
+        console.error('Push subscribe error:', e);
+        this.mostrarToast('❌ Error activando push', e.message, 'error');
+      }
+    },
+
+    async _desactivarPush() {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await fetch('/api/v1/push/unsubscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          });
+          await sub.unsubscribe();
+        }
+        this.pushEstado = 'inactivo';
+        this.mostrarToast('🔕 Notificaciones desactivadas', '', 'warn');
+      } catch (e) {
+        console.error('Push unsubscribe error:', e);
+      }
+    },
   };
 }
 
@@ -378,5 +465,18 @@ function _browserNotify(titulo, cuerpo, url = '/dashboard/activas') {
       n.close();
     };
   } catch (_) {}
+}
+
+/**
+ * Convierte una clave VAPID public key en Base64URL a Uint8Array
+ * para usarla en pushManager.subscribe({ applicationServerKey }).
+ */
+function _urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw     = window.atob(base64);
+  const arr     = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) arr[i] = raw.charCodeAt(i);
+  return arr;
 }
 

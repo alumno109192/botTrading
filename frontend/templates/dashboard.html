@@ -49,6 +49,20 @@
     </div>
 
     <span class="update-badge" x-text="ultimaActualizacion ? '↻ ' + ultimaActualizacion : ''"></span>
+
+    <!-- Botón notificaciones push -->
+    <button id="btn-push"
+            @click="togglePushNotif()"
+            :title="pushEstado === 'activo' ? 'Desactivar notificaciones' : 'Activar notificaciones'"
+            style="background:none;border:1px solid rgba(255,255,255,0.15);border-radius:8px;
+                   padding:4px 8px;cursor:pointer;font-size:0.9rem;margin-left:4px;
+                   color:var(--text);transition:border-color .2s"
+            :style="pushEstado === 'activo'
+              ? 'border-color:var(--buy);color:var(--buy)'
+              : pushEstado === 'no-soportado' ? 'opacity:0.35;cursor:not-allowed' : ''"
+            x-show="pushEstado !== 'no-soportado'"
+            x-text="pushEstado === 'activo' ? '🔔 ON' : '🔔 OFF'">
+    </button>
   </header>
 
   <!-- ════════════════════════════════════════

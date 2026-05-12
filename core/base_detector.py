@@ -538,6 +538,26 @@ class BaseDetector(ABC):
                 )
             except Exception:
                 pass
+
+        # ── Web Push Notification ─────────────────────────────────────────────
+        # Envía notificación push al navegador móvil si hay suscriptores.
+        # Best-effort: si falla no interrumpe el flujo principal.
+        if senal_id:
+            try:
+                from services.push_notifications import enviar_push_senal
+                # Extraer primera línea del mensaje como cuerpo corto
+                _lineas = mensaje.strip().split('\n')
+                _titulo = _lineas[0][:60] if _lineas else '📊 Nueva señal'
+                _cuerpo = _lineas[1][:80] if len(_lineas) > 1 else ''
+                enviar_push_senal(
+                    senal_id=senal_id,
+                    titulo=_titulo,
+                    cuerpo=_cuerpo,
+                )
+            except Exception as _ep:
+                _logger.debug(f"Push: error no crítico — {_ep}")
+        # ── Fin Web Push ──────────────────────────────────────────────────────
+
         return bool(message_id)
 
     # ─────────────────────────────────────────────────────────────────────────
