@@ -633,21 +633,21 @@ def _verificar_trampa_patron(senal: dict, db: DatabaseManager, trampa_avisada: s
         logger.debug(f"  [trampa] Error analizando {simbolo}: {e}")
 
 
-def _verificar_reversal_post_tp1(senal: dict, _reversal_tp1_avisado: set) -> None:
+def _verificar_reversal_post_tp1(senal: dict, _reversal_tp1_avisado: set, db) -> None:
     """
-    Detecta señales de reversión cuando el trade está entre TP1 y TP2.
+    Gestiona reversiones cuando el trade está entre TP1 y TP2.
 
-    Se activa ÚNICAMENTE cuando:
-      - tp1_alcanzado = True  (SL ya movido a breakeven)
-      - tp2_alcanzado = False (trade sigue esperando TP2)
+    Decisión binaria (sin mensajes ambiguos):
+      - 3/3 señales → cierra la señal en breakeven automáticamente
+      - 2/3 señales → mensaje tranquilizador: SL protege, mantenemos hacia TP2
+      - <2 señales  → sin acción
 
-    Condiciones de reversión (se necesitan al menos 2 de 3):
-      1. Precio retrocedió ≥ 0.4×ATR desde el máximo reciente de las últimas 8 velas (COMPRA)
-         o recuperó ≥ 0.4×ATR desde el mínimo reciente (VENTA)
-      2. ≥ 2 velas bajistas/alcistas en las últimas 4
-      3. RSI > 65 y bajando (COMPRA) — o RSI < 35 y subiendo (VENTA)
+    Condiciones evaluadas (de 3):
+      1. Precio retrocedió ≥ 0.4×ATR desde el máximo/mínimo reciente de 8 velas
+      2. ≥ 2 velas contra-tendencia en las últimas 4
+      3. RSI en zona extrema y revirtiendo
 
-    Avisa solo UNA VEZ por señal via _reversal_tp1_avisado.
+    Notifica solo UNA VEZ por señal via _reversal_tp1_avisado.
     """
     from core.indicators import calcular_atr
 
@@ -748,56 +748,74 @@ def _verificar_reversal_post_tp1(senal: dict, _reversal_tp1_avisado: set) -> Non
                     f"RSI sobrevendido y subiendo ({rsi_anterior:.0f}→{rsi_actual:.0f})"
                 )
 
-        # Necesitamos al menos 2 señales para evitar falsos positivos
         if len(senales_reversal) < 2:
             return
 
         beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, direccion)
         icono = '🟢' if direccion == 'COMPRA' else '🔴'
         reply_msg_id = senal.get('telegram_message_id')
-
         iconos_senal = ['📉', '🕯️', '📊']
-        msg = (
-            f"⚠️ <b>REVERSIÓN DETECTADA — TP2 en riesgo</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{icono} {simbolo} | {direccion}\n"
-            f"💰 Entrada: ${precio_entrada:.2f}\n"
-            f"📍 Actual:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔍 <b>Señales de reversión ({len(senales_reversal)}/3):</b>\n"
-            + "\n".join(f"  • {iconos_senal[i]} {s}" for i, s in enumerate(senales_reversal)) + "\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔒 SL en breakeven ${sl:.2f} — trade protegido\n"
-            f"💡 Considera cerrar el resto en <b>${precio_actual:.2f}</b>\n"
-            f"   antes de que el precio regrese al breakeven\n"
-            f"🎯 TP2: ${tp2:.2f}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔖 <code>#{senal_id}</code>"
-        )
+        senal_lines = "\n".join(f"  • {iconos_senal[i]} {s}" for i, s in enumerate(senales_reversal))
+
+        if len(senales_reversal) == 3:
+            # Reversión confirmada → cerrar en breakeven automáticamente
+            db.actualizar_estado_senal(senal_id, 'BREAKEVEN')
+            msg = (
+                f"🚫 <b>SEÑAL CERRADA — Reversión confirmada</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"{icono} {simbolo} | {direccion}\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Cierre en breakeven: ${sl:.2f}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔍 <b>Reversión confirmada (3/3):</b>\n"
+                + senal_lines + "\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ Capital protegido — sin pérdida\n"
+                f"🔖 <code>#{senal_id}</code>"
+            )
+            logger.info(
+                f"  🚫 [{simbolo}] Señal #{senal_id} CERRADA por reversión confirmada (3/3)"
+            )
+        else:
+            # 2/3: bajo presión pero SL garantiza el capital → mantener
+            msg = (
+                f"📊 <b>Señal bajo presión — manteniendo posición</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"{icono} {simbolo} | {direccion}\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Actual:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ <b>Presión detectada (2/3 — no confirmada):</b>\n"
+                + senal_lines + "\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔒 SL en breakeven ${sl:.2f} — capital garantizado\n"
+                f"🎯 Mantenemos hacia TP2: ${tp2:.2f}\n"
+                f"🔖 <code>#{senal_id}</code>"
+            )
+            logger.info(
+                f"  📊 [{simbolo}] Señal #{senal_id} bajo presión (2/3) — manteniendo hacia TP2"
+            )
+
         enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
         _reversal_tp1_avisado.add(senal_id)
-        logger.info(
-            f"  ⚠️ [{simbolo}] REVERSIÓN post-TP1 señal #{senal_id} ({direccion}): "
-            + " | ".join(senales_reversal)
-        )
 
     except Exception as e:
         logger.debug(f"  [reversal_tp1] Error analizando {simbolo}: {e}")
 
 
-def _verificar_reversal_post_tp2(senal: dict, _reversal_tp2_avisado: set) -> None:
+def _verificar_reversal_post_tp2(senal: dict, _reversal_tp2_avisado: set, db) -> None:
     """
-    Detecta señales de reversión cuando el trade está entre TP2 y TP3.
+    Gestiona reversiones cuando el trade está entre TP2 y TP3.
 
-    Se activa ÚNICAMENTE cuando:
-      - tp2_alcanzado = True  (SL ya debería estar en TP1)
-      - tp3_alcanzado = False (trade sigue esperando TP3)
+    Decisión binaria (sin mensajes ambiguos):
+      - 3/3 señales → cierra la señal asegurando el beneficio de TP2
+      - 2/3 señales → mensaje tranquilizador: beneficio protegido, mantenemos hacia TP3
+      - <2 señales  → sin acción
 
-    Condiciones de reversión (se necesitan al menos 2 de 3):
-      1. Precio retrocedió ≥ 0.4×ATR desde el máximo reciente de las últimas 8 velas (COMPRA)
-         o recuperó ≥ 0.4×ATR desde el mínimo reciente (VENTA)
-      2. ≥ 2 velas bajistas/alcistas en las últimas 4
-      3. RSI > 65 y bajando (COMPRA) — o RSI < 35 y subiendo (VENTA)
+    Condiciones evaluadas (de 3):
+      1. Precio retrocedió ≥ 0.4×ATR desde el máximo/mínimo reciente de 8 velas
+      2. ≥ 2 velas contra-tendencia en las últimas 4
+      3. RSI en zona extrema y revirtiendo
 
     Avisa solo UNA VEZ por señal via _reversal_tp2_avisado.
     """
@@ -900,38 +918,56 @@ def _verificar_reversal_post_tp2(senal: dict, _reversal_tp2_avisado: set) -> Non
                     f"RSI sobrevendido y subiendo ({rsi_anterior:.0f}→{rsi_actual:.0f})"
                 )
 
-        # Necesitamos al menos 2 señales para evitar falsos positivos
         if len(senales_reversal) < 2:
             return
 
         beneficio = calcular_beneficio_pct(precio_entrada, precio_actual, direccion)
         icono = '🟢' if direccion == 'COMPRA' else '🔴'
         reply_msg_id = senal.get('telegram_message_id')
-
         iconos_senal = ['📉', '🕯️', '📊']
-        msg = (
-            f"⚠️ <b>REVERSIÓN DETECTADA — TP3 en riesgo</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"{icono} {simbolo} | {direccion}\n"
-            f"💰 Entrada: ${precio_entrada:.2f}\n"
-            f"📍 Actual:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔍 <b>Señales de reversión ({len(senales_reversal)}/3):</b>\n"
-            + "\n".join(f"  • {iconos_senal[i]} {s}" for i, s in enumerate(senales_reversal)) + "\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔒 SL sugerido en TP1 ${tp1:.2f}\n"
-            f"💡 Considera cerrar el resto en <b>${precio_actual:.2f}</b>\n"
-            f"   antes de que el precio retroceda a TP1\n"
-            f"🎯 TP3: ${tp3:.2f}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔖 <code>#{senal_id}</code>"
-        )
+        senal_lines = "\n".join(f"  • {iconos_senal[i]} {s}" for i, s in enumerate(senales_reversal))
+
+        if len(senales_reversal) == 3:
+            # Reversión confirmada → cerrar asegurando el beneficio de TP2
+            db.cerrar_senal(senal_id, 'TP2', beneficio)
+            msg = (
+                f"✅ <b>SEÑAL CERRADA — Beneficio asegurado en TP2</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"{icono} {simbolo} | {direccion}\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Cierre:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔍 <b>Reversión confirmada (3/3):</b>\n"
+                + senal_lines + "\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💵 Ganancia bloqueada — TP3 cancelado\n"
+                f"🔖 <code>#{senal_id}</code>"
+            )
+            logger.info(
+                f"  ✅ [{simbolo}] Señal #{senal_id} CERRADA en TP2 por reversión confirmada (3/3)"
+            )
+        else:
+            # 2/3: presión no confirmada → mantener con beneficio protegido
+            msg = (
+                f"📊 <b>Señal bajo presión — manteniendo beneficio</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"{icono} {simbolo} | {direccion}\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Actual:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ <b>Presión detectada (2/3 — no confirmada):</b>\n"
+                + senal_lines + "\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔒 TP2 ya asegurado — beneficio protegido\n"
+                f"🎯 Mantenemos hacia TP3: ${tp3:.2f}\n"
+                f"🔖 <code>#{senal_id}</code>"
+            )
+            logger.info(
+                f"  📊 [{simbolo}] Señal #{senal_id} bajo presión (2/3) — manteniendo hacia TP3"
+            )
+
         enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
         _reversal_tp2_avisado.add(senal_id)
-        logger.info(
-            f"  ⚠️ [{simbolo}] REVERSIÓN post-TP2 señal #{senal_id} ({direccion}): "
-            + " | ".join(senales_reversal)
-        )
 
     except Exception as e:
         logger.debug(f"  [reversal_tp2] Error analizando {simbolo}: {e}")
@@ -1837,8 +1873,8 @@ def monitor_senales():
                     if (_ultimo_trampa is None or
                             ciclo - _ultimo_trampa >= _intervalo_trampa):
                         _verificar_trampa_patron(senal, db, _trampa_avisada)
-                        _verificar_reversal_post_tp1(senal, _reversal_tp1_avisado)
-                        _verificar_reversal_post_tp2(senal, _reversal_tp2_avisado)
+                        _verificar_reversal_post_tp1(senal, _reversal_tp1_avisado, db)
+                        _verificar_reversal_post_tp2(senal, _reversal_tp2_avisado, db)
                         _ultimo_check_trampa[senal_id] = ciclo
 
             # Limpiar del diccionario señales que ya no están activas
