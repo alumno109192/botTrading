@@ -19,6 +19,7 @@ import services.signal_monitor as signal_monitor
 from detectors.gold import detector_gold_5m
 from detectors.gold import detector_gold_15m
 from detectors.gold import detector_gold_1m
+from detectors.gold import detector_gold_2h
 
 def ejecutar_detector(nombre, modulo):
     """Ejecuta un detector en un bucle de reintentos (sin recursión)."""
@@ -41,8 +42,7 @@ def main():
     print("="*60)
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
-    print("📊 Detectores activos:")
-    print("  🥇 XAUUSD 1D (Swing)  → detector_gold_1d.py")
+    print("📊 Detectores activos:")    print("  📈 XAUUSD 2H (Intradía medio) → detector_gold_2h.py")    print("  🥇 XAUUSD 1D (Swing)  → detector_gold_1d.py")
     print("  ⚡ XAUUSD SCALPING 1M  → detector_gold_1m.py  (1 minuto)")
     print("  ⚡ XAUUSD SCALPING 5M  → detector_gold_5m.py  (5 minutos)")
     print("  ⚡ XAUUSD SCALPING 15M → detector_gold_15m.py (15 minutos)")
@@ -102,6 +102,15 @@ def main():
         daemon=True
     )
     hilos.append(hilo_scalp_1m)
+
+    # 📈 Hilo para detector 2H (GOLD)
+    hilo_2h = threading.Thread(
+        target=ejecutar_detector,
+        args=("DETECTOR GOLD 2H", detector_gold_2h),
+        name="DetectorGold2H",
+        daemon=True
+    )
+    hilos.append(hilo_2h)
     
     # ⭐ NUEVO: Hilo para monitor de señales
     hilo_monitor = threading.Thread(

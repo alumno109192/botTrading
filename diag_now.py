@@ -76,6 +76,7 @@ def run_once(module_name, label, simbolo_key, tf_label, simbolo_yf):
 for mod, label in [
     ('detectors.gold.detector_gold_1d', 'GOLD 1D'),
     ('detectors.gold.detector_gold_4h', 'GOLD 4H'),
+    ('detectors.gold.detector_gold_2h', 'GOLD 2H'),
     ('detectors.gold.detector_gold_1h', 'GOLD 1H'),
     ('detectors.gold.detector_gold_15m', 'GOLD 15M'),
     ('detectors.gold.detector_gold_5m',  'GOLD 5M'),

@@ -44,6 +44,7 @@ _MAX_VIGENCIA_ACTIVA_HORAS: dict = {
     '5M':  4,    # Micro-scalp: contexto válido máx 4 horas
     '15M': 8,    # Scalp: una sesión de trading (~8h)
     '1H':  16,   # Intraday: sesión completa + asiática nocturna, sin solapar día siguiente
+    '2H':  24,   # Semi-swing: entre intraday y swing corto (1 día hábil)
     '4H':  72,   # Swing corto: 3 días (3 sesiones de 4H)
     '1D':  120,  # Swing largo: 5 días hábiles (1 semana de mercado)
 }
@@ -54,6 +55,7 @@ _AVISO_CADUCIDAD_HORAS_RESTANTES: dict = {
     '5M':  1,    # Avisa con 1h de antelación
     '15M': 2,    # Avisa con 2h de antelación
     '1H':  4,    # Avisa con 4h de antelación
+    '2H':  8,    # Avisa con 8h de antelación
     '4H':  24,   # Avisa con 24h de antelación
     '1D':  48,   # Avisa con 48h de antelación
 }
@@ -63,7 +65,7 @@ def obtener_thread_id(simbolo: str):
     sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
     if sufijo in ('1M', '15M', '5M'):
         return THREAD_ID_SCALPING
-    if sufijo == '1H':
+    if sufijo in ('1H', '2H'):
         return THREAD_ID_INTRADAY
     # 4H, 1D y sin sufijo → Swing
     return THREAD_ID_SWING
