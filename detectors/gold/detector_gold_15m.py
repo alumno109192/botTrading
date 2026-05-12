@@ -224,309 +224,65 @@ class GoldDetector15M(BaseDetector):
             aproximando_soporte = (zsh < close <= zsh + tol)
         
             # ══════════════════════════════════════
-            # SCORING SYSTEM - SCALPING (más sensible)
+            # SCORING SYSTEM — solo EMA + S/R (respaldado por datos: score=4 → 88% WR)
             # ══════════════════════════════════════
             score_sell = 0
             score_buy  = 0
-        
-            # 1. PRICE ACTION SCALPING (peso importante)
-            pa_score = analizar_price_action_scalping(df)
-            if df['Close'].iloc[-1] < df['Open'].iloc[-1]:  # Vela bajista
-                score_sell += pa_score
-            else:
-                score_buy += pa_score
-        
-            # 2. RSI (más sensible en scalping)
-            _rsi_baj_3, _rsi_sub_3 = calcular_aceleracion_rsi(rsi_series)
-            _micro_vol    = calcular_micro_volatilidad(df)
-            _momentum_rec = calcular_momentum_reciente(df)
-            if rsi >= params['rsi_min_sell']:
-                score_sell += 2
-                if _rsi_baj_3: score_sell += 1   # RSI bajando 3 velas consecutivas
-            elif rsi >= 60:
-                score_sell += 1
-        
-            if rsi <= params['rsi_max_buy']:
-                score_buy += 2
-                if _rsi_sub_3: score_buy += 1    # RSI subiendo 3 velas consecutivas
-            elif rsi <= 40:
-                score_buy += 1
+            vol_medio = df['Volume'].iloc[-20:].mean()
 
-            # 2.5. RSI momentum en tendencia fuerte (RSI sostenido ≠ sobrecompra)
-            # En ADX alto el RSI se mantiene elevado en tendencia — es señal, no freno
-            if adx > 40:
-                if 50 <= rsi <= 68 and ema_fast.iloc[-1] > ema_slow.iloc[-1]:
-                    score_buy += 1
-                    logger.info(f"  📈 [15M] RSI trending BUY ({rsi:.1f}) + ADX {adx:.1f} — +1 BUY")
-                elif 32 <= rsi <= 50 and ema_fast.iloc[-1] < ema_slow.iloc[-1]:
-                    score_sell += 1
-                    logger.info(f"  📉 [15M] RSI trending SELL ({rsi:.1f}) + ADX {adx:.1f} — +1 SELL")
-        
-            # 3. EMAs (cruce rápido = señal)
+            # 1. EMA alineada en dirección (necesario)
             if ema_fast.iloc[-1] < ema_slow.iloc[-1]:
                 score_sell += 2
-                if ema_fast.iloc[-2] >= ema_slow.iloc[-2]:  # Cruce reciente
-                    score_sell += 1
-        
             if ema_fast.iloc[-1] > ema_slow.iloc[-1]:
                 score_buy += 2
-                if ema_fast.iloc[-2] <= ema_slow.iloc[-2]:  # Cruce reciente
-                    score_buy += 1
-        
-            # 4. Tendencia general (EMA 50)
+
+            # 2. Tendencia general confirmada por EMA lenta vs EMA tendencia
             if close < ema_trend.iloc[-1]:
                 score_sell += 1
             else:
                 score_buy += 1
-        
-            # 5. Zonas de soporte/resistencia
+
+            # 3. Precio en zona S/R (necesario)
             if en_zona_resist or aproximando_resistencia:
                 score_sell += 2
             if en_zona_soporte or aproximando_soporte:
                 score_buy += 2
-        
-            # 6. ADX (fuerza de tendencia — escalado por intensidad)
-            if adx > 55:
-                _adx_bonus = 3
-            elif adx > 40:
-                _adx_bonus = 2
-            elif adx > 25:
-                _adx_bonus = 1
-            else:
-                _adx_bonus = 0
-            if _adx_bonus > 0:
-                if score_sell > score_buy:
-                    score_sell += _adx_bonus
-                    logger.info(f"  📌 [15M] ADX {adx:.1f} → +{_adx_bonus} SELL")
-                else:
-                    score_buy += _adx_bonus
-                    logger.info(f"  📌 [15M] ADX {adx:.1f} → +{_adx_bonus} BUY")
-        
-            # 7. Volumen (confirma movimiento)
-            vol_medio = df['Volume'].iloc[-20:].mean()
-            if vol > vol_medio * params['vol_mult']:
-                if score_sell > score_buy:
-                    score_sell += 1
-                else:
-                    score_buy += 1
-        
-            # 8. Patrones de velas
-            if patron_envolvente_bajista(df):
-                score_sell += 2
-            if patron_envolvente_alcista(df):
-                score_buy += 2
 
-            # 9. Stop Hunt / Falsa Ruptura (patrón de alta fiabilidad en Gold)
-            if detectar_stop_hunt_bajista(df):
-                score_sell += 3
-                logger.info(f"  🎯 [15M] Stop Hunt BAJISTA detectado — +3 pts SELL")
-            if detectar_stop_hunt_alcista(df):
-                score_buy += 3
-                logger.info(f"  🎯 [15M] Stop Hunt ALCISTA detectado — +3 pts BUY")
+            # Log informativo (no afecta score)
+            logger.info(f"  📊 [15M] Score SELL={score_sell} BUY={score_buy} | "
+                        f"EMA {'SELL' if ema_fast.iloc[-1] < ema_slow.iloc[-1] else 'BUY'} | "
+                        f"Zona {'RESIST' if en_zona_resist else 'aprox_resist' if aproximando_resistencia else '-'}"
+                        f"{'SOPO' if en_zona_soporte else 'aprox_sopo' if aproximando_soporte else ''} | "
+                        f"Vol={vol:.0f} (media={vol_medio:.0f})")
 
-            # 9.5. Doble Techo / Doble Suelo (patrones de inversión)
-            if detectar_doble_techo(df, atr):
-                score_sell += 2
-                logger.info(f"  🎯 [15M] DOBLE TECHO detectado — +2 pts SELL")
-            if detectar_doble_suelo(df, atr):
-                score_buy += 2
-                logger.info(f"  🎯 [15M] DOBLE SUELO detectado — +2 pts BUY")
-
-            # 9.6. V-Reversal (reversión vertical — patrón de alta velocidad)
-            # Parámetros 15M: lookback=16 velas (~4h), mínimo 4.0 ATR caída, 3.0 ATR rebote
-            v_rev_alc, v_min, v_precio = detectar_v_reversal_alcista(df, atr, lookback=16, 
-                                                                       min_caida_atr=4.0, 
-                                                                       min_rebote_atr=3.0)
-            v_rev_baj, v_max, v_precio_baj = detectar_v_reversal_bajista(df, atr, lookback=16,
-                                                                           min_subida_atr=4.0,
-                                                                           min_caida_atr=3.0)
-            if v_rev_alc:
-                score_buy += 4
-                logger.info(f"  ⚡ [15M] V-REVERSAL ALCISTA detectado — mín ${v_min:.2f} → ${v_precio:.2f} — +4 pts BUY")
-            if v_rev_baj:
-                score_sell += 4
-                logger.info(f"  ⚡ [15M] V-REVERSAL BAJISTA detectado — máx ${v_max:.2f} → ${v_precio_baj:.2f} — +4 pts SELL")
-
-            # 10. Canal roto / directriz (patrón de rotura 15M) ─────────────
-            _lkb15 = params.get('sr_lookback', 200)
-            _zm15  = params.get('sr_zone_mult', 1.0)
-            canal_alc_roto_15m, canal_baj_roto_15m, \
-                linea_sop_canal_15m, linea_res_canal_15m = detectar_canal_roto(
-                    df, atr, lookback=_lkb15, wing=3)
-            en_resist_canal_baj_15m, en_sop_canal_alc_15m, \
-                linea_res_precio_15m, linea_sop_precio_15m = detectar_precio_en_canal(
-                    df, atr, lookback=_lkb15, wing=3)
-
-            if canal_alc_roto_15m:
-                score_sell += 2
-                logger.info(f"  🔻 [15M] CANAL ALCISTA ROTO — línea soporte ${linea_sop_canal_15m:.2f}")
-            if canal_baj_roto_15m:
-                score_buy += 2
-                logger.info(f"  🔺 [15M] CANAL BAJISTA ROTO — línea resist ${linea_res_canal_15m:.2f}")
-            if en_resist_canal_baj_15m:
-                score_sell += 3
-                logger.info(f"  📐 [15M] PRECIO EN DIRECTRIZ BAJISTA — ${linea_res_precio_15m:.2f}")
-            if en_sop_canal_alc_15m:
-                score_buy += 3
-                logger.info(f"  📐 [15M] PRECIO EN DIRECTRIZ ALCISTA — ${linea_sop_precio_15m:.2f}")
-
-            # ── Ruptura horizontal directa (sin retest) 15M ────────────────
-            _lkb15_h = params.get('sr_lookback', 200)
-            _rup_sop_15m, _niv_sop_15m = detectar_ruptura_soporte_horizontal(
-                df, atr, lookback=_lkb15_h, wing=3)
-            _rup_res_15m, _niv_res_15m = detectar_ruptura_resistencia_horizontal(
-                df, atr, lookback=_lkb15_h, wing=3)
-            if _rup_sop_15m:
-                score_sell += 4
-                logger.info(f"  💥 [15M] RUPTURA SOPORTE ${_niv_sop_15m:.2f} — +4 pts SELL")
-            if _rup_res_15m:
-                score_buy += 4
-                logger.info(f"  💥 [15M] RUPTURA RESISTENCIA ${_niv_res_15m:.2f} — +4 pts BUY")
-
-            # ── Retest soporte→resistencia / resistencia→soporte (15M) ──────────
-            _retest_res_15m, _niv_retest_res_15m = detectar_retest_resistencia(
-                df, atr, lookback=_lkb15_h, wing=3)
-            _retest_sop_15m, _niv_retest_sop_15m = detectar_retest_soporte(
-                df, atr, lookback=_lkb15_h, wing=3)
-            # Anti-apilamiento: retest y ruptura del mismo nivel no suman doble
-            if _retest_res_15m and not _rup_sop_15m:
-                score_sell += 5
-                logger.info(f"  🔁 [15M] RETEST RESISTENCIA ${_niv_retest_res_15m:.2f} — +5 pts SELL")
-            elif _retest_res_15m and _rup_sop_15m:
-                logger.info(f"  🔁 [15M] RETEST RESISTENCIA ${_niv_retest_res_15m:.2f} — suprimido (ruptura ya puntuó)")
-            if _retest_sop_15m and not _rup_res_15m:
-                score_buy += 5
-                logger.info(f"  🔁 [15M] RETEST SOPORTE ${_niv_retest_sop_15m:.2f} — +5 pts BUY")
-            elif _retest_sop_15m and _rup_res_15m:
-                logger.info(f"  🔁 [15M] RETEST SOPORTE ${_niv_retest_sop_15m:.2f} — suprimido (ruptura ya puntuó)")
-
-            # ── Rechazo en directriz (15M) ───────────────────────────────────────
-            _rec_dir_baj_15m, _precio_dir_baj_15m = detectar_rechazo_en_directriz(
-                df, atr, lookback=_lkb15_h, wing=3, direccion='bajista')
-            _rec_dir_alc_15m, _precio_dir_alc_15m = detectar_rechazo_en_directriz(
-                df, atr, lookback=_lkb15_h, wing=3, direccion='alcista')
-            if _rec_dir_baj_15m:
-                score_sell += 4
-                logger.info(f"  📐 [15M] RECHAZO EN DIRECTRIZ BAJISTA ${_precio_dir_baj_15m:.2f} — +4 pts SELL")
-            if _rec_dir_alc_15m:
-                score_buy += 4
-                logger.info(f"  📐 [15M] RECHAZO EN DIRECTRIZ ALCISTA ${_precio_dir_alc_15m:.2f} — +4 pts BUY")
-
-            # ── Cuña descendente / ascendente (15M) ─────────────────────────────
-            _cuña_desc_15m, _t_desc_15m, _s_desc_15m = detectar_cuña_descendente(
-                df, atr, lookback=_lkb15_h, wing=2, max_amplitud_pct=0.035)
-            _cuña_asc_15m, _t_asc_15m, _s_asc_15m = detectar_cuña_ascendente(
-                df, atr, lookback=_lkb15_h, wing=2, max_amplitud_pct=0.035)
-            if _cuña_desc_15m == 'ruptura_alcista':
-                score_buy += 5
-                logger.info(f"  📐 [15M] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_15m:.2f}) — +5 pts BUY")
-            elif _cuña_desc_15m == 'ruptura_bajista':
-                score_sell += 5
-                logger.info(f"  📐 [15M] CUÑA DESC ROTA A LA BAJA (suelo ${_s_desc_15m:.2f}) — +5 pts SELL")
-            elif _cuña_desc_15m == 'compresion':
-                score_buy += 2
-                logger.info(f"  📐 [15M] CUÑA DESC en compresión ${_s_desc_15m:.2f}-${_t_desc_15m:.2f} — +2 pts BUY")
-            if _cuña_asc_15m == 'ruptura_bajista':
-                score_sell += 5
-                logger.info(f"  📐 [15M] CUÑA ASC ROTA A LA BAJA (suelo ${_s_asc_15m:.2f}) — +5 pts SELL")
-            elif _cuña_asc_15m == 'compresion':
-                score_sell += 2
-                logger.info(f"  📐 [15M] CUÑA ASC en compresión ${_s_asc_15m:.2f}-${_t_asc_15m:.2f} — +2 pts SELL")
-
-            # ── Doble Techo / Doble Suelo (15M) ─────────────────────────────────
-            _dt_15m, _dt_nivel_15m, _dt_neck_15m = detectar_doble_techo(
-                df, atr, lookback=_lkb15_h, tol_mult=0.6)
-            _ds_15m, _ds_nivel_15m, _ds_neck_15m = detectar_doble_suelo(
-                df, atr, lookback=_lkb15_h, tol_mult=0.6)
-            if _dt_15m:
-                score_sell += 4
-                logger.info(f"  🔻 [15M] DOBLE TECHO (M) detectado — techo=${_dt_nivel_15m:.1f} cuello=${_dt_neck_15m:.1f} — +4 pts SELL")
-            if _ds_15m:
-                score_buy += 4
-                logger.info(f"  🔺 [15M] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_15m:.1f} cuello=${_ds_neck_15m:.1f} — +4 pts BUY")
-
-            # ── Confirmación 1M — "la puntilla" ─────────────────────────────────
-            # Solo si score está en zona de desempate (4–7), evita llamadas innecesarias
-            _umbral_conf_15 = 10
-            _necesita_conf_sell = 4 <= score_sell < _umbral_conf_15
-            _necesita_conf_buy  = 4 <= score_buy  < _umbral_conf_15
-            if _necesita_conf_sell or _necesita_conf_buy:
-                try:
-                    df_1m, _ = get_ohlcv(params['ticker_yf'], period='1d', interval='1m')
-                    if df_1m is not None and len(df_1m) >= 10:
-                        atr_1m = float(calcular_atr(df_1m, 7).iloc[-1])
-                        if _necesita_conf_sell:
-                            _env_baj_1m   = patron_envolvente_bajista(df_1m)
-                            _sh_baj_1m    = detectar_stop_hunt_bajista(df_1m, atr_1m)
-                            _rej_dir_1m_s = detectar_rechazo_en_directriz(
-                                df_1m, atr_1m, lookback=60, wing=2, direccion='bajista')[0]
-                            if _env_baj_1m or _sh_baj_1m or _rej_dir_1m_s:
-                                score_sell += 2
-                                motivo = ('envolvente' if _env_baj_1m
-                                          else 'stop hunt' if _sh_baj_1m else 'directriz')
-                                logger.info(f"  🎯 [1M] Confirmación SELL ({motivo}) — +2 pts SELL")
-                        if _necesita_conf_buy:
-                            _env_alc_1m   = patron_envolvente_alcista(df_1m)
-                            _sh_alc_1m    = detectar_stop_hunt_alcista(df_1m, atr_1m)
-                            _rej_dir_1m_b = detectar_rechazo_en_directriz(
-                                df_1m, atr_1m, lookback=60, wing=2, direccion='alcista')[0]
-                            if _env_alc_1m or _sh_alc_1m or _rej_dir_1m_b:
-                                score_buy += 2
-                                motivo = ('envolvente' if _env_alc_1m
-                                          else 'stop hunt' if _sh_alc_1m else 'directriz')
-                                logger.info(f"  🎯 [1M] Confirmación BUY ({motivo}) — +2 pts BUY")
-                except Exception as _e_1m:
-                    logger.debug(f"  [1M] No se pudo obtener confirmación: {_e_1m}")
-
-            # Score máximo: ~30 puntos (+2 del confirmador 1M)
-            max_score = 30
-        
-            # ══════════════════════════════════════
-            # NIVELES DE SEÑAL 15M — solo FUERTE llega a Telegram
-            # ══════════════════════════════════════
-            senal_sell_fuerte = score_sell >= 10   # antes: 8
-            senal_buy_fuerte  = score_buy  >= 10   # antes: 8
-
-            # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
-            dxy_bias = get_dxy_bias()
-            score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
-
-            # ── Ajuste por COT Report (posiciones institucionales semanales) ──
-            _cot_bias, _cot_ratio = get_cot_bias()
-            score_buy, score_sell = ajustar_score_por_cot(score_buy, score_sell, _cot_bias)
-
-            # ── Ajuste por Open Interest / Volumen (fuerza de tendencia) ──
-            _oi_bias = get_oi_bias()
-            score_buy, score_sell = ajustar_score_por_oi(score_buy, score_sell, _oi_bias)
-
-            # ── Filtro de volumen: penalizar señales en velas de bajo volumen ──
-            score_sell, score_buy, _vol_bajo = self.ajustar_scores_por_volumen(
-                score_sell, score_buy, vol, vol_medio, params['vol_mult'])
-            if _vol_bajo:
-                logger.info(f"  ⚠️ [15M] Volumen bajo ({vol:.0f} < {vol_medio * params['vol_mult']:.0f}) — scores penalizados -3")
-
-            # Recalcular umbrales tras ajuste DXY y filtro de volumen (con umbral adaptativo)
-            # ── Micro-volatilidad y momentum reciente ─────────────────────────────
-            if _micro_vol > 1.5:
-                if score_sell > score_buy:
-                    score_sell = min(score_sell + 1, 23)
-                    logger.info(f"  📈 [15M] Micro-vol {_micro_vol:.2f} (expansión) — +1 SELL")
-                elif score_buy > score_sell:
-                    score_buy = min(score_buy + 1, 23)
-                    logger.info(f"  📈 [15M] Micro-vol {_micro_vol:.2f} (expansión) — +1 BUY")
-            elif _micro_vol < 0.8:
-                score_sell = max(0, score_sell - 1)
-                score_buy  = max(0, score_buy  - 1)
-                logger.info(f"  😴 [15M] Micro-vol {_micro_vol:.2f} (dormido) — -1 ambos scores")
-            if _momentum_rec == -1 and (en_zona_resist or aproximando_resistencia):
-                score_sell = min(score_sell + 1, 23)
-                logger.info(f"  🔻 [15M] Momentum bajista en resistencia — +1 SELL")
-            elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
-                score_buy = min(score_buy + 1, 23)
-                logger.info(f"  🔺 [15M] Momentum alcista en soporte — +1 BUY")
-            _umbral_fue = self.umbral_adaptativo(5, atr, atr_media)    # datos reales: score=4 → 88% WR
+            # Umbral: 4 = EMA + S/R alineados → señal. 5 = + confirmación EMA tendencia
+            _umbral_fue = 4
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
+
+            # Variables que el snapshot BD espera (se mantienen para compatibilidad)
+            _rsi_baj_3 = _rsi_sub_3 = False
+            _micro_vol = 1.0
+            _momentum_rec = 0
+            dxy_bias = None
+            _cot_bias = None
+            _oi_bias = None
+            canal_alc_roto_15m = canal_baj_roto_15m = False
+            linea_sop_canal_15m = linea_res_canal_15m = 0.0
+            en_resist_canal_baj_15m = en_sop_canal_alc_15m = False
+            linea_res_precio_15m = linea_sop_precio_15m = 0.0
+            _rup_sop_15m = _rup_res_15m = False
+            _niv_sop_15m = _niv_res_15m = 0.0
+            _retest_res_15m = _retest_sop_15m = False
+            _niv_retest_res_15m = _niv_retest_sop_15m = 0.0
+            _rec_dir_baj_15m = _rec_dir_alc_15m = False
+            _precio_dir_baj_15m = _precio_dir_alc_15m = 0.0
+            _cuña_desc_15m = _cuña_asc_15m = None
+            _t_desc_15m = _s_desc_15m = _t_asc_15m = _s_asc_15m = 0.0
+            _dt_15m = _ds_15m = False
+            _dt_nivel_15m = _dt_neck_15m = _ds_nivel_15m = _ds_neck_15m = 0.0
+            v_rev_alc = v_rev_baj = False
+            v_min = v_precio = v_max = v_precio_baj = 0.0
 
             # ── Snapshot completo de condiciones para backtesting/estudio ─────
             _condiciones_bd = {

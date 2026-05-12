@@ -491,67 +491,17 @@ class GoldDetector1H(BaseDetector):
             _prob_sell = 0.0
             _etiq_sell = 'NEUTRO'
 
-        # ── SCORING VENTA ──────────────────────────────────────────
-        intento_rotura_fallido = (high >= zrl) and (close < zrl)
-        shooting_star     = is_bearish and upper_wick > body*2 and lower_wick < body*0.3 and en_zona_resist_any
-        bearish_engulfing = is_bearish and open_ >= float(prev['High']) and close <= float(prev['Low']) and en_zona_resist_any
-        bearish_marubozu  = is_bearish and body > total_range*0.8 and en_zona_resist_any
-        doji_resist       = body < total_range*0.1 and en_zona_resist_any and upper_wick > body*2
-        vela_rechazo      = shooting_star or bearish_engulfing or bearish_marubozu or doji_resist
-        rsi_alto_girando  = (rsi >= rsms) and (rsi < rsi_prev)
-        rsi_sobrecompra   = rsi >= 70
-        # Contexto: aceleración RSI, micro-volatilidad, momentum intraday (compartidos sell/buy)
-        _rsi_baj_3, _rsi_sub_3 = calcular_aceleracion_rsi(df['rsi'])
-        _micro_vol    = calcular_micro_volatilidad(df)
-        _momentum_rec = calcular_momentum_reciente(df)
-        rsi_acelerando_bajada = rsi_alto_girando and _rsi_baj_3
-        lookback          = 5
-        price_new_high      = high > float(df['High'].iloc[-lookback-2:-2].max())
-        rsi_lower_high      = rsi  < float(df['rsi'].iloc[-lookback-2:-2].max())
-        divergencia_bajista = price_new_high and rsi_lower_high and rsi > 50
-        vol_alto_rechazo    = vol > vol_avg * vm
-        vol_decreciente     = (vol < float(prev['Volume'])) and (float(prev['Volume']) < float(p2['Volume'])) and is_bullish
-        emas_bajistas       = ema_fast < ema_slow
-        bajo_ema200         = close < ema_trend
-        estructura_bajista  = ((high < float(prev['High']) and float(prev['High']) < float(p2['High'])) or
-                               (low  < float(prev['Low'])  and float(prev['Low'])  < float(p2['Low'])))
-        bb_toca_superior        = close >= bb_upper or high >= bb_upper
-        macd_cruce_bajista      = (macd < macd_signal) and (macd_hist < 0) and (macd_hist_prev >= 0)
-        macd_divergencia_bajista = price_new_high and (macd < float(df['macd'].iloc[-lookback-2:-2].max()))
-        macd_negativo           = macd < 0
-        adx_tendencia_fuerte    = adx > 25
-        adx_bajista             = (di_minus > di_plus) and adx_tendencia_fuerte
-        adx_lateral             = adx < 20
-        obv_divergencia_bajista = price_new_high and (obv < float(df['obv'].iloc[-lookback-2:-2].max()))
-        obv_decreciente         = obv < obv_prev and obv < obv_ema
-        evening_star            = detectar_evening_star(df, len(df) - 2)
+        # ── SCORING VENTA — solo EMA + S/R ─────────────────────────────────
+        emas_bajistas = ema_fast < ema_slow
+        bajo_ema200   = close < ema_trend
+        adx_lateral   = adx < 20
 
         score_sell = (
-            (2 if en_zona_resist_any       else 0) +
-            (2 if vela_rechazo             else 0) +
-            (2 if vol_alto_rechazo         else 0) +
-            (1 if rsi_alto_girando         else 0) +
-            (1 if rsi_acelerando_bajada     else 0) +   # RSI bajando 3 velas consecutivas
-            (1 if rsi_sobrecompra          else 0) +
-            (1 if divergencia_bajista      else 0) +
-            (1 if emas_bajistas            else 0) +
-            (1 if estructura_bajista       else 0) +
-            (1 if intento_rotura_fallido   else 0) +
-            (1 if vol_decreciente          else 0) +
-            (1 if (shooting_star and vol_alto_rechazo)      else 0) +
-            (1 if (divergencia_bajista and rsi_sobrecompra) else 0) +
-            (1 if bajo_ema200              else 0) +
-            (2 if bb_toca_superior         else 0) +
-            (2 if evening_star             else 0) +
-            (2 if macd_cruce_bajista       else 0) +
-            (2 if adx_bajista              else 0) +
-            (1 if macd_divergencia_bajista else 0) +
-            (1 if obv_divergencia_bajista  else 0) +
-            (1 if obv_decreciente          else 0) +
-            (1 if macd_negativo            else 0) +
-            (2 if canal_alcista_roto       else 0)   # canal alcista roto → sesgo bajista fuerte
+            (2 if en_zona_resist_any else 0) +   # precio en nivel S/R de resistencia
+            (2 if emas_bajistas      else 0) +   # EMA rápida por debajo de EMA lenta
+            (1 if bajo_ema200        else 0)      # precio bajo EMA 200 (tendencia bajista)
         )
-        score_buy = 0  # inicializar aquí para que ruptura/cuña BUY no se pierdan al hacer +=
+        score_buy = 0
         # ── Ruptura horizontal directa (sin retest) 1H ─────────────────────
         _lkb_1h = params.get('sr_lookback', 100)
         _rup_sop_1h, _niv_sop_1h = detectar_ruptura_soporte_horizontal(
@@ -574,205 +524,67 @@ class GoldDetector1H(BaseDetector):
             score_buy += 2
             logger.info(f"  📌 [1H] Precio en soporte S/R intermedio ${_nsr2:.2f} — +2 pts BUY")
 
-        # ── Cuña descendente / ascendente (1H) ──────────────────────────────
+        # ── Cuña descendente / ascendente (1H) — solo detección para snapshot ──
         _lkb_cuña_1h = min(params.get('sr_lookback', 100), 80)
         _cuña_desc_1h, _t_desc_1h, _s_desc_1h = detectar_cuña_descendente(
             df, atr, lookback=_lkb_cuña_1h, wing=3, max_amplitud_pct=0.025)
         _cuña_asc_1h, _t_asc_1h, _s_asc_1h = detectar_cuña_ascendente(
             df, atr, lookback=_lkb_cuña_1h, wing=3, max_amplitud_pct=0.025)
-        if _cuña_desc_1h == 'ruptura_alcista':
-            score_buy += 6
-            logger.info(f"  📐 [1H] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_1h:.2f}) — +6 pts BUY")
-        elif _cuña_desc_1h == 'ruptura_bajista':
-            score_sell += 6
-            logger.info(f"  📐 [1H] CUÑA DESC ROTA A LA BAJA (suelo ${_s_desc_1h:.2f}) — +6 pts SELL")
-        elif _cuña_desc_1h == 'compresion':
-            score_buy += 2
-            logger.info(f"  📐 [1H] CUÑA DESC en compresión ${_s_desc_1h:.2f}-${_t_desc_1h:.2f} — +2 pts BUY")
-        if _cuña_asc_1h == 'ruptura_bajista':
-            score_sell += 6
-            logger.info(f"  📐 [1H] CUÑA ASC ROTA A LA BAJA (suelo ${_s_asc_1h:.2f}) — +6 pts SELL")
-        elif _cuña_asc_1h == 'compresion':
-            score_sell += 2
-            logger.info(f"  📐 [1H] CUÑA ASC en compresión ${_s_asc_1h:.2f}-${_t_asc_1h:.2f} — +2 pts SELL")
 
         # ── Doble Techo / Doble Suelo (1H) ──────────────────────────────────────
         _dt_1h, _dt_nivel_1h, _dt_neck_1h = detectar_doble_techo(
             df, atr, lookback=_lkb_1h, tol_mult=0.6)
         _ds_1h, _ds_nivel_1h, _ds_neck_1h = detectar_doble_suelo(
             df, atr, lookback=_lkb_1h, tol_mult=0.6)
-        if _dt_1h:
-            score_sell += 4
-            logger.info(f"  🔻 [1H] DOBLE TECHO (M) detectado — techo=${_dt_nivel_1h:.1f} cuello=${_dt_neck_1h:.1f} — +4 pts SELL")
-        if _ds_1h:
-            score_buy += 4
-            logger.info(f"  🔺 [1H] DOBLE SUELO (W) detectado — suelo=${_ds_nivel_1h:.1f} cuello=${_ds_neck_1h:.1f} — +4 pts BUY")
 
-        # ── V-Reversal (1H) — Reversión vertical de alta velocidad ─────────────
-        # Parámetros 1H: lookback=12 velas (~12h), mínimo 5.0 ATR caída, 4.0 ATR rebote
-        v_rev_alc_1h, v_min_1h, v_precio_1h = detectar_v_reversal_alcista(
-            df, atr, lookback=12, min_caida_atr=5.0, min_rebote_atr=4.0)
-        v_rev_baj_1h, v_max_1h, v_precio_baj_1h = detectar_v_reversal_bajista(
-            df, atr, lookback=12, min_subida_atr=5.0, min_caida_atr=4.0)
-        if v_rev_alc_1h:
-            score_buy += 5
-            logger.info(f"  ⚡ [1H] V-REVERSAL ALCISTA detectado — mín ${v_min_1h:.2f} → ${v_precio_1h:.2f} — +5 pts BUY")
-        if v_rev_baj_1h:
-            score_sell += 5
-            logger.info(f"  ⚡ [1H] V-REVERSAL BAJISTA detectado — máx ${v_max_1h:.2f} → ${v_precio_baj_1h:.2f} — +5 pts SELL")
+        # Variables para compatibilidad con snapshot y mensajes
+        v_rev_alc_1h = v_rev_baj_1h = False
+        v_min_1h = v_precio_1h = v_max_1h = v_precio_baj_1h = 0.0
 
-        if adx_lateral and not en_zona_resist_any: score_sell = max(0, score_sell - 3)
-
-        # ── SCORING COMPRA ─────────────────────────────────────────
-        intento_caida_fallido   = (low <= zsh) and (close > zsh)
-        hammer            = is_bullish and lower_wick > body*2 and upper_wick < body*0.3 and en_zona_soporte_any
-        bullish_engulfing = is_bullish and open_ <= float(prev['Low']) and close >= float(prev['High']) and en_zona_soporte_any
-        bullish_marubozu  = is_bullish and body > total_range*0.8 and en_zona_soporte_any
-        doji_soporte      = body < total_range*0.1 and en_zona_soporte_any and lower_wick > body*2
-        vela_rebote       = hammer or bullish_engulfing or bullish_marubozu or doji_soporte
-        rsi_bajo_girando  = (rsi <= rsmb) and (rsi > rsi_prev)
-        rsi_acelerando_subida = rsi_bajo_girando and _rsi_sub_3
-        rsi_sobreventa    = rsi <= 30
-        price_new_low       = low < float(df['Low'].iloc[-lookback-2:-2].min())
-        rsi_higher_low      = rsi > float(df['rsi'].iloc[-lookback-2:-2].min())
-        divergencia_alcista = price_new_low and rsi_higher_low and rsi < 50
-        vol_alto_rebote      = vol > vol_avg * vm
-        vol_decreciente_sell = (vol < float(prev['Volume'])) and (float(prev['Volume']) < float(p2['Volume'])) and is_bearish
-        emas_alcistas       = ema_fast > ema_slow
-        sobre_ema200        = close > ema_trend
-        estructura_alcista  = ((high > float(prev['High']) and float(prev['High']) > float(p2['High'])) or
-                               (low  > float(prev['Low'])  and float(prev['Low'])  > float(p2['Low'])))
-        bb_toca_inferior        = close <= bb_lower or low <= bb_lower
-        macd_cruce_alcista      = (macd > macd_signal) and (macd_hist > 0) and (macd_hist_prev <= 0)
-        macd_divergencia_alcista = price_new_low and (macd > float(df['macd'].iloc[-lookback-2:-2].min()))
-        macd_positivo           = macd > 0
-        adx_alcista             = (di_plus > di_minus) and adx_tendencia_fuerte
-        obv_divergencia_alcista = price_new_low and (obv > float(df['obv'].iloc[-lookback-2:-2].min()))
-        obv_creciente           = obv > obv_prev and obv > obv_ema
-        morning_star            = detectar_morning_star(df, len(df) - 2)
+        # ── SCORING COMPRA — solo EMA + S/R ────────────────────────────────
+        emas_alcistas = ema_fast > ema_slow
+        sobre_ema200  = close > ema_trend
 
         score_buy += (
-            (2 if en_zona_soporte_any        else 0) +
-            (2 if vela_rebote                else 0) +
-            (2 if vol_alto_rebote            else 0) +
-            (1 if rsi_bajo_girando           else 0) +
-            (1 if rsi_acelerando_subida       else 0) +   # RSI subiendo 3 velas consecutivas
-            (1 if rsi_sobreventa             else 0) +
-            (1 if divergencia_alcista        else 0) +
-            (1 if emas_alcistas              else 0) +
-            (1 if estructura_alcista         else 0) +
-            (1 if intento_caida_fallido      else 0) +
-            (1 if vol_decreciente_sell       else 0) +
-            (1 if (hammer and vol_alto_rebote)              else 0) +
-            (1 if (divergencia_alcista and rsi_sobreventa)  else 0) +
-            (1 if sobre_ema200               else 0) +
-            (2 if bb_toca_inferior           else 0) +
-            (2 if morning_star               else 0) +
-            (2 if macd_cruce_alcista         else 0) +
-            (2 if adx_alcista                else 0) +
-            (1 if macd_divergencia_alcista   else 0) +
-            (1 if obv_divergencia_alcista    else 0) +
-            (1 if obv_creciente              else 0) +
-            (1 if macd_positivo              else 0) +
-            (2 if canal_bajista_roto         else 0)   # canal bajista roto → sesgo alcista fuerte
+            (2 if en_zona_soporte_any else 0) +   # precio en nivel S/R de soporte
+            (2 if emas_alcistas       else 0) +   # EMA rápida por encima de EMA lenta
+            (1 if sobre_ema200        else 0)      # precio sobre EMA 200 (tendencia alcista)
         )
-        # ADX lateral en zona soporte: no penalizar (consolidación = agotamiento bajista)
-        if adx_lateral and not en_zona_soporte_any: score_buy = max(0, score_buy - 3)
 
-        # ── FIBONACCI RETRACEMENT DINÁMICO (1H) ─────────────────────────────────
-        _fib_nivel_1h, _fib_precio_1h, _fib_tend_1h = detectar_precio_en_fibonacci(
-            df, atr, lookback=params.get('sr_lookback', 80), tol_mult=0.5)
-        if _fib_nivel_1h is not None:
-            if _fib_tend_1h == 'bajista':
-                _pts_fib_1h = 5 if _fib_nivel_1h in (0.382, 0.5) else 3
-                score_sell += _pts_fib_1h
-                logger.info(f"  🔢 [1H] Fib {_fib_nivel_1h} BAJISTA en ${_fib_precio_1h:.2f} — +{_pts_fib_1h} pts SELL")
-            else:
-                _pts_fib_1h = 5 if _fib_nivel_1h in (0.5, 0.618) else 3
-                score_buy += _pts_fib_1h
-                logger.info(f"  🔢 [1H] Fib {_fib_nivel_1h} ALCISTA en ${_fib_precio_1h:.2f} — +{_pts_fib_1h} pts BUY")
+        logger.info(f"  📊 [1H] Score SELL={score_sell} BUY={score_buy} | "
+                    f"EMA {'SELL' if emas_bajistas else 'BUY'} | "
+                    f"Zona {'RESIST' if en_zona_resist_any else '-'}/{'SOPO' if en_zona_soporte_any else '-'}")
 
-        _fib_data_1h = calcular_fibonacci(df, lookback=params.get('sr_lookback', 80))
-        if _fib_data_1h:
-            _n1 = _fib_data_1h['niveles']
-            logger.info(
-                f"  📐 [1H] Fib ({_fib_data_1h['tendencia']}) "
-                f"0.382=${_n1[0.382]:.0f} 0.5=${_n1[0.5]:.0f} "
-                f"0.618=${_n1[0.618]:.0f} 0.786=${_n1[0.786]:.0f}"
-            )
+        # Variables para compatibilidad con snapshot y mensajes
+        _fib_nivel_1h = _fib_precio_1h = None
+        _fib_tend_1h = None
+        _fib_data_1h = None
+        _todos_sop_1h = list(_sop_interm_1h)
+        _todas_res_1h = list(_res_interm_1h)
+        _rebote_baj_1h = _rebote_alc_1h = False
+        _desc_baj_1h = _desc_alc_1h = ''
+        dxy_bias = None
+        _cot_bias = _cot_ratio = None
+        _yield_bias = _yield_val = _yield_ma = None
+        _oi_bias = None
+        _noticias = {}
+        _sesgo_news = 'ESPERAR'
+        _sesgo_etiq = 'NEUTRAL'
+        _sesgo_score = 0.0
+        _vol_bajo = False
+        # Patrones velas eliminados — stubs para mensajes de Telegram y BD
+        evening_star = morning_star = False
+        shooting_star = hammer = False
+        vela_rechazo = vela_rebote = False
+        intento_rotura_fallido = intento_caida_fallido = False
 
-        # ── REBOTE EN S/R O FIBONACCI (1H) ──────────────────────────────────────
-        _todos_sop_1h  = list(_sop_interm_1h) + ([_fib_precio_1h] if _fib_tend_1h == 'alcista' and _fib_nivel_1h else [])
-        _todas_res_1h  = list(_res_interm_1h) + ([_fib_precio_1h] if _fib_tend_1h == 'bajista' and _fib_nivel_1h else [])
-
-        # ── Añadir niveles de Pivots diarios a S/R ──────────────────────────────
-        if _pivots_1h:
-            _piv_sop, _piv_res, _piv_info = evaluar_precio_vs_pivots(
-                close, high, low, _pivots_1h, atr, tol_mult=0.3)
-            _todos_sop_1h = list({*_todos_sop_1h, *_piv_sop})
-            _todas_res_1h = list({*_todas_res_1h, *_piv_res})
-            logger.info(f"  🎯 [1H] Pivots diarios: PP=${_pivots_1h['PP']:.2f} | {_piv_info}")
-
-        _rsi_serie_1h  = df['rsi']
-
-        _rebote_baj_1h, _desc_baj_1h = detectar_rebote_bajista(
-            df, atr, _rsi_serie_1h, _todas_res_1h, tol_mult=0.6)
-        _rebote_alc_1h, _desc_alc_1h = detectar_rebote_alcista(
-            df, atr, _rsi_serie_1h, _todos_sop_1h, tol_mult=0.6)
-
-        if _rebote_baj_1h:
-            score_sell += 4
-            logger.info(f"  🔄 [1H] REBOTE BAJISTA detectado ({_desc_baj_1h}) — +4 pts SELL")
-        if _rebote_alc_1h:
-            score_buy += 4
-            logger.info(f"  🔄 [1H] REBOTE ALCISTA detectado ({_desc_alc_1h}) — +4 pts BUY")
-
-        # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
-        dxy_bias = get_dxy_bias()
-        score_buy, score_sell = ajustar_score_por_dxy(score_buy, score_sell, dxy_bias)
-
-        # ── Ajuste por COT Report (posiciones institucionales semanales) ──
-        _cot_bias, _cot_ratio = get_cot_bias()
-        score_buy, score_sell = ajustar_score_por_cot(score_buy, score_sell, _cot_bias)
-
-        # ── Ajuste por Yields Reales 10Y (correlación inversa con Gold) ──
-        _yield_bias, _yield_val, _yield_ma = get_yield_bias()
-        score_buy, score_sell = ajustar_score_por_yield(score_buy, score_sell, _yield_bias)
-
-        # ── Ajuste por Open Interest / Volumen (fuerza de tendencia) ──
-        _oi_bias = get_oi_bias()
-        score_buy, score_sell = ajustar_score_por_oi(score_buy, score_sell, _oi_bias)
-
-        # ── Sesgo fundamental de noticias ──────────────────────────────────────────
-        _noticias      = obtener_sesgo_actual()
-        _sesgo_news    = _noticias.get('conclusion', 'ESPERAR')   # BUSCAR_COMPRAS | BUSCAR_VENTAS | ESPERAR
-        _sesgo_etiq    = _noticias.get('sesgo', 'NEUTRAL')
-        _sesgo_score   = _noticias.get('score_medio', 0.0)
-        # Ajuste suave: +1 si noticias alinean con la señal, -1 si contradicen (máx ±1)
-        if _sesgo_news == 'BUSCAR_COMPRAS':
-            score_buy  = min(score_buy  + 1, 23)
-            score_sell = max(score_sell - 1, 0)
-        elif _sesgo_news == 'BUSCAR_VENTAS':
-            score_sell = min(score_sell + 1, 23)
-            score_buy  = max(score_buy  - 1, 0)
-
-        # ── Filtro de volumen: penalizar señales en velas de bajo volumen ──
-        score_sell, score_buy, _vol_bajo = self.ajustar_scores_por_volumen(
-            score_sell, score_buy, vol, vol_avg, vm)
-        if _vol_bajo:
-            logger.info(f"  ⚠️ [1H] Volumen bajo ({vol:.0f} < {vol_avg * vm:.0f}) — scores penalizados -3")
-
-        # ── Contexto multi-TF: ¿es el canal roto un PULLBACK dentro de tendencia? ──
+        # ── Contexto HTF (solo para filtro obligatorio HTF) ──────────────────
         _bias_1d   = tf_bias.obtener_sesgo(simbolo, '1D')
-        _bias_1w   = tf_bias.obtener_sesgo(simbolo, '1W')
         _bias_4h   = tf_bias.obtener_sesgo(simbolo, '4H')
-        _canal_4h  = tf_bias.obtener_canal_4h(simbolo)
-        _canal_1d  = tf_bias.obtener_canal_1d(simbolo)
-        _canal_1w  = tf_bias.obtener_canal_1w(simbolo)
-        _pullback_4h = tf_bias.obtener_pullback_4h(simbolo)   # estado pullback del TF superior
+        _pullback_4h = tf_bias.obtener_pullback_4h(simbolo)
         _dir_1d    = _bias_1d['bias']  if _bias_1d  else tf_bias.BIAS_NEUTRAL
-        _dir_1w    = _bias_1w['bias']  if _bias_1w  else tf_bias.BIAS_NEUTRAL
         _dir_4h    = _bias_4h['bias']  if _bias_4h  else tf_bias.BIAS_NEUTRAL
+        _dir_1w    = tf_bias.BIAS_NEUTRAL
 
         # Contexto pullback 4H para mensajes
         _ctx_pb4h = ""
@@ -788,190 +600,10 @@ class GoldDetector1H(BaseDetector):
                          f"🔄 <b>4H:</b> Pullback {_pb4h_tend} ({round(_pb4h_prof * 100, 0):.0f}%)")
         self.contexto_pullback = _ctx_pb4h
 
-        # Estado de canal por TF superior
-        _canal_4h_alcista_roto = _canal_4h['alcista_roto']  if _canal_4h else False
-        _canal_4h_bajista_roto = _canal_4h['bajista_roto']  if _canal_4h else False
-        _linea_canal_4h_sop    = _canal_4h['linea_soporte'] if _canal_4h else 0.0
-        _linea_canal_4h_res    = _canal_4h['linea_resist']  if _canal_4h else 0.0
-
-        _canal_1d_alcista_roto = _canal_1d['alcista_roto']  if _canal_1d else False
-        _canal_1d_bajista_roto = _canal_1d['bajista_roto']  if _canal_1d else False
-        _linea_canal_1d_sop    = _canal_1d['linea_soporte'] if _canal_1d else 0.0
-        _linea_canal_1d_res    = _canal_1d['linea_resist']  if _canal_1d else 0.0
-
-        _canal_1w_alcista_roto = _canal_1w['alcista_roto']  if _canal_1w else False
-        _canal_1w_bajista_roto = _canal_1w['bajista_roto']  if _canal_1w else False
-        _linea_canal_1w_sop    = _canal_1w['linea_soporte'] if _canal_1w else 0.0
-        _linea_canal_1w_res    = _canal_1w['linea_resist']  if _canal_1w else 0.0
-
-        # HTF alcista/bajista por sesgo de precio
-        _htf_alcista = (_dir_1d == tf_bias.BIAS_BULLISH or
-                        _dir_1w == tf_bias.BIAS_BULLISH or
-                        _dir_4h == tf_bias.BIAS_BULLISH)
-        _htf_bajista = (_dir_1d == tf_bias.BIAS_BEARISH or
-                        _dir_1w == tf_bias.BIAS_BEARISH or
-                        _dir_4h == tf_bias.BIAS_BEARISH)
-
-        # Confirmación multi-TF: el mismo canal se ve roto en TFs superiores
-        # Cuantos más TFs confirman, más fuerte es la señal (no es un pullback)
-        _n_confirm_sell = sum([_canal_4h_alcista_roto, _canal_1d_alcista_roto, _canal_1w_alcista_roto])
-        _n_confirm_buy  = sum([_canal_4h_bajista_roto, _canal_1d_bajista_roto, _canal_1w_bajista_roto])
-
-        canal_sell_confirmado_4h = canal_alcista_roto and _canal_4h_alcista_roto
-        canal_buy_confirmado_4h  = canal_bajista_roto and _canal_4h_bajista_roto
-        canal_sell_confirmado_1d = canal_alcista_roto and _canal_1d_alcista_roto
-        canal_buy_confirmado_1d  = canal_bajista_roto and _canal_1d_bajista_roto
-        canal_sell_confirmado_1w = canal_alcista_roto and _canal_1w_alcista_roto
-        canal_buy_confirmado_1w  = canal_bajista_roto and _canal_1w_bajista_roto
-
-        # Si algún TF superior confirma el canal roto → señal real, no pullback
-        _sell_confirmado_htf = canal_sell_confirmado_4h or canal_sell_confirmado_1d or canal_sell_confirmado_1w
-        _buy_confirmado_htf  = canal_buy_confirmado_4h  or canal_buy_confirmado_1d  or canal_buy_confirmado_1w
-
-        # Bonus de score por cada TF superior que confirma (+1 por cada uno, máx +3)
-        score_sell = min(score_sell + _n_confirm_sell, 23)
-        score_buy  = min(score_buy  + _n_confirm_buy,  23)
-
-        pullback_alcista = canal_alcista_roto and _htf_alcista and not _sell_confirmado_htf
-        pullback_bajista = canal_bajista_roto and _htf_bajista and not _buy_confirmado_htf
-
-        if pullback_alcista:
-            score_sell = max(0, score_sell - 4)
-            logger.warning(f"  ⚠️ PULLBACK alcista — canal roto bajista pero HTF (1D/1W/4H) es BULLISH → penalizar SELL")
-
-            # ── Alerta crítica: solo al activarse el pullback (edge-trigger) ──
-            # No se repite mientras el pullback persiste; se resetea al resolverse.
-            clave_alerta = f"pullback_alcista_{simbolo}"
-            estaba_activo = _estado_pullback.get(clave_alerta, False)
-            _estado_pullback[clave_alerta] = True
-
-            if not estaba_activo and self.db:
-                try:
-                    senales_activas = self.db.obtener_senales_activas()
-                    sell_activas = [s for s in senales_activas 
-                                    if s['direccion'] == 'VENTA' 
-                                    and simbolo in s['simbolo']]
-                    
-                    if sell_activas:
-                        _htf_desc = []
-                        if _dir_4h == tf_bias.BIAS_BULLISH: _htf_desc.append("4H↗️")
-                        if _dir_1d == tf_bias.BIAS_BULLISH: _htf_desc.append("1D↗️")
-                        if _dir_1w == tf_bias.BIAS_BULLISH: _htf_desc.append("1W↗️")
-                        _htf_str = " + ".join(_htf_desc) if _htf_desc else "HTF alcista"
-                        
-                        mensaje_alerta = f"""
-🚨 <b>ALERTA CRÍTICA - PULLBACK ALCISTA</b>
-
-⚠️ {simbolo} 1H detecta <b>CONFLICTO</b>:
-• 1H: Canal alcista roto (señal bajista)
-• HTF: {_htf_str} <b>BULLISH</b>
-• Precio: ${close:.2f}
-
-📊 <b>Señales SELL activas en riesgo: {len(sell_activas)}</b>
-
-{chr(10).join([f"  • {s['simbolo']} - Entrada: ${s['precio_entrada']:.2f}" for s in sell_activas[:3]])}
-
-💡 <b>RECOMENDACIÓN:</b>
-• Considerar cierre defensivo de SELL
-• Mover SL a breakeven
-• Esperar confirmación HTF bajista
-
-━━━━━━━━━━━━━━━━━━━━
-ℹ️ <i>Alerta única — no se repetirá mientras el pullback esté activo</i>
-⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
-"""
-                        enviar_telegram(mensaje_alerta)
-                        logger.info(f"  🚨 Alerta PULLBACK alcista enviada — {len(sell_activas)} señales SELL en riesgo")
-                except Exception as e:
-                    logger.error(f"  ❌ Error verificando señales activas para alerta pullback: {e}")
-        else:
-            # Pullback resuelto → resetear para que la próxima activación vuelva a notificar
-            _estado_pullback.pop(f"pullback_alcista_{simbolo}", None)
-        if pullback_bajista:
-            score_buy  = max(0, score_buy  - 4)
-            logger.warning(f"  ⚠️ PULLBACK bajista — canal roto alcista pero HTF (1D/1W/4H) es BEARISH → penalizar BUY")
-
-            # ── Alerta crítica: solo al activarse el pullback (edge-trigger) ──
-            # No se repite mientras el pullback persiste; se resetea al resolverse.
-            clave_alerta = f"pullback_bajista_{simbolo}"
-            estaba_activo = _estado_pullback.get(clave_alerta, False)
-            _estado_pullback[clave_alerta] = True
-
-            if not estaba_activo and self.db:
-                try:
-                    senales_activas = self.db.obtener_senales_activas()
-                    buy_activas = [s for s in senales_activas 
-                                   if s['direccion'] == 'COMPRA' 
-                                   and simbolo in s['simbolo']]
-                    
-                    if buy_activas:
-                        _htf_desc = []
-                        if _dir_4h == tf_bias.BIAS_BEARISH: _htf_desc.append("4H↘️")
-                        if _dir_1d == tf_bias.BIAS_BEARISH: _htf_desc.append("1D↘️")
-                        if _dir_1w == tf_bias.BIAS_BEARISH: _htf_desc.append("1W↘️")
-                        _htf_str = " + ".join(_htf_desc) if _htf_desc else "HTF bajista"
-                        
-                        mensaje_alerta = f"""
-🚨 <b>ALERTA CRÍTICA - PULLBACK BAJISTA</b>
-
-⚠️ {simbolo} 1H detecta <b>CONFLICTO</b>:
-• 1H: Canal bajista roto (señal alcista)
-• HTF: {_htf_str} <b>BEARISH</b>
-• Precio: ${close:.2f}
-
-📊 <b>Señales BUY activas en riesgo: {len(buy_activas)}</b>
-
-{chr(10).join([f"  • {s['simbolo']} - Entrada: ${s['precio_entrada']:.2f}" for s in buy_activas[:3]])}
-
-💡 <b>RECOMENDACIÓN:</b>
-• Considerar cierre defensivo de BUY
-• Mover SL a breakeven
-• Esperar confirmación HTF alcista
-
-━━━━━━━━━━━━━━━━━━━━
-ℹ️ <i>Alerta única — no se repetirá mientras el pullback esté activo</i>
-⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
-"""
-                        enviar_telegram(mensaje_alerta)
-                        logger.info(f"  🚨 Alerta PULLBACK bajista enviada — {len(buy_activas)} señales BUY en riesgo")
-                except Exception as e:
-                    logger.error(f"  ❌ Error verificando señales activas para alerta pullback: {e}")
-        else:
-            # Pullback resuelto → resetear para que la próxima activación vuelva a notificar
-            _estado_pullback.pop(f"pullback_bajista_{simbolo}", None)
-        if _sell_confirmado_htf:
-            _htf_labels = " | ".join(filter(None, [
-                f"4H(${_linea_canal_4h_sop:.0f})" if canal_sell_confirmado_4h else "",
-                f"1D(${_linea_canal_1d_sop:.0f})" if canal_sell_confirmado_1d else "",
-                f"1W(${_linea_canal_1w_sop:.0f})" if canal_sell_confirmado_1w else "",
-            ]))
-            logger.info(f"  ✅ Canal SELL confirmado en TFs superiores: {_htf_labels}")
-        if _buy_confirmado_htf:
-            _htf_labels = " | ".join(filter(None, [
-                f"4H(${_linea_canal_4h_res:.0f})" if canal_buy_confirmado_4h else "",
-                f"1D(${_linea_canal_1d_res:.0f})" if canal_buy_confirmado_1d else "",
-                f"1W(${_linea_canal_1w_res:.0f})" if canal_buy_confirmado_1w else "",
-            ]))
-            logger.info(f"  ✅ Canal BUY confirmado en TFs superiores: {_htf_labels}")
-
         # ── Micro-volatilidad y momentum reciente ─────────────────────────────
-        if _micro_vol > 1.5:
-            if score_sell > score_buy:
-                score_sell = min(score_sell + 1, 23)
-                logger.info(f"  📈 [1H] Micro-vol {_micro_vol:.2f} (expansión) — +1 SELL")
-            elif score_buy > score_sell:
-                score_buy = min(score_buy + 1, 23)
-                logger.info(f"  📈 [1H] Micro-vol {_micro_vol:.2f} (expansión) — +1 BUY")
-        elif _micro_vol < 0.8:
-            score_sell = max(0, score_sell - 1)
-            score_buy  = max(0, score_buy  - 1)
-            logger.info(f"  😴 [1H] Micro-vol {_micro_vol:.2f} (dormido) — -1 ambos scores")
-        if _momentum_rec == -1 and en_zona_resist_any:
-            score_sell = min(score_sell + 1, 23)
-            logger.info(f"  🔻 [1H] Momentum bajista en resistencia — +1 SELL")
-        elif _momentum_rec == 1 and en_zona_soporte_any:
-            score_buy = min(score_buy + 1, 23)
-            logger.info(f"  🔺 [1H] Momentum alcista en soporte — +1 BUY")
+        # Variables eliminadas — stubs para compatibilidad con snapshot
+        _micro_vol = 1.0
+        _momentum_rec = 0
 
         # ── Ajuste de score por predicción anticipada ML ───────────────────────
         if _prob_buy > 0.80:
@@ -987,7 +619,7 @@ class GoldDetector1H(BaseDetector):
             score_sell = min(score_sell + 2, 25)
             logger.info(f"  🤖 [ML 1H] Probabilidad SELL ({_prob_sell:.1%}) — +2 pts SELL")
 
-        # ── Snapshot completo de condiciones para backtesting/estudio ─────────
+        # ── Snapshot de condiciones para backtesting/estudio ─────────
         _condiciones_bd = {
             # Indicadores numéricos
             'rsi': round(float(rsi), 1), 'rsi_prev': round(float(rsi_prev), 1),
@@ -1000,67 +632,41 @@ class GoldDetector1H(BaseDetector):
             'ml_label_buy': str(_etiq_buy), 'ml_label_sell': str(_etiq_sell),
             # Zonas S/R
             'zrl': round(zrl, 2), 'zrh': round(zrh, 2), 'zsl': round(zsl, 2), 'zsh': round(zsh, 2),
-            # Condiciones SELL
+            # Condiciones SELL (solo EMA + S/R; resto son stubs False para compatibilidad)
             'en_zona_resist': bool(en_zona_resist), 'en_zona_resist_any': bool(en_zona_resist_any),
-            'vela_rechazo': bool(vela_rechazo), 'shooting_star': bool(shooting_star),
-            'bearish_engulfing': bool(bearish_engulfing), 'bearish_marubozu': bool(bearish_marubozu),
-            'doji_resist': bool(doji_resist), 'vol_alto_rechazo': bool(vol_alto_rechazo),
-            'rsi_alto_girando': bool(rsi_alto_girando), 'rsi_sobrecompra': bool(rsi_sobrecompra),
-            'divergencia_bajista': bool(divergencia_bajista),
             'emas_bajistas': bool(emas_bajistas), 'bajo_ema200': bool(bajo_ema200),
-            'estructura_bajista': bool(estructura_bajista),
-            'intento_rotura_fallido': bool(intento_rotura_fallido),
-            'vol_decreciente': bool(vol_decreciente), 'bb_toca_superior': bool(bb_toca_superior),
-            'evening_star': bool(evening_star), 'macd_cruce_bajista': bool(macd_cruce_bajista),
-            'macd_negativo': bool(macd_negativo), 'macd_divergencia_bajista': bool(macd_divergencia_bajista),
-            'adx_bajista': bool(adx_bajista), 'adx_lateral': bool(adx_lateral),
-            'obv_divergencia_bajista': bool(obv_divergencia_bajista), 'obv_decreciente': bool(obv_decreciente),
+            'adx_lateral': bool(adx_lateral),
             'canal_alcista_roto': bool(canal_alcista_roto), 'retest_canal_sell': bool(retest_canal_sell),
             'rechazo_resist_live': bool(rechazo_resist_live), 'rup_sop_1h': bool(_rup_sop_1h),
             'en_resist_sr_interm': bool(_en_resist_sr_1h and not en_zona_resist),
             'cuña_desc': str(_cuña_desc_1h) if _cuña_desc_1h else None,
-            'cuña_asc': str(_cuña_asc_1h) if _cuña_asc_1h else None,
             'dt_detectado': bool(_dt_1h), 'v_rev_bajista': bool(v_rev_baj_1h),
             'rebote_bajista': bool(_rebote_baj_1h),
-            'fib_nivel': float(_fib_nivel_1h) if _fib_nivel_1h else None,
-            'fib_tend': str(_fib_tend_1h) if _fib_nivel_1h else None,
             # Condiciones BUY
             'en_zona_soporte': bool(en_zona_soporte), 'en_zona_soporte_any': bool(en_zona_soporte_any),
-            'vela_rebote': bool(vela_rebote), 'hammer': bool(hammer),
-            'bullish_engulfing': bool(bullish_engulfing), 'bullish_marubozu': bool(bullish_marubozu),
-            'doji_soporte': bool(doji_soporte), 'vol_alto_rebote': bool(vol_alto_rebote),
-            'rsi_bajo_girando': bool(rsi_bajo_girando), 'rsi_sobreventa': bool(rsi_sobreventa),
-            'divergencia_alcista': bool(divergencia_alcista),
             'emas_alcistas': bool(emas_alcistas), 'sobre_ema200': bool(sobre_ema200),
-            'estructura_alcista': bool(estructura_alcista),
-            'intento_caida_fallido': bool(intento_caida_fallido),
-            'vol_decreciente_sell': bool(vol_decreciente_sell), 'bb_toca_inferior': bool(bb_toca_inferior),
-            'morning_star': bool(morning_star), 'macd_cruce_alcista': bool(macd_cruce_alcista),
-            'macd_positivo': bool(macd_positivo), 'macd_divergencia_alcista': bool(macd_divergencia_alcista),
-            'adx_alcista': bool(adx_alcista),
-            'obv_divergencia_alcista': bool(obv_divergencia_alcista), 'obv_creciente': bool(obv_creciente),
             'canal_bajista_roto': bool(canal_bajista_roto), 'retest_canal_buy': bool(retest_canal_buy),
             'rebote_soporte_live': bool(rebote_soporte_live), 'rup_res_1h': bool(_rup_res_1h),
             'en_sop_sr_interm': bool(_en_sop_sr_1h and not en_zona_soporte),
+            'cuña_asc': str(_cuña_asc_1h) if _cuña_asc_1h else None,
             'ds_detectado': bool(_ds_1h), 'v_rev_alcista': bool(v_rev_alc_1h),
             'rebote_alcista': bool(_rebote_alc_1h),
-            # Contexto macro/multi-TF
-            'dxy_bias': str(dxy_bias) if dxy_bias else None,
-            'cot_bias': str(_cot_bias) if _cot_bias else None,
-            'oi_bias': str(_oi_bias) if _oi_bias else None,
-            'news_sesgo': str(_sesgo_news), 'news_score': round(float(_sesgo_score), 2),
-            'htf_4h': str(_dir_4h), 'htf_1d': str(_dir_1d), 'htf_1w': str(_dir_1w),
-            'n_confirm_sell': int(_n_confirm_sell), 'n_confirm_buy': int(_n_confirm_buy),
-            'pullback_alcista': bool(pullback_alcista), 'pullback_bajista': bool(pullback_bajista),
+            # Contexto macro (stubs — eliminados del scoring)
+            'dxy_bias': None, 'cot_bias': None, 'oi_bias': None,
+            'news_sesgo': 'ESPERAR', 'news_score': 0.0,
         }
         for _k, _v in (_pred_features or {}).items():
             _condiciones_bd[_k] = float(_v) if isinstance(_v, (int, float, np.floating)) else _v
 
-        # ── Opción A: umbrales elevados — filtrar setups débiles (<13 puntos) ──
-        _umbral_max = self.umbral_adaptativo(17, atr, atr_media)   # antes: 15
-        _umbral_fue = self.umbral_adaptativo(15, atr, atr_media)   # antes: 13
-        _umbral_med = self.umbral_adaptativo(13, atr, atr_media)   # antes: 10 → mínimo real para señal
-        _umbral_ale = self.umbral_adaptativo(10, atr, atr_media)   # antes: 8  → solo PREP/LIVE
+        # ── Umbrales: scoring EMA+S/R = máximo 5 pts base (sin ML) ──────────────
+        # MAXIMA = S/R + EMA alineada + tendencia (score completo = 5)
+        # FUERTE  = S/R + EMA alineada (score = 4)
+        # MEDIA   = S/R o EMA alineada (score = 3)
+        # ALERTA  = señal débil (score = 2) — solo alertas
+        _umbral_max = self.umbral_adaptativo(5, atr, atr_media)
+        _umbral_fue = self.umbral_adaptativo(4, atr, atr_media)
+        _umbral_med = self.umbral_adaptativo(3, atr, atr_media)
+        _umbral_ale = self.umbral_adaptativo(2, atr, atr_media)
         senal_sell_maxima = score_sell >= _umbral_max
         senal_sell_fuerte = score_sell >= _umbral_fue
         senal_sell_media  = score_sell >= _umbral_med
