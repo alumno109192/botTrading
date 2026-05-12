@@ -1101,6 +1101,25 @@ class GoldDetector2H(BaseDetector):
             senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
             senal_buy_maxima  = senal_buy_fuerte  = senal_buy_media  = senal_buy_alerta  = False
 
+        # ── FILTRO RANGO LATERAL (ADX 15-25): graduated tier-block ──────────────
+        _rango_20v = float(df['High'].iloc[-21:-1].max() - df['Low'].iloc[-21:-1].min())
+        _rango_atr_ratio = (_rango_20v / atr) if atr > 0 else 99.0
+        _lateral_rango = _rango_atr_ratio < 4.0
+        if adx < 20 and _lateral_rango:
+            logger.warning(
+                f"  🟡 [2H] LATERAL CLARO — ADX={adx:.1f} rango20v={_rango_20v:.0f} ({_rango_atr_ratio:.1f}×ATR) "
+                f"→ solo MAXIMA (score≥{_umbral_max})"
+            )
+            senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+            senal_buy_fuerte  = senal_buy_media  = senal_buy_alerta  = False
+        elif adx < 25 and _lateral_rango:
+            logger.info(
+                f"  🟡 [2H] LATERAL SUAVE — ADX={adx:.1f} rango20v={_rango_20v:.0f} ({_rango_atr_ratio:.1f}×ATR) "
+                f"→ solo FUERTE/MAXIMA (score≥{_umbral_fue})"
+            )
+            senal_sell_media = senal_sell_alerta = False
+            senal_buy_media  = senal_buy_alerta  = False
+
         # ── Filtro de sesión 1H: fuera de 08-21 UTC bloquear ALERTA (tf largo: MEDIA+ pasa) ──
         if not self.en_sesion_optima():
             if senal_sell_alerta and not senal_sell_media:

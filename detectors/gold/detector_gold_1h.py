@@ -1102,6 +1102,30 @@ class GoldDetector1H(BaseDetector):
             senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
             senal_buy_maxima  = senal_buy_fuerte  = senal_buy_media  = senal_buy_alerta  = False
 
+        # ── FILTRO RANGO LATERAL (ADX 15-25): graduated tier-block ──────────────
+        # Mercado en rango = ADX sin tendencia fuerte + rango de las últimas 20 velas estrecho.
+        # En rango lateral el precio rebota S/R indefinidamente sin romper → señales falsas.
+        # Acción graduada:
+        #   ADX < 20  + rango < 4×ATR  → LATERAL CLARO  → solo MAXIMA
+        #   ADX 20-25 + rango < 4×ATR  → LATERAL SUAVE  → solo FUERTE/MAXIMA
+        _rango_20v = float(df['High'].iloc[-21:-1].max() - df['Low'].iloc[-21:-1].min())
+        _rango_atr_ratio = (_rango_20v / atr) if atr > 0 else 99.0
+        _lateral_rango = _rango_atr_ratio < 4.0   # rango < 4×ATR = compresión clara
+        if adx < 20 and _lateral_rango:
+            logger.warning(
+                f"  🟡 [1H] LATERAL CLARO — ADX={adx:.1f} rango20v={_rango_20v:.0f} ({_rango_atr_ratio:.1f}×ATR) "
+                f"→ solo MAXIMA (score≥{_umbral_max})"
+            )
+            senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+            senal_buy_fuerte  = senal_buy_media  = senal_buy_alerta  = False
+        elif adx < 25 and _lateral_rango:
+            logger.info(
+                f"  🟡 [1H] LATERAL SUAVE — ADX={adx:.1f} rango20v={_rango_20v:.0f} ({_rango_atr_ratio:.1f}×ATR) "
+                f"→ solo FUERTE/MAXIMA (score≥{_umbral_fue})"
+            )
+            senal_sell_media = senal_sell_alerta = False
+            senal_buy_media  = senal_buy_alerta  = False
+
         # ── Opción C: FILTRO HTF OBLIGATORIO — operar a favor de tendencia ────────
         # Si 4H y 1D son ambos BULLISH → bloquear SELL (precio rompiendo máximos).
         # Si 4H y 1D son ambos BEARISH → bloquear BUY (precio en caída estructural).
