@@ -1083,7 +1083,7 @@ class GoldDetector1D(BaseDetector):
                 self.marcar_enviada(f"{clave_vela}_PREP_BUY")
 
         # ── SEÑALES VENTA (en zona) — confirmación si ya se mandó pre-alerta ──
-        if senal_sell_alerta and not cancelar_sell and rr_sell_tp1 >= 1.2:
+        if senal_sell_media and not cancelar_sell and rr_sell_tp1 >= 1.2:  # Tier ALERTA eliminado
             # Si ya avisamos antes de zona (PREP_SELL), solo confirmar si es FUERTE o MÁXIMA
             if self.ya_enviada(f"{clave_vela}_PREP_SELL") and not (senal_sell_fuerte or senal_sell_maxima):
                 logger.info(f"  ℹ️  SELL ALERTA/MEDIA ignorada: pre-alerta ya enviada")
@@ -1157,7 +1157,7 @@ class GoldDetector1D(BaseDetector):
                     self.marcar_enviada(f"{clave_vela}_{tipo_clave}")
 
         # ── SEÑALES COMPRA (en zona) — confirmación si ya se mandó pre-alerta ──
-        if senal_buy_alerta and not cancelar_buy and rr_buy_tp1 >= 1.2:
+        if senal_buy_media and not cancelar_buy and rr_buy_tp1 >= 1.2:  # Tier ALERTA eliminado
             if self.ya_enviada(f"{clave_vela}_PREP_BUY") and not (senal_buy_fuerte or senal_buy_maxima):
                 logger.info(f"  ℹ️  BUY ALERTA/MEDIA ignorada: pre-alerta ya enviada")
             else:

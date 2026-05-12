@@ -1545,7 +1545,7 @@ class GoldDetector1H(BaseDetector):
 
         # ── SEÑALES SELL (en zona) — requiere mínimo MEDIA para enviar Telegram ──
         _tiene_rechazo_confirmado = en_zona_resist_any and (vela_rechazo or evening_star or intento_rotura_fallido)
-        _sell_activa = senal_sell_media or (_prep_sell_alerta and _tiene_rechazo_confirmado and senal_sell_alerta)
+        _sell_activa = senal_sell_media  # Tier ALERTA eliminado: solo MEDIA, FUERTE y MAXIMA
         if _sell_activa and not cancelar_sell and rr_sell_tp1 >= 1.2:
             if self.ya_enviada(f"{clave_vela}_PREP_SELL") and not (senal_sell_fuerte or senal_sell_maxima) and not _tiene_rechazo_confirmado:
                 logger.info(f"  ℹ️  SELL ALERTA/MEDIA ignorada: señal accionable ya enviada")
@@ -1615,7 +1615,7 @@ class GoldDetector1H(BaseDetector):
         # ── SEÑALES BUY (en zona) — requiere mínimo MEDIA para enviar Telegram ──
         # Si el precio realmente tocó la zona Y hay patrón de rebote → siempre confirmar
         _tiene_rebote_confirmado = en_zona_soporte_any and (vela_rebote or morning_star or intento_caida_fallido)
-        _buy_activa = senal_buy_media or (_prep_buy_alerta and _tiene_rebote_confirmado and senal_buy_alerta)
+        _buy_activa = senal_buy_media  # Tier ALERTA eliminado: solo MEDIA, FUERTE y MAXIMA
         if _buy_activa and not cancelar_buy and rr_buy_tp1 >= 1.2:
             if self.ya_enviada(f"{clave_vela}_PREP_BUY") and not (senal_buy_fuerte or senal_buy_maxima) and not _tiene_rebote_confirmado:
                 logger.info(f"  ℹ️  BUY ALERTA/MEDIA ignorada: señal accionable ya enviada")

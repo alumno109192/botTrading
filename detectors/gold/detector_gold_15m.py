@@ -729,7 +729,7 @@ class GoldDetector15M(BaseDetector):
             _zona_1h_sell = tf_bias.obtener_zona_activa(simbolo, tf_bias.BIAS_BEARISH)
             _modo_caza_buy  = False
             _modo_caza_sell = False
-            _UMBRAL_CAZA    = 8   # el 1H confirma el contexto pero necesitamos señal sólida
+            _UMBRAL_CAZA    = 12  # el 1H confirma el contexto — mínimo MEDIA (antes: 8)
 
             if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima():
                 _tol_1h = _zona_1h_buy['atr'] * 0.6
