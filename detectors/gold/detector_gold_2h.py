@@ -1379,11 +1379,12 @@ class GoldDetector2H(BaseDetector):
             else:
                 if self.db:
                     try:
+                        _nivel_live_buy = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                             'direccion': 'COMPRA', 'precio_entrada': close_live,
                             'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
-                            'score': score_buy,
+                            'score': score_buy, 'nivel': _nivel_live_buy,
                             'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"ReboteVivo:True, Low={low_live:.2f}",
                             'version_detector': 'GOLD 2H-v1.0'
@@ -1439,11 +1440,12 @@ class GoldDetector2H(BaseDetector):
             else:
                 if self.db:
                     try:
+                        _nivel_live_sell = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                             'direccion': 'VENTA', 'precio_entrada': close_live,
                             'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
-                            'score': score_sell,
+                            'score': score_sell, 'nivel': _nivel_live_sell,
                             'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"RechazoVivo:True, High={high_live:.2f}",
                             'version_detector': 'GOLD 2H-v1.0'
@@ -1560,10 +1562,10 @@ class GoldDetector2H(BaseDetector):
             if self.ya_enviada(f"{clave_vela}_PREP_SELL") and not (senal_sell_fuerte or senal_sell_maxima) and not _tiene_rechazo_confirmado:
                 logger.info(f"  ℹ️  SELL ALERTA/MEDIA ignorada: señal accionable ya enviada")
             else:
-                if senal_sell_maxima:  nivel = "🔥 SELL MÁXIMA (1H)"
-                elif senal_sell_fuerte: nivel = "🔴 SELL FUERTE (1H)"
-                elif senal_sell_media:  nivel = "⚠️ SELL MEDIA (1H)"
-                else:                   nivel = "👀 SELL ALERTA (1H)"
+                if senal_sell_maxima:  nivel = "🔥 SELL MÁXIMA (2H)"
+                elif senal_sell_fuerte: nivel = "🔴 SELL FUERTE (2H)"
+                elif senal_sell_media:  nivel = "⚠️ SELL MEDIA (2H)"
+                else:                   nivel = "👀 SELL ALERTA (2H)"
                 tipo_clave = ("SELL_MAX" if senal_sell_maxima else
                               "SELL_FUE" if senal_sell_fuerte else
                               "SELL_MED" if senal_sell_media  else "SELL_ALE")
@@ -1630,10 +1632,10 @@ class GoldDetector2H(BaseDetector):
             if self.ya_enviada(f"{clave_vela}_PREP_BUY") and not (senal_buy_fuerte or senal_buy_maxima) and not _tiene_rebote_confirmado:
                 logger.info(f"  ℹ️  BUY ALERTA/MEDIA ignorada: señal accionable ya enviada")
             else:
-                if senal_buy_maxima:   nivel = "🔥 BUY MÁXIMA (1H)"
-                elif senal_buy_fuerte:  nivel = "🟢 BUY FUERTE (1H)"
-                elif senal_buy_media:   nivel = "⚠️ BUY MEDIA (1H)"
-                else:                   nivel = "👀 BUY ALERTA (1H)"
+                if senal_buy_maxima:   nivel = "🔥 BUY MÁXIMA (2H)"
+                elif senal_buy_fuerte:  nivel = "🟢 BUY FUERTE (2H)"
+                elif senal_buy_media:   nivel = "⚠️ BUY MEDIA (2H)"
+                else:                   nivel = "👀 BUY ALERTA (2H)"
                 tipo_clave = ("BUY_MAX" if senal_buy_maxima else
                               "BUY_FUE" if senal_buy_fuerte else
                               "BUY_MED" if senal_buy_media  else "BUY_ALE")

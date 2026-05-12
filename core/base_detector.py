@@ -151,7 +151,8 @@ class BaseDetector(ABC):
     _NIVEL_THRESHOLDS: dict = {
         '1D':  {'MAXIMA': 10, 'FUERTE': 8,  'MEDIA': 6,  'ALERTA': 4},
         '4H':  {'MAXIMA': 14, 'FUERTE': 12, 'MEDIA': 9,  'ALERTA': 5},
-        '1H':  {'MAXIMA': 14, 'FUERTE': 12, 'MEDIA': 9,  'ALERTA': 5},
+        '1H':  {'MAXIMA': 17, 'FUERTE': 15, 'MEDIA': 13, 'ALERTA': 10},  # actualizado
+        '2H':  {'MAXIMA': 15, 'FUERTE': 13, 'MEDIA': 10, 'ALERTA': 8},   # nuevo
         '15M': {'MAXIMA': 12, 'FUERTE': 10, 'MEDIA': 7,  'ALERTA': 4},
         '5M':  {'MAXIMA': 10, 'FUERTE': 8,  'MEDIA': 6,  'ALERTA': 3},
     }

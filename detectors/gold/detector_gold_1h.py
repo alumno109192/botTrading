@@ -1393,11 +1393,12 @@ class GoldDetector1H(BaseDetector):
             else:
                 if self.db:
                     try:
+                        _nivel_live_buy = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                             'direccion': 'COMPRA', 'precio_entrada': close_live,
                             'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
-                            'score': score_buy,
+                            'score': score_buy, 'nivel': _nivel_live_buy,
                             'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"ReboteVivo:True, Low={low_live:.2f}",
                             'version_detector': 'GOLD 1H-v2.1'
@@ -1453,11 +1454,12 @@ class GoldDetector1H(BaseDetector):
             else:
                 if self.db:
                     try:
+                        _nivel_live_sell = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                             'direccion': 'VENTA', 'precio_entrada': close_live,
                             'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
-                            'score': score_sell,
+                            'score': score_sell, 'nivel': _nivel_live_sell,
                             'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"RechazoVivo:True, High={high_live:.2f}",
                             'version_detector': 'GOLD 1H-v2.1'
