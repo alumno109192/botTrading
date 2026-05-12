@@ -1103,6 +1103,19 @@ class GoldDetector1H(BaseDetector):
             senal_sell_media = senal_sell_alerta = False
             senal_buy_media  = senal_buy_alerta  = False
 
+        # ── Filtro zona estricta (estrategia EMA + S/R): solo señales en zona ──
+        # Las señales por debajo de MAXIMA deben tener precio dentro de zona S/R.
+        # Sin esto, los scores de cuñas/patrones/V-Reversal disparan señales lejos
+        # del nivel — las pruebas históricas muestran que esas pierden sistemáticamente.
+        if (senal_sell_fuerte or senal_sell_media or senal_sell_alerta) and not senal_sell_maxima:
+            if not en_zona_resist_any:
+                logger.info(f"  🚫 [1H] SELL bloqueada: precio no en zona resist ({close:.2f} vs {zrl:.2f}-{zrh:.2f}) — requiere estrategia EMA+S/R")
+                senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+        if (senal_buy_fuerte or senal_buy_media or senal_buy_alerta) and not senal_buy_maxima:
+            if not en_zona_soporte_any:
+                logger.info(f"  🚫 [1H] BUY bloqueada: precio no en zona soporte ({close:.2f} vs {zsl:.2f}-{zsh:.2f}) — requiere estrategia EMA+S/R")
+                senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
+
         # ── Opción C: FILTRO HTF OBLIGATORIO — operar a favor de tendencia ────────
         # Si 4H y 1D son ambos BULLISH → bloquear SELL (precio rompiendo máximos).
         # Si 4H y 1D son ambos BEARISH → bloquear BUY (precio en caída estructural).

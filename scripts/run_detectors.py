@@ -1,6 +1,5 @@
 """
-Run Detectors - Ejecuta múltiples detectores de señales simultáneamente
-Ejecuta detector_gold.py, detector_spx.py y detector_bitcoin.py en hilos separados
+Run Detectors - Solo XAUUSD 1H + 15M (operativa simplificada EMA + S/R)
 Incluye signal_monitor.py para tracking de señales
 """
 
@@ -11,15 +10,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from datetime import datetime
 
-# Importar los módulos de los detectores (desde paquete detectors/)
-from detectors.gold import detector_gold_1d as detector_gold
+# Solo los dos detectores que tienen edge probado
+from detectors.gold import detector_gold_1h
+from detectors.gold import detector_gold_15m
 import services.signal_monitor as signal_monitor
 
-# Importar detectores Gold
-from detectors.gold import detector_gold_5m
-from detectors.gold import detector_gold_15m
-from detectors.gold import detector_gold_1m
-from detectors.gold import detector_gold_2h
 
 def ejecutar_detector(nombre, modulo):
     """Ejecuta un detector en un bucle de reintentos (sin recursión)."""
@@ -32,119 +27,72 @@ def ejecutar_detector(nombre, modulo):
             break
         except Exception as e:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Error en {nombre}: {e}")
-            # Reintentar en 60 segundos
             time.sleep(60)
             print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 Reintentando {nombre}...")
 
+
 def main():
-    print("="*60)
-    print("🚀 SISTEMA DE DETECCIÓN DE SEÑALES INICIADO")
-    print("="*60)
+    print("=" * 60)
+    print("🚀 SISTEMA DE DETECCIÓN — Modo simplificado (1H + 15M)")
+    print("=" * 60)
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print()
-    print("📊 Detectores activos:")    print("  📈 XAUUSD 2H (Intradía medio) → detector_gold_2h.py")    print("  🥇 XAUUSD 1D (Swing)  → detector_gold_1d.py")
-    print("  ⚡ XAUUSD SCALPING 1M  → detector_gold_1m.py  (1 minuto)")
-    print("  ⚡ XAUUSD SCALPING 5M  → detector_gold_5m.py  (5 minutos)")
-    print("  ⚡ XAUUSD SCALPING 15M → detector_gold_15m.py (15 minutos)")
-    print("  🔍 MONITOR SEÑALES    → signal_monitor.py")
+    print("📊 Detectores activos:")
+    print("  🥇 XAUUSD 1H  → detector_gold_1h.py")
+    print("  ⚡ XAUUSD 15M → detector_gold_15m.py")
+    print("  🔍 MONITOR    → signal_monitor.py")
     print()
-    print("📈 Indicadores implementados:")
-    print("  ✅ Bandas de Bollinger  ✅ MACD")
-    print("  ✅ OBV (Volumen)        ✅ ADX (Tendencia)")
-    print("  ✅ Evening/Morning Star (Patrones 3 velas)")
-    print("  ✅ Price Action (Scalping)")
-    print()
+    print("📈 Estrategia: EMA + Soporte/Resistencia (priorizada por scoring)")
     print("💾 Base de datos: Turso (SQLite Cloud)")
     print("📊 Tracking: TP1, TP2, TP3, SL automático")
-    print("⏱️  Intervalo: 14 min (1D) | 2 min (15M Scalping) | 30s (1M Impulsos)")
-    print("🔍 Monitor: Revisa señales cada 5 minutos")
-    print("💚 Servidor: Siempre activo")
-    print("✅ Anti-spam: Solo alertas en velas nuevas")
-    print("🎯 Score: 24 puntos (1D) | 15 puntos (15M)")
-    print("="*60)
+    print("=" * 60)
     print()
 
-    # Crear hilos para cada detector
     hilos = []
-    
-    # Hilo para detector de Oro
-    hilo_gold = threading.Thread(
+
+    hilo_1h = threading.Thread(
         target=ejecutar_detector,
-        args=("DETECTOR GOLD (XAUUSD)", detector_gold),
-        name="DetectorGold",
+        args=("DETECTOR GOLD 1H", detector_gold_1h),
+        name="DetectorGold1H",
         daemon=True
     )
-    hilos.append(hilo_gold)
-    
-    # ⚡ Hilo para detector de SCALPING 15M (GOLD)
-    hilo_scalp_15m = threading.Thread(
+    hilos.append(hilo_1h)
+
+    hilo_15m = threading.Thread(
         target=ejecutar_detector,
-        args=("DETECTOR GOLD 15M SCALPING", detector_gold_15m),
+        args=("DETECTOR GOLD 15M", detector_gold_15m),
         name="DetectorGold15M",
         daemon=True
     )
-    hilos.append(hilo_scalp_15m)
+    hilos.append(hilo_15m)
 
-    # ⚡ Hilo para detector de MICRO-SCALP 5M (GOLD)
-    hilo_scalp_5m = threading.Thread(
-        target=ejecutar_detector,
-        args=("DETECTOR GOLD 5M MICRO-SCALP", detector_gold_5m),
-        name="DetectorGold5M",
-        daemon=True
-    )
-    hilos.append(hilo_scalp_5m)
-
-    # ⚡ Hilo para detector de IMPULSOS 1M (GOLD)
-    hilo_scalp_1m = threading.Thread(
-        target=ejecutar_detector,
-        args=("DETECTOR GOLD 1M IMPULSOS", detector_gold_1m),
-        name="DetectorGold1M",
-        daemon=True
-    )
-    hilos.append(hilo_scalp_1m)
-
-    # 📈 Hilo para detector 2H (GOLD)
-    hilo_2h = threading.Thread(
-        target=ejecutar_detector,
-        args=("DETECTOR GOLD 2H", detector_gold_2h),
-        name="DetectorGold2H",
-        daemon=True
-    )
-    hilos.append(hilo_2h)
-    
-    # ⭐ NUEVO: Hilo para monitor de señales
     hilo_monitor = threading.Thread(
         target=signal_monitor.monitor_senales,
         name="SignalMonitor",
         daemon=True
     )
     hilos.append(hilo_monitor)
-    
-    # Iniciar todos los hilos
+
     for hilo in hilos:
         hilo.start()
-        time.sleep(2)  # Pequeña pausa entre inicios
-    
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Todos los detectores están activos")
+        time.sleep(2)
+
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Detectores activos: 1H + 15M + Monitor")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 📌 Presiona Ctrl+C para detener\n")
-    
+
     try:
-        # Mantener el programa principal activo
         while True:
-            # Verificar que todos los hilos sigan vivos
             hilos_activos = [h for h in hilos if h.is_alive()]
-            
             if len(hilos_activos) < len(hilos):
                 print(f"\n[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Algún hilo se detuvo")
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 Reiniciando sistema...")
                 break
-            
-            time.sleep(60)  # Verificar cada minuto
-            
+            time.sleep(60)
     except KeyboardInterrupt:
-        print(f"\n\n[{datetime.now().strftime('%H:%M:%S')}] 🛑 Deteniendo todos los detectores...")
+        print(f"\n\n[{datetime.now().strftime('%H:%M:%S')}] 🛑 Deteniendo detectores...")
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 👋 Sistema finalizado")
         sys.exit(0)
+
 
 if __name__ == '__main__':
     main()
