@@ -419,13 +419,13 @@ class GoldDetector15M(BaseDetector):
             logger.info(f"  🔴 SELL Fuerte:{senal_sell_fuerte}  🟢 BUY Fuerte:{senal_buy_fuerte}")
             logger.info(f"  📉 RSI: {round(rsi, 1)} | ADX: {round(adx, 1)} | ATR: {round(atr, 2)}")
         
-            # ── CONTROL DE PÉRDIDAS CONSECUTIVAS (consultado desde BD) ──
-            perdidas_consecutivas = self.db.contar_perdidas_consecutivas(f"{simbolo}_15M") if self.db else 0
-            if perdidas_consecutivas >= params['max_perdidas_dia']:
-                if not (senal_sell_fuerte or senal_buy_fuerte):
-                    logger.warning(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas — esperando señal fuerte")
-                    return
-                logger.info(f"  ✅ Señal fuerte detectada tras {perdidas_consecutivas} pérdidas — reanudando")
+            # ── CONTROL DE PÉRDIDAS CONSECUTIVAS (desactivado para backtesting) ──
+            # perdidas_consecutivas = self.db.contar_perdidas_consecutivas(f"{simbolo}_15M") if self.db else 0
+            # if perdidas_consecutivas >= params['max_perdidas_dia']:
+            #     if not (senal_sell_fuerte or senal_buy_fuerte):
+            #         logger.warning(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas — esperando señal fuerte")
+            #         return
+            #     logger.info(f"  ✅ Señal fuerte detectada tras {perdidas_consecutivas} pérdidas — reanudando")
         
             # ══════════════════════════════════════
             # ANTI-SPAM

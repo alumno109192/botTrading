@@ -583,12 +583,12 @@ class GoldDetector5M(BaseDetector):
             logger.info(f"  🔴 SELL {score_sell}/{max_score} | 🟢 BUY {score_buy}/{max_score}")
             logger.info(f"  📉 RSI: {round(rsi, 1)} | ADX: {round(adx, 1)} | ATR: {round(atr, 2)}")
 
-            # ── PÉRDIDAS CONSECUTIVAS ────────────────────────
-            if perdidas_consecutivas >= params['max_perdidas_dia']:
-                logger.warning(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas")
-                if not (senal_sell_fuerte or senal_buy_fuerte):
-                    return
-                perdidas_consecutivas = 0
+            # ── PÉRDIDAS CONSECUTIVAS (desactivado para backtesting) ────────────────────────
+            # if perdidas_consecutivas >= params['max_perdidas_dia']:
+            #     logger.warning(f"  ⛔ Trading pausado: {perdidas_consecutivas} pérdidas consecutivas")
+            #     if not (senal_sell_fuerte or senal_buy_fuerte):
+            #         return
+            #     perdidas_consecutivas = 0
 
             # ── ANTI-SPAM ────────────────────────────────────
             clave_vela = f"{simbolo}_{fecha}"
