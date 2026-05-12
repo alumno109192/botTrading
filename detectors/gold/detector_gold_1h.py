@@ -60,7 +60,7 @@ SIMBOLOS = {
         'ema_slow_len':       21,
         'ema_trend_len':      200,
         'atr_length':         14,
-        'atr_sl_mult':        1.0,    # SL ajustado para intradía
+        'atr_sl_mult':        1.5,    # evitar SL prematuro por ruido 1H (datos: SL medio wins=4.3 vs losses=13.4)
         'atr_tp1_mult':       1.5,    # TP1: 1.5× ATR (intradía alcanzable)
         'atr_tp2_mult':       2.5,    # TP2: 2.5× ATR
         'atr_tp3_mult':       4.0,    # TP3: 4.0× ATR (objetivo ambicioso)

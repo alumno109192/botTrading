@@ -524,7 +524,7 @@ class GoldDetector15M(BaseDetector):
             elif _momentum_rec == 1 and (en_zona_soporte or aproximando_soporte):
                 score_buy = min(score_buy + 1, 23)
                 logger.info(f"  🔺 [15M] Momentum alcista en soporte — +1 BUY")
-            _umbral_fue = self.umbral_adaptativo(14, atr, atr_media)   # antes: 10
+            _umbral_fue = self.umbral_adaptativo(5, atr, atr_media)    # datos reales: score=4 → 88% WR
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
@@ -575,6 +575,19 @@ class GoldDetector15M(BaseDetector):
                 logger.info(f"  😴 [15M] ADX {round(adx, 1)} < {_ADX_MIN_15M} — mercado plano, señales bloqueadas")
                 senal_sell_fuerte = False
                 senal_buy_fuerte  = False
+
+            # ── Filtro zona estricta (score bajo): precio debe estar DENTRO de zona, no solo aproximándose ──
+            # Score alto (≥9) ya tiene suficientes confirmaciones → no necesita este filtro
+            # Score bajo (5-8) puede disparar solo por "aproximando" → exigir que esté dentro
+            _SCORE_ZONA_ESTRICTA = 9
+            if senal_sell_fuerte and score_sell < _SCORE_ZONA_ESTRICTA:
+                if not en_zona_resist:
+                    logger.info(f"  🚫 [15M] SELL score={score_sell} < {_SCORE_ZONA_ESTRICTA}: precio no en zona resist ({close:.2f} vs {zrl:.2f}-{zrh:.2f}) — bloqueada")
+                    senal_sell_fuerte = False
+            if senal_buy_fuerte and score_buy < _SCORE_ZONA_ESTRICTA:
+                if not en_zona_soporte:
+                    logger.info(f"  🚫 [15M] BUY score={score_buy} < {_SCORE_ZONA_ESTRICTA}: precio no en zona soporte ({close:.2f} vs {zsl:.2f}-{zsh:.2f}) — bloqueada")
+                    senal_buy_fuerte = False
 
             # Cancelaciones (más estrictas en scalping)
             simbolo_db_15m = f"{simbolo}_15M"
