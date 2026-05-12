@@ -329,17 +329,18 @@ class BaseDetector(ABC):
         """
         p = self.params
         asm = p['atr_sl_mult']
+        spread = p.get('spread', 0.0)  # costo de cierre (spread broker)
 
-        sl_venta = round(sell_limit + atr * asm, 2)
-        sl_compra = round(buy_limit - atr * asm, 2)
+        sl_venta  = round(sell_limit + atr * asm + spread, 2)
+        sl_compra = round(buy_limit  - atr * asm - spread, 2)
 
-        tp1_v = round(sell_limit - atr * p['atr_tp1_mult'], 2)
-        tp2_v = round(sell_limit - atr * p['atr_tp2_mult'], 2)
-        tp3_v = round(sell_limit - atr * p['atr_tp3_mult'], 2)
+        tp1_v = round(sell_limit - atr * p['atr_tp1_mult'] - spread, 2)
+        tp2_v = round(sell_limit - atr * p['atr_tp2_mult'] - spread, 2)
+        tp3_v = round(sell_limit - atr * p['atr_tp3_mult'] - spread, 2)
 
-        tp1_c = round(buy_limit + atr * p['atr_tp1_mult'], 2)
-        tp2_c = round(buy_limit + atr * p['atr_tp2_mult'], 2)
-        tp3_c = round(buy_limit + atr * p['atr_tp3_mult'], 2)
+        tp1_c = round(buy_limit  + atr * p['atr_tp1_mult'] + spread, 2)
+        tp2_c = round(buy_limit  + atr * p['atr_tp2_mult'] + spread, 2)
+        tp3_c = round(buy_limit  + atr * p['atr_tp3_mult'] + spread, 2)
 
         return sl_venta, sl_compra, tp1_v, tp2_v, tp3_v, tp1_c, tp2_c, tp3_c
 

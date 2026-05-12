@@ -59,17 +59,18 @@ class EURUSDBaseDetector(BaseDetector):
         """
         p = self.params
         asm = p['atr_sl_mult']
+        spread = p.get('spread', 0.00015)  # costo de cierre (~1.5 pips EURUSD)
 
-        sl_venta  = round(sell_limit + atr * asm,              5)
-        sl_compra = round(buy_limit  - atr * asm,              5)
+        sl_venta  = round(sell_limit + atr * asm + spread, 5)
+        sl_compra = round(buy_limit  - atr * asm - spread, 5)
 
-        tp1_v = round(sell_limit - atr * p['atr_tp1_mult'], 5)
-        tp2_v = round(sell_limit - atr * p['atr_tp2_mult'], 5)
-        tp3_v = round(sell_limit - atr * p['atr_tp3_mult'], 5)
+        tp1_v = round(sell_limit - atr * p['atr_tp1_mult'] - spread, 5)
+        tp2_v = round(sell_limit - atr * p['atr_tp2_mult'] - spread, 5)
+        tp3_v = round(sell_limit - atr * p['atr_tp3_mult'] - spread, 5)
 
-        tp1_c = round(buy_limit  + atr * p['atr_tp1_mult'], 5)
-        tp2_c = round(buy_limit  + atr * p['atr_tp2_mult'], 5)
-        tp3_c = round(buy_limit  + atr * p['atr_tp3_mult'], 5)
+        tp1_c = round(buy_limit  + atr * p['atr_tp1_mult'] + spread, 5)
+        tp2_c = round(buy_limit  + atr * p['atr_tp2_mult'] + spread, 5)
+        tp3_c = round(buy_limit  + atr * p['atr_tp3_mult'] + spread, 5)
 
         return sl_venta, sl_compra, tp1_v, tp2_v, tp3_v, tp1_c, tp2_c, tp3_c
 

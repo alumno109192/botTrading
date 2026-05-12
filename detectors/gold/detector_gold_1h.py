@@ -397,6 +397,16 @@ class GoldDetector1H(BaseDetector):
                     _tp_desde_sr(_resis_sobre, 3, buy_entry + atr * params['atr_tp3_mult'] * _vol_factor),
                     tp2_c, resistencias_sr, atr)
 
+        # Ajuste spread: SL más amplio y TPs más alejados para reflejar costo real de cierre
+        sl_venta  = round(sl_venta  + spread, 2)
+        sl_compra = round(sl_compra - spread, 2)
+        tp1_v = round(tp1_v - spread, 2)
+        tp2_v = round(tp2_v - spread, 2)
+        tp3_v = round(tp3_v - spread, 2)
+        tp1_c = round(tp1_c + spread, 2)
+        tp2_c = round(tp2_c + spread, 2)
+        tp3_c = round(tp3_c + spread, 2)
+
         avg_candle_range    = df['total_range'].iloc[-6:-1].mean()
         aproximando_resist  = (zrl - close > 0 and zrl - close < avg_candle_range * av and close > float(df['Close'].iloc[-5]))
         aproximando_soporte = (close - zsh > 0 and close - zsh < avg_candle_range * av and close < float(df['Close'].iloc[-5]))

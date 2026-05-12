@@ -65,6 +65,7 @@ SIMBOLOS = {
         'ema_trend_len':      21,
         'atr_length':         7,
         'atr_sl_mult':        1.2,
+        'spread':             0.00015,    # Spread típico broker EURUSD (~1.5 pips)
         'vol_mult':           1.2,
         'min_score_scalping': 3,
         'max_perdidas_dia':   3,
@@ -329,8 +330,9 @@ class EURUSDDetector5M(BaseDetector):
 
             atr_efectivo = max(atr, params['atr_min'])
             asm = params['atr_sl_mult']
-            sl_venta  = round(close + atr_efectivo * asm, 5)
-            sl_compra = round(close - atr_efectivo * asm, 5)
+            spread = params.get('spread', 0.00015)  # costo de cierre (~1.5 pips EURUSD)
+            sl_venta  = round(close + atr_efectivo * asm + spread, 5)
+            sl_compra = round(close - atr_efectivo * asm - spread, 5)
 
             offset_pct = params['limit_offset_pct']
             sell_limit = close * (1 + offset_pct / 100)
@@ -339,13 +341,13 @@ class EURUSDDetector5M(BaseDetector):
             # VATR: factor de volumen — amplía TPs en mercados con impulso, los reduce en apáticos
             _vol_factor = min(max(vol_actual / vol_medio, 0.75), 1.50) if vol_medio > 0 else 1.0
 
-            # TPs dinámicos basados en ATR ajustado por volumen (VATR)
-            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'] * _vol_factor, 5)
-            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'] * _vol_factor, 5)
-            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'] * _vol_factor, 5)
-            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'] * _vol_factor, 5)
-            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'] * _vol_factor, 5)
-            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'] * _vol_factor, 5)
+            # TPs dinámicos basados en ATR ajustado por volumen (VATR) — ajustados por spread de cierre
+            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'] * _vol_factor - spread, 5)
+            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'] * _vol_factor - spread, 5)
+            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'] * _vol_factor - spread, 5)
+            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'] * _vol_factor + spread, 5)
+            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'] * _vol_factor + spread, 5)
+            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'] * _vol_factor + spread, 5)
 
             def rr(limit, sl, tp):
                 return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0

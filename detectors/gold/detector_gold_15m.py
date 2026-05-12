@@ -590,8 +590,9 @@ class GoldDetector15M(BaseDetector):
         
             # ── SL y TP para SCALPING ──
             asm = params['atr_sl_mult']
-            sl_venta  = close + (atr * asm)
-            sl_compra = close - (atr * asm)
+            spread = params.get('spread', 0.35)  # leído aquí: usado en SL y TPs
+            sl_venta  = close + (atr * asm) + spread
+            sl_compra = close - (atr * asm) - spread
         
             # Límites de entrada
             offset_pct = params['limit_offset_pct']
@@ -599,7 +600,6 @@ class GoldDetector15M(BaseDetector):
             buy_limit  = close * (1 - offset_pct / 100)
 
             # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
-            spread = params.get('spread', 0.35)
             sell_entry = round(sell_limit - spread, 2)
             buy_entry  = round(buy_limit  + spread, 2)
 
@@ -609,12 +609,12 @@ class GoldDetector15M(BaseDetector):
             _vol_factor = min(max(_vol_last / _vol_avg20, 0.75), 1.50) if _vol_avg20 > 0 else 1.0
 
             # TPs dinámicos basados en ATR ajustado por volumen (VATR)
-            tp1_v = round(sell_entry - atr * params['atr_tp1_mult'] * _vol_factor, 2)
-            tp2_v = round(sell_entry - atr * params['atr_tp2_mult'] * _vol_factor, 2)
-            tp3_v = round(sell_entry - atr * params['atr_tp3_mult'] * _vol_factor, 2)
-            tp1_c = round(buy_entry  + atr * params['atr_tp1_mult'] * _vol_factor, 2)
-            tp2_c = round(buy_entry  + atr * params['atr_tp2_mult'] * _vol_factor, 2)
-            tp3_c = round(buy_entry  + atr * params['atr_tp3_mult'] * _vol_factor, 2)
+            tp1_v = round(sell_entry - atr * params['atr_tp1_mult'] * _vol_factor - spread, 2)
+            tp2_v = round(sell_entry - atr * params['atr_tp2_mult'] * _vol_factor - spread, 2)
+            tp3_v = round(sell_entry - atr * params['atr_tp3_mult'] * _vol_factor - spread, 2)
+            tp1_c = round(buy_entry  + atr * params['atr_tp1_mult'] * _vol_factor + spread, 2)
+            tp2_c = round(buy_entry  + atr * params['atr_tp2_mult'] * _vol_factor + spread, 2)
+            tp3_c = round(buy_entry  + atr * params['atr_tp3_mult'] * _vol_factor + spread, 2)
         
             def rr(limit, sl, tp):
                 return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
