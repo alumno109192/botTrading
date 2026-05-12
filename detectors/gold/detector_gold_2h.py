@@ -435,25 +435,9 @@ class GoldDetector2H(BaseDetector):
             logger.warning(f"  🚫 [2H] cancelar_sell=True: COMPRA activa en BD para {simbolo_db}")
 
         # ── Detección en vela VIVA: rebote de soporte / rechazo de resistencia ────
-        # Permite alertas DURANTE la formación de la vela sin esperar al cierre.
-        # BUY: la vela en curso tocó el soporte (low en zona) y ya está rebotando.
-        rebote_soporte_live = (
-            (low_live  >= zsl - tol * 1.2) and (low_live  <= zsh + tol * 1.5) and  # low tocó zona soporte (mecha amplificada)
-            close_live > open_live and                                   # vela alcista (rebote)
-            close_live > zsh - tol and                                   # cierre saliendo de la zona
-            low_live   < zsh                                             # efectivamente entró en zona
-        )
-        # SELL: la vela en curso tocó la resistencia y está rechazando.
-        rechazo_resist_live = (
-            (high_live >= zrl - tol * 1.2) and (high_live <= zrh + tol * 1.5) and  # high tocó zona resist (mecha amplificada)
-            close_live < open_live and                                   # vela bajista (rechazo)
-            close_live < zrh + tol and                                   # cierre en/bajo la zona
-            high_live  > zrl                                             # efectivamente tocó zona
-        )
-        if rebote_soporte_live:
-            logger.info(f"  ⚡ [LIVE] Rebote en soporte — low_live=${low_live:.2f}  close_live=${close_live:.2f}")
-        if rechazo_resist_live:
-            logger.info(f"  ⚡ [LIVE] Rechazo en resistencia — high_live=${high_live:.2f}  close_live=${close_live:.2f}")
+        # Señales LIVE desactivadas — solo velas cerradas
+        rebote_soporte_live = False
+        rechazo_resist_live = False
 
         # ── DETECCIÓN RETEST DE CANAL ROTO ────────────────────────────────────────
         # Tras romper el canal, el precio retrocede hacia la línea rota (ahora resistencia/soporte)
@@ -989,13 +973,6 @@ class GoldDetector2H(BaseDetector):
             score_buy = min(score_buy + 1, 23)
             logger.info(f"  🔺 [2H] Momentum alcista en soporte — +1 BUY")
 
-        # Umbrales 1H (estrictos para filtrar ruido intradía)
-        # Bonus de vela viva: +3 si la vela en curso ya confirmó rebote/rechazo en zona
-        if rebote_soporte_live:
-            score_buy  = min(score_buy  + 3, 23)
-        if rechazo_resist_live:
-            score_sell = min(score_sell + 3, 23)
-
         # ── Ajuste de score por predicción anticipada ML ───────────────────────
         if _prob_buy > 0.80:
             score_buy = min(score_buy + 4, 25)
@@ -1156,11 +1133,6 @@ class GoldDetector2H(BaseDetector):
         clave_vela = f"{simbolo}_2H_{fecha}"
 
 
-
-        # Clave para alertas de vela viva (caduca al cierre de la vela, TTL 1h)
-        clave_vela_live = f"{simbolo}_2H_LIVE_{df.index[-1].strftime('%Y-%m-%d %H')}"
-        def ya_enviada_live(tipo): return self.alertas_enviadas.get(f"{clave_vela_live}_{tipo}", 0) > time.time() - 3600
-        def marcar_enviada_live(tipo): self.alertas_enviadas[f"{clave_vela_live}_{tipo}"] = time.time()
 
         # ── FILTRO R:R MÍNIMO 1.2 (evaluar ANTES de cualquier señal) ──
         rr_sell_tp1 = rr(sell_limit, sl_venta, tp1_v)
@@ -1352,131 +1324,6 @@ class GoldDetector2H(BaseDetector):
         # ── ALERTA INMEDIATA: rebote/rechazo en vela VIVA ────────────────────────
         # Se dispara mientras la vela está formándose — no espera al cierre.
         # El precio YA tocó la zona y está rebotando/rechazando: entry = market price ahora.
-        # IMPORTANTE: usa flags pre-exclusión-mutua (_prep_*) para que un sesgo general
-        # en la dirección opuesta no suprima alertas de acción de precio real.
-        if rebote_soporte_live and _prep_buy_alerta and not cancelar_buy and not cancelar_buy_rr and not ya_enviada_live('LIVE_BUY'):
-            nv = ("🔥 BUY MÁXIMA" if senal_buy_maxima else
-                  "🟢 BUY FUERTE" if senal_buy_fuerte else
-                  "⚡ BUY MEDIA"  if senal_buy_media  else
-                  "👀 BUY ALERTA")
-            # SL debajo del mínimo de la vela viva + buffer
-            sl_live = round(low_live - atr * 0.3, 2)
-            
-            # ── TPs LIVE: recalcular desde close_live (no reutilizar tp1_c/tp2_c/tp3_c) ──
-            tp1_live = _tp1_viable_buy(resistencias_sr, close_live, sl_live, 1.2,
-                                       close_live + atr * params['atr_tp1_mult'])
-            _resis_sobre_live = sorted([v for v in resistencias_sr if v > close_live])
-            tp2_live = _recortar_tp_compra(
-                _tp_desde_sr(_resis_sobre_live, 2, close_live + atr * params['atr_tp2_mult']),
-                tp1_live, resistencias_sr, atr)
-            tp3_live = _recortar_tp_compra(
-                _tp_desde_sr(_resis_sobre_live, 3, close_live + atr * params['atr_tp3_mult']),
-                tp2_live, resistencias_sr, atr)
-            
-            rr_live = rr(close_live, sl_live, tp1_live)
-            fecha_live = timestamp_vela_live.strftime('%Y-%m-%d %H:%M')
-            hora_envio = timestamp_envio.strftime('%H:%M:%S')
-            msg = (f"⚡ <b>REBOTE EN SOPORTE — {self.nombre_display} {self.tf_label}</b>  ← VELA EN CURSO\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Nivel:</b> {nv} | V-REVERSAL ACTIVO\n"
-                   f"💰 <b>Precio actual:</b>  ${close_live:.2f}  (ENTRADA MARKET)\n"
-                   f"📉 <b>Low vela:</b>       ${low_live:.2f}  ← tocó soporte ${zsl:.0f}-${zsh:.0f}\n"
-                   f"🛑 <b>Stop Loss:</b>      ${sl_live:.2f}  (-${round(close_live - sl_live, 2)})\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_live:.2f}  R:R {rr_live}:1\n"
-                   f"🎯 <b>TP2:</b> ${tp2_live:.2f}  R:R {rr(close_live, sl_live, tp2_live)}:1\n"
-                   f"🎯 <b>TP3:</b> ${tp3_live:.2f}  R:R {rr(close_live, sl_live, tp3_live)}:1\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
-                   f"⏱️ <b>TF:</b> 2H\n"
-                   f"📅 <b>Estudio:</b> {fecha_live} UTC  🕐 <b>Envío:</b> {hora_envio} UTC")
-            _bloquear_buy_live = self.db and (
-                self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=1) or
-                self.db.existe_senal_reciente_opuesta(simbolo_db, "COMPRA", horas=1))
-            if _bloquear_buy_live:
-                logger.info(f"  🚫 BUY LIVE bloqueada: señal reciente o conflicto en BD")
-            else:
-                if self.db:
-                    try:
-                        _nivel_live_buy = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
-                        self._guardar_senal({
-                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                            'direccion': 'COMPRA', 'precio_entrada': close_live,
-                            'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
-                            'score': score_buy, 'nivel': _nivel_live_buy,
-                            'indicadores': json.dumps(_condiciones_bd),
-                            'patron_velas': f"ReboteVivo:True, Low={low_live:.2f}",
-                            'version_detector': 'GOLD 2H-v1.0'
-                        })
-                    except Exception as e:
-                        logger.error(f"  ⚠️ Error BD: {e}")
-                _nivel_live_buy = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
-                if self._debe_suprimir_por_evento(_nivel_live_buy):
-                    logger.info(f"  🔕 [2H] BUY LIVE suprimida por evento macro")
-                else:
-                    self.enviar(msg); marcar_enviada_live('LIVE_BUY')
-
-        if rechazo_resist_live and _prep_sell_alerta and not cancelar_sell and not cancelar_sell_rr and not ya_enviada_live('LIVE_SELL'):
-            nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
-                  "🔴 SELL FUERTE" if senal_sell_fuerte else
-                  "⚡ SELL MEDIA"  if senal_sell_media  else
-                  "👀 SELL ALERTA")
-            sl_live = round(high_live + atr * 0.3, 2)
-            
-            # ── TPs LIVE: recalcular desde close_live (no reutilizar tp1_v/tp2_v/tp3_v) ──
-            _sop_debajo_live = sorted([s for s in soportes_sr if s < close_live], reverse=True)
-            tp1_live = _tp1_viable_sell(_sop_debajo_live, close_live, sl_live, 1.2,
-                                        close_live - atr * params['atr_tp1_mult'])
-            tp2_live = _recortar_tp_venta(
-                _tp_desde_sr(_sop_debajo_live, 2, close_live - atr * params['atr_tp2_mult']),
-                tp1_live, soportes_sr, atr)
-            tp3_live = _recortar_tp_venta(
-                _tp_desde_sr(_sop_debajo_live, 3, close_live - atr * params['atr_tp3_mult']),
-                tp2_live, soportes_sr, atr)
-            
-            rr_live = rr(close_live, sl_live, tp1_live)
-            fecha_live = timestamp_vela_live.strftime('%Y-%m-%d %H:%M')
-            hora_envio = timestamp_envio.strftime('%H:%M:%S')
-            msg = (f"⚡ <b>RECHAZO EN RESISTENCIA — {self.nombre_display} {self.tf_label}</b>  ← VELA EN CURSO\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Nivel:</b> {nv} | V-REVERSAL ACTIVO\n"
-                   f"💰 <b>Precio actual:</b>  ${close_live:.2f}  (ENTRADA MARKET)\n"
-                   f"📈 <b>High vela:</b>       ${high_live:.2f}  ← tocó resist ${zrl:.0f}-${zrh:.0f}\n"
-                   f"🛑 <b>Stop Loss:</b>      ${sl_live:.2f}  (+${round(sl_live - close_live, 2)})\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"🎯 <b>TP1:</b> ${tp1_live:.2f}  R:R {rr_live}:1\n"
-                   f"🎯 <b>TP2:</b> ${tp2_live:.2f}  R:R {rr(close_live, sl_live, tp2_live)}:1\n"
-                   f"🎯 <b>TP3:</b> ${tp3_live:.2f}  R:R {rr(close_live, sl_live, tp3_live)}:1\n"
-                   f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
-                   f"⏱️ <b>TF:</b> 2H\n"
-                   f"📅 <b>Estudio:</b> {fecha_live} UTC  🕐 <b>Envío:</b> {hora_envio} UTC")
-            _bloquear_sell_live = self.db and (
-                self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=1) or
-                self.db.existe_senal_reciente_opuesta(simbolo_db, "VENTA", horas=1))
-            if _bloquear_sell_live:
-                logger.info(f"  🚫 SELL LIVE bloqueada: señal reciente o conflicto en BD")
-            else:
-                if self.db:
-                    try:
-                        _nivel_live_sell = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
-                        self._guardar_senal({
-                            'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
-                            'direccion': 'VENTA', 'precio_entrada': close_live,
-                            'tp1': tp1_live, 'tp2': tp2_live, 'tp3': tp3_live, 'sl': sl_live,
-                            'score': score_sell, 'nivel': _nivel_live_sell,
-                            'indicadores': json.dumps(_condiciones_bd),
-                            'patron_velas': f"RechazoVivo:True, High={high_live:.2f}",
-                            'version_detector': 'GOLD 2H-v1.0'
-                        })
-                    except Exception as e:
-                        logger.error(f"  ⚠️ Error BD: {e}")
-                _nivel_live_sell = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
-                if self._debe_suprimir_por_evento(_nivel_live_sell):
-                    logger.info(f"  🔕 [2H] SELL LIVE suprimida por evento macro")
-                else:
-                    self.enviar(msg); marcar_enviada_live('LIVE_SELL')
-
         # ── ALERTAS DE APROXIMACIÓN → SEÑAL ACCIONABLE (pon la orden limit ahora) ──
         if aproximando_resist and not en_zona_resist and not cancelar_sell and not cancelar_sell_rr and _prep_sell_alerta and not self.ya_enviada(f"{clave_vela}_PREP_SELL"):
             nv = ("🔥 SELL MÁXIMA" if senal_sell_maxima else
