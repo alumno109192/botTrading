@@ -991,6 +991,20 @@ class GoldDetector1H(BaseDetector):
             logger.debug(f"  [1H] Error _ctx_htf: {_ctx_e}")
         # ─────────────────────────────────────────────────────────────────────
 
+        # ── Re-entrada: ¿hubo un cierre reciente (TP/SL) en la misma dirección? ──
+        _rentry_sell = self.db.existe_senal_cerrada_reciente(simbolo_db, 'VENTA',  horas=8) if self.db else None
+        _rentry_buy  = self.db.existe_senal_cerrada_reciente(simbolo_db, 'COMPRA', horas=8) if self.db else None
+        _sfx_sell = (
+            f"\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"♻️ <b>RE-ENTRADA</b> — Trade #{_rentry_sell['id']} cerrado ({_rentry_sell['estado']})\n"
+            f"   Entrada anterior: ${_rentry_sell['precio_entrada']:.2f} | TP1: ${_rentry_sell['tp1']:.2f}"
+        ) if _rentry_sell else ""
+        _sfx_buy = (
+            f"\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"♻️ <b>RE-ENTRADA</b> — Trade #{_rentry_buy['id']} cerrado ({_rentry_buy['estado']})\n"
+            f"   Entrada anterior: ${_rentry_buy['precio_entrada']:.2f} | TP1: ${_rentry_buy['tp1']:.2f}"
+        ) if _rentry_buy else ""
+
         # ── ALERTA INMEDIATA: rebote/rechazo en vela VIVA ────────────────────────
         # Se dispara mientras la vela está formándose — no espera al cierre.
         # El precio YA tocó la zona y está rebotando/rechazando: entry = market price ahora.
@@ -1041,6 +1055,7 @@ class GoldDetector1H(BaseDetector):
                 else:
                     if _ctx_htf:
                         msg += _ctx_htf
+                    msg += _sfx_sell
                     self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_SELL")
 
         if aproximando_soporte and not en_zona_soporte and not cancelar_buy and not cancelar_buy_rr and _prep_buy_alerta and not self.ya_enviada(f"{clave_vela}_PREP_BUY"):
@@ -1089,6 +1104,7 @@ class GoldDetector1H(BaseDetector):
                 else:
                     if _ctx_htf:
                         msg += _ctx_htf
+                    msg += _sfx_buy
                     self.enviar(msg); self.marcar_enviada(f"{clave_vela}_PREP_BUY")
 
         # ── SEÑALES SELL (en zona) — requiere mínimo MEDIA para enviar Telegram ──
@@ -1142,6 +1158,7 @@ class GoldDetector1H(BaseDetector):
                             msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                         if _ctx_htf:
                             msg += _ctx_htf
+                        msg += _sfx_sell
                         if self.db:
                             try:
                                 self._guardar_senal({
@@ -1212,6 +1229,7 @@ class GoldDetector1H(BaseDetector):
                             msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                         if _ctx_htf:
                             msg += _ctx_htf
+                        msg += _sfx_buy
                         if self.db:
                             try:
                                 self._guardar_senal({

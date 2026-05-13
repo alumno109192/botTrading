@@ -592,6 +592,20 @@ class GoldDetector15M(BaseDetector):
             except Exception as _ctx_e:
                 logger.debug(f"  [15M] Error _ctx_htf: {_ctx_e}")
 
+            # ── Re-entrada: ¿hubo un cierre reciente (TP/SL) en la misma dirección? ──
+            _rentry_sell = self.db.existe_senal_cerrada_reciente(simbolo_db, 'VENTA',  horas=4) if self.db else None
+            _rentry_buy  = self.db.existe_senal_cerrada_reciente(simbolo_db, 'COMPRA', horas=4) if self.db else None
+            _sfx_sell = (
+                f"\n━━━━━━━━━━━━━━━━━━━━\n"
+                f"♻️ <b>RE-ENTRADA</b> — Trade #{_rentry_sell['id']} cerrado ({_rentry_sell['estado']})\n"
+                f"   Entrada anterior: ${_rentry_sell['precio_entrada']:.2f} | TP1: ${_rentry_sell['tp1']:.2f}"
+            ) if _rentry_sell else ""
+            _sfx_buy = (
+                f"\n━━━━━━━━━━━━━━━━━━━━\n"
+                f"♻️ <b>RE-ENTRADA</b> — Trade #{_rentry_buy['id']} cerrado ({_rentry_buy['estado']})\n"
+                f"   Entrada anterior: ${_rentry_buy['precio_entrada']:.2f} | TP1: ${_rentry_buy['tp1']:.2f}"
+            ) if _rentry_buy else ""
+
             # ── Construir diagnóstico de patrones detectados ──
             patrones_detectados = []
             if patron_envolvente_bajista(df):
@@ -645,6 +659,7 @@ class GoldDetector15M(BaseDetector):
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                     if _ctx_htf:
                         msg += _ctx_htf
+                    msg += _sfx_sell
                     if self.db:
                         try:
                             self._guardar_senal({
@@ -694,6 +709,7 @@ class GoldDetector15M(BaseDetector):
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                     if _ctx_htf:
                         msg += _ctx_htf
+                    msg += _sfx_buy
                     if self.db:
                         try:
                             self._guardar_senal({
