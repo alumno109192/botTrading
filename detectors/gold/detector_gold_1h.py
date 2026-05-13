@@ -676,6 +676,21 @@ class GoldDetector1H(BaseDetector):
         senal_buy_media   = score_buy  >= _umbral_med
         senal_buy_alerta  = score_buy  >= _umbral_ale
 
+        # ── Filtro RSI 5M: evitar entrar cuando el TF inferior está contraposicionado ──
+        # SELL: si RSI 5M < 35 el precio ya está sobrevendido en 5M → timing malo para vender
+        # BUY:  si RSI 5M > 65 el precio ya está sobrecomprado en 5M → timing malo para comprar
+        try:
+            _rsi_5m = float(calcular_rsi(df_5m['Close'], 14).iloc[-1])
+            if (senal_sell_maxima or senal_sell_fuerte) and _rsi_5m < 35:
+                logger.info(f"  🔴 [1H] SELL bloqueada — RSI 5M sobrevendido ({_rsi_5m:.1f} < 35)")
+                senal_sell_maxima = senal_sell_fuerte = False
+            if (senal_buy_maxima or senal_buy_fuerte) and _rsi_5m > 65:
+                logger.info(f"  🟢 [1H] BUY bloqueada — RSI 5M sobrecomprado ({_rsi_5m:.1f} > 65)")
+                senal_buy_maxima = senal_buy_fuerte = False
+            logger.info(f"  📊 [1H] RSI 5M={_rsi_5m:.1f} (filtro TF corto OK)")
+        except Exception as _e_rsi5m:
+            logger.debug(f"  [1H] No se pudo calcular RSI 5M: {_e_rsi5m}")
+
         # ── FILTRO ADX MÍNIMO: mercado plano → bloquear todas las señales ──────
         # ADX < 15 = mercado sin tendencia (dormido). Las señales en este contexto
         # generan falsos positivos: RSI en 50, ATR colapsando, precio sin dirección.

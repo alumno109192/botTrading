@@ -319,6 +319,21 @@ class GoldDetector15M(BaseDetector):
                 'oi_bias': str(_oi_bias) if _oi_bias else None,
             }
 
+            # ── Filtro RSI 5M/1M: evitar entrar cuando el TF inferior está contraposicionado ──
+            # SELL: si RSI 5M < 35 el precio ya está sobrevendido en TF corto → no vender
+            # BUY:  si RSI 5M > 65 el precio ya está sobrecomprado en TF corto → no comprar
+            try:
+                _rsi_5m = float(calcular_rsi(df_5m['Close'], 14).iloc[-1])
+                if senal_sell_fuerte and _rsi_5m < 35:
+                    logger.info(f"  🔴 [15M] SELL bloqueada — RSI 5M sobrevendido ({_rsi_5m:.1f} < 35)")
+                    senal_sell_fuerte = False
+                if senal_buy_fuerte and _rsi_5m > 65:
+                    logger.info(f"  🟢 [15M] BUY bloqueada — RSI 5M sobrecomprado ({_rsi_5m:.1f} > 65)")
+                    senal_buy_fuerte = False
+                logger.info(f"  📊 [15M] RSI 5M={_rsi_5m:.1f} (filtro TF corto OK)")
+            except Exception as _e_rsi5m:
+                logger.debug(f"  [15M] No se pudo calcular RSI 5M: {_e_rsi5m}")
+
             # ── Filtro de sesión: fuera de 08-21 UTC solo FUERTE (TF corto = ruido nocturno) ──
             if not self.en_sesion_optima():
                 logger.info(f"  🌙 [15M] Fuera sesión óptima — señal suprimida (08-21 UTC)")
