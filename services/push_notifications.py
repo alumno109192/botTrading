@@ -106,9 +106,11 @@ def enviar_push_senal(senal_id: int, titulo: str, cuerpo: str,
         except Exception as exc:
             exc_str = str(exc)
             # 410 Gone / 404 Not Found → suscripción caducada, eliminar
-            if '410' in exc_str or '404' in exc_str or 'Gone' in exc_str:
+            # 403 con "aud claim" → endpoint FCM legacy deprecado por Google, eliminar
+            if ('410' in exc_str or '404' in exc_str or 'Gone' in exc_str
+                    or ('403' in exc_str and 'aud' in exc_str.lower())):
                 a_eliminar.append(sub_row['endpoint'])
-                logger.info(f"📲 Push: suscripción caducada, se eliminará: {sub_row['endpoint'][:50]}...")
+                logger.info(f"📲 Push: suscripción caducada/deprecada, se eliminará: {sub_row['endpoint'][:50]}...")
             else:
                 logger.warning(f"⚠️ Push: error enviando a {sub_row['endpoint'][:50]}: {exc_str[:100]}")
 
