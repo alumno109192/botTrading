@@ -287,7 +287,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
             pct = round(dist_recorrida / dist_total * 100)
             beneficio_parcial = calcular_beneficio_pct(precio_entrada, precio_actual, 'COMPRA')
             msg_50 = (
-                f"⚡ <b>Trade avanzando — 50% hacia TP1</b>\n"
+                f"⚡ <b>Trade avanzando — {pct}% hacia TP1</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"📊 {simbolo} | COMPRA\n"
                 f"💰 Entrada: ${precio_entrada:.2f}\n"
@@ -456,7 +456,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
             pct = round(dist_recorrida / dist_total * 100)
             beneficio_parcial = calcular_beneficio_pct(precio_entrada, precio_actual, 'VENTA')
             msg_50 = (
-                f"⚡ <b>Trade avanzando — 50% hacia TP1</b>\n"
+                f"⚡ <b>Trade avanzando — {pct}% hacia TP1</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"📊 {simbolo} | VENTA\n"
                 f"💰 Entrada: ${precio_entrada:.2f}\n"
