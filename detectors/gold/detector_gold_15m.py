@@ -334,7 +334,23 @@ class GoldDetector15M(BaseDetector):
             except Exception as _e_rsi5m:
                 logger.debug(f"  [15M] No se pudo calcular RSI 5M: {_e_rsi5m}")
 
-            # ── Filtro de sesión: fuera de 08-21 UTC solo FUERTE (TF corto = ruido nocturno) ──
+            # ── Filtro RSI 1M: bloquea entradas en momentos de impulso extremo en TF 1M ──
+            # Umbrales más extremos que 5M (1M es ruidoso) — solo bloquea si hay agotamiento evidente
+            # SELL: RSI 1M < 25 → impulso bajista agotado en 1M, posible rebote inmediato
+            # BUY:  RSI 1M > 75 → impulso alcista agotado en 1M, posible retroceso inmediato
+            try:
+                df_1m, _ = get_ohlcv(params['ticker_yf'], period='1d', interval='1m')
+                if df_1m is not None and len(df_1m) >= 14:
+                    _rsi_1m = float(calcular_rsi(df_1m['Close'], 7).iloc[-1])
+                    if senal_sell_fuerte and _rsi_1m < 25:
+                        logger.info(f"  🔴 [15M] SELL bloqueada — RSI 1M agotado bajista ({_rsi_1m:.1f} < 25)")
+                        senal_sell_fuerte = False
+                    if senal_buy_fuerte and _rsi_1m > 75:
+                        logger.info(f"  🟢 [15M] BUY bloqueada — RSI 1M agotado alcista ({_rsi_1m:.1f} > 75)")
+                        senal_buy_fuerte = False
+                    logger.info(f"  📊 [15M] RSI 1M={_rsi_1m:.1f} (filtro 1M OK)")
+            except Exception as _e_rsi1m:
+                logger.debug(f"  [15M] No se pudo calcular RSI 1M: {_e_rsi1m}")
             if not self.en_sesion_optima():
                 logger.info(f"  🌙 [15M] Fuera sesión óptima — señal suprimida (08-21 UTC)")
                 senal_sell_fuerte = False
