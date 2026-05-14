@@ -376,6 +376,23 @@ nav {
 .pbar-entry    { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--muted-2); border-radius: 1px; transform: translateX(-50%); }
 .pbar-cursor   { position: absolute; top: -4px; width: 3px; height: 14px; background: #e2e8f0; border-radius: 2px; transform: translateX(-50%); box-shadow: 0 0 6px rgba(226,232,240,0.5); transition: left 0.5s ease; }
 
+.pbar-fill--sl { background: linear-gradient(90deg, var(--sell), var(--sell-dim)); }
+.pbar-entry    { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--muted-2); border-radius: 1px; transform: translateX(-50%); }
+.pbar-cursor   { position: absolute; top: -4px; width: 3px; height: 14px; background: #e2e8f0; border-radius: 2px; transform: translateX(-50%); box-shadow: 0 0 6px rgba(226,232,240,0.5); transition: left 0.5s ease; }
+
+/* ── Pulso del mercado (SELL/BUY scores por TF) ───────── */
+.mkt-pulse { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px; margin-bottom: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.mkt-pulse-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mkt-pulse-sym { font-size: 0.68rem; font-weight: 700; color: var(--accent); letter-spacing: 0.06em; min-width: 52px; }
+.mkt-pulse-item { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); font-size: 0.68rem; font-variant-numeric: tabular-nums; }
+.mkt-pulse-item.pulse-buy  { border-color: rgba(0,230,118,0.25);  background: rgba(0,230,118,0.05); }
+.mkt-pulse-item.pulse-sell { border-color: rgba(255,23,68,0.25);   background: rgba(255,23,68,0.05); }
+.mkt-pulse-item.pulse-neutral { border-color: var(--border); }
+.mkt-pulse-tf   { font-size: 0.6rem; color: var(--muted); min-width: 26px; }
+.mkt-pulse-sell { color: var(--sell); }
+.mkt-pulse-buy  { color: var(--buy); }
+.mkt-pulse-sep  { color: var(--muted); }
+
 /* Meta */
 .card-meta {
   grid-column: 1 / -1;

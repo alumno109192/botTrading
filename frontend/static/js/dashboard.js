@@ -30,6 +30,7 @@ function dashboardApp() {
     statsGlobal:         {},
     statsPorTF:          [],
     precioActual:        null,
+    scores:              [],        // [{simbolo, tf, score_sell, score_buy, max_score, ts}]
 
     /* ── UI ── */
     ultimaActualizacion: '',
@@ -69,6 +70,7 @@ function dashboardApp() {
         this.cargarHistorial(),
         this.cargarStats(),
         this.cargarPrecio('XAUUSD'),
+        this.cargarScores(),
       ]);
       this.ultimaActualizacion = new Date().toLocaleTimeString('es-ES', {
         hour: '2-digit', minute: '2-digit', second: '2-digit'
@@ -168,12 +170,28 @@ function dashboardApp() {
       } catch (_) {}
     },
 
+    async cargarScores() {
+      try {
+        const r = await fetch('/api/v1/scores');
+        if (r.ok) { const d = await r.json(); this.scores = d.scores || []; }
+      } catch (_) {}
+    },
+
     /* ══════════════════════════════════════════
        GETTERS REACTIVOS
     ══════════════════════════════════════════ */
     get senalesFiltradas() {
       if (!this.tfSeleccionados.length) return this.senalesActivas;
       return this.senalesActivas.filter(s => this.tfSeleccionados.includes(s.timeframe));
+    },
+
+    get scoresPorSimbolo() {
+      const map = {};
+      for (const s of this.scores) {
+        if (!map[s.simbolo]) map[s.simbolo] = { simbolo: s.simbolo, items: [] };
+        map[s.simbolo].items.push(s);
+      }
+      return Object.values(map);
     },
 
     get historialFiltrado() {

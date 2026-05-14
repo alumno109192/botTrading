@@ -47,6 +47,7 @@ _canal_1w_store     = {}   # canal 1W en memoria
 _zona_activa_store  = {}   # {simbolo: {BULLISH/BEARISH: {...}}} — zona 1H activa para modo caza
 _pullback_4h_store  = {}   # {simbolo: {en_pullback, tendencia, nivel_fib, precio_nivel, profundidad, ts}}
 TTL_ZONA_ACTIVA_MIN = 120  # zona activa expira a las 2 horas (en minutos)
+_scores_store   = {}   # {simbolo_tf: {score_sell, score_buy, max_score, ts}}
 # ─────────────────────────────────────
 
 BIAS_BULLISH = 'BULLISH'
@@ -74,6 +75,28 @@ def obtener_sesgo(simbolo: str, tf: str):
     """Retorna dict {bias, score, ts} o None si no hay datos."""
     with _lock:
         return _bias_store.get(simbolo, {}).get(tf)
+
+
+def publicar_scores(simbolo: str, tf: str, score_sell: int, score_buy: int, max_score: int) -> None:
+    """Publica el desglose SELL/BUY del último análisis. Thread-safe."""
+    with _lock:
+        _scores_store[f"{simbolo}_{tf}"] = {
+            'simbolo':    simbolo,
+            'tf':         tf,
+            'score_sell': score_sell,
+            'score_buy':  score_buy,
+            'max_score':  max_score,
+            'ts':         datetime.now().isoformat(),
+        }
+
+
+def obtener_todos_scores() -> list:
+    """Retorna lista de scores de todos los símbolos/TFs, ordenada por símbolo y TF."""
+    orden_tf = {'1M': 0, '5M': 1, '15M': 2, '30M': 3, '1H': 4, '2H': 5, '4H': 6, '1D': 7, '1W': 8}
+    with _lock:
+        items = list(_scores_store.values())
+    items.sort(key=lambda x: (x['simbolo'], orden_tf.get(x['tf'], 99)))
+    return items
 
 
 def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str, score: int = 0) -> tuple:

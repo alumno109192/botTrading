@@ -1288,6 +1288,7 @@ class GoldDetector2H(BaseDetector):
         # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 1H) ──
         _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
         tf_bias.publicar_sesgo(simbolo, '2H', _sesgo_dir, max(score_sell, score_buy))
+        tf_bias.publicar_scores(simbolo, '2H', score_sell, score_buy, 21)
         _conf_sell = ""; _conf_buy = ""
         if senal_sell_media:
             _ok, _desc = tf_bias.verificar_confluencia(simbolo, '2H', tf_bias.BIAS_BEARISH, score=score_sell)

@@ -98,6 +98,23 @@
     <!-- ── SEÑALES ACTIVAS ──────────────────────────────── -->
     <section x-show="vistaActual === 'activas'">
 
+      <!-- Pulso del mercado: scores SELL/BUY por TF -->
+      <div class="mkt-pulse" x-show="scores.length > 0">
+        <template x-for="grp in scoresPorSimbolo" :key="grp.simbolo">
+          <div class="mkt-pulse-group">
+            <span class="mkt-pulse-sym" x-text="grp.simbolo"></span>
+            <template x-for="s in grp.items" :key="s.tf">
+              <div class="mkt-pulse-item" :class="s.score_buy > s.score_sell ? 'pulse-buy' : s.score_sell > s.score_buy ? 'pulse-sell' : 'pulse-neutral'">
+                <span class="mkt-pulse-tf" x-text="s.tf"></span>
+                <span class="mkt-pulse-sell" x-text="`🔴${s.score_sell}/${s.max_score}`"></span>
+                <span class="mkt-pulse-sep">|</span>
+                <span class="mkt-pulse-buy"  x-text="`🟢${s.score_buy}/${s.max_score}`"></span>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+
       <!-- Empty state -->
       <div class="empty-state" x-show="senalesFiltradas.length === 0">
         <span class="empty-icon">📭</span>

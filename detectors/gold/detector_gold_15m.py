@@ -492,6 +492,7 @@ class GoldDetector15M(BaseDetector):
 
             _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
             tf_bias.publicar_sesgo(simbolo, '15M', _sesgo_dir, max(score_sell, score_buy))
+            tf_bias.publicar_scores(simbolo, '15M', score_sell, score_buy, 5)
             _conf_sell = ""; _conf_buy = ""
             if senal_sell_fuerte:
                 _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BEARISH, score_sell)

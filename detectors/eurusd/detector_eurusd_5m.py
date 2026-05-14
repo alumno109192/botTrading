@@ -396,6 +396,7 @@ class EURUSDDetector5M(BaseDetector):
                           else tf_bias.BIAS_BULLISH if score_buy > score_sell
                           else tf_bias.BIAS_NEUTRAL)
             tf_bias.publicar_sesgo(simbolo, '5M', _sesgo_dir, max(score_sell, score_buy))
+            tf_bias.publicar_scores(simbolo, '5M', score_sell, score_buy, max_score)
 
             _conf_sell = ""
             _conf_buy  = ""

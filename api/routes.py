@@ -280,6 +280,19 @@ def create_app(estado_sistema, threads_detectores):
     # API v1 — stats
     # ─────────────────────────────────────────────────────────────────────────
 
+    @app.route('/api/v1/scores')
+    def v1_scores():
+        """Scores SELL/BUY más recientes por símbolo y timeframe."""
+        try:
+            from services import tf_bias
+            return jsonify({
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'scores': tf_bias.obtener_todos_scores(),
+            })
+        except Exception as e:
+            logger.error(f"❌ /api/v1/scores error: {e}")
+            return jsonify({'error': str(e)}), 500
+
     @app.route('/api/v1/stats/global')
     def v1_stats_global():
         """Win rate global, P&L, señales hoy/semana/mes."""

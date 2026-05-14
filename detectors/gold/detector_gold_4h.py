@@ -1043,6 +1043,7 @@ class GoldDetector4H(BaseDetector):
         # ── PUBLICAR + FILTRO CONFLUENCIA MULTI-TF (GOLD 4H) ──
         _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
         tf_bias.publicar_sesgo(simbolo, '4H', _sesgo_dir, max(score_sell, score_buy))
+        tf_bias.publicar_scores(simbolo, '4H', score_sell, score_buy, 15)
         # Publicar datos de canal para que 1H los consulte
         tf_bias.publicar_canal_4h(simbolo,
             alcista_roto=canal_alcista_roto_4h, bajista_roto=canal_bajista_roto_4h,
