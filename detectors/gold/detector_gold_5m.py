@@ -769,8 +769,10 @@ class GoldDetector5M(BaseDetector):
             # y score_5M≥4, disparamos con umbral reducido y precio 5M.
             _zona_1h_buy  = tf_bias.obtener_zona_activa(simbolo, tf_bias.BIAS_BULLISH)
             _zona_1h_sell = tf_bias.obtener_zona_activa(simbolo, tf_bias.BIAS_BEARISH)
-            _modo_caza_buy  = False
-            _modo_caza_sell = False
+            _modo_caza_buy     = False
+            _modo_caza_sell    = False
+            _modo_caza_15m_buy  = False   # cascada 15M → TP objetivo = TP1 (recorrido corto)
+            _modo_caza_15m_sell = False
             _UMBRAL_CAZA    = 8   # el 1H confirma el contexto pero necesitamos señal sólida
 
             if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima():
@@ -812,8 +814,9 @@ class GoldDetector5M(BaseDetector):
                 _tol_15m    = _zona_15m_buy['atr'] * 0.5
                 _en_zona_15m = (_zona_15m_buy['zsl'] - _tol_15m <= close <= _zona_15m_buy['zsh'] + _tol_15m)
                 if _en_zona_15m and score_buy >= _UMBRAL_CAZA_15M:
-                    senal_buy_fuerte = True
-                    _modo_caza_buy   = True
+                    senal_buy_fuerte    = True
+                    _modo_caza_buy      = True
+                    _modo_caza_15m_buy  = True
                     _titulo_buy = f"⚡ ENTRADA PRECISA — <b>Setup 15M / Entrada 5M</b>"
                     _conf_buy = (f"⚡ <b>Setup 15M / Entrada 5M</b>\n"
                                  f"📍 Zona 15M soporte: ${_zona_15m_buy['zsl']:.2f}–${_zona_15m_buy['zsh']:.2f} | Score 15M: {_zona_15m_buy['score_15m']}\n"
@@ -824,8 +827,9 @@ class GoldDetector5M(BaseDetector):
                 _tol_15m    = _zona_15m_sell['atr'] * 0.5
                 _en_zona_15m = (_zona_15m_sell['zrl'] - _tol_15m <= close <= _zona_15m_sell['zrh'] + _tol_15m)
                 if _en_zona_15m and score_sell >= _UMBRAL_CAZA_15M:
-                    senal_sell_fuerte = True
-                    _modo_caza_sell   = True
+                    senal_sell_fuerte    = True
+                    _modo_caza_sell      = True
+                    _modo_caza_15m_sell  = True
                     _titulo_sell = f"⚡ ENTRADA PRECISA — <b>Setup 15M / Entrada 5M</b>"
                     _conf_sell = (f"⚡ <b>Setup 15M / Entrada 5M</b>\n"
                                   f"📍 Zona 15M resistencia: ${_zona_15m_sell['zrl']:.2f}–${_zona_15m_sell['zrh']:.2f} | Score 15M: {_zona_15m_sell['score_15m']}\n"
@@ -912,8 +916,8 @@ class GoldDetector5M(BaseDetector):
                            f"📌 <b>SELL LIMIT:</b> ${round(sell_limit, 2)}\n"
                            f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                           f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                           f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
+                           f"{'💎' if _modo_caza_15m_sell else '🎯'} <b>{'TP RECOMENDADO → ' if _modo_caza_15m_sell else ''}TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
+                           f"{'🎯' if _modo_caza_15m_sell else '💎 <b>TP RECOMENDADO → '}{'TP2:</b>' if not _modo_caza_15m_sell else 'TP2:'} ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
                            f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
@@ -963,8 +967,8 @@ class GoldDetector5M(BaseDetector):
                            f"📌 <b>BUY LIMIT:</b> ${round(buy_limit, 2)}\n"
                            f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
-                           f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                           f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
+                           f"{'💎' if _modo_caza_15m_buy else '🎯'} <b>{'TP RECOMENDADO → ' if _modo_caza_15m_buy else ''}TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
+                           f"{'🎯' if _modo_caza_15m_buy else '💎 <b>TP RECOMENDADO → '}{'TP2:</b>' if not _modo_caza_15m_buy else 'TP2:'} ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
                            f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
