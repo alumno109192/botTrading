@@ -99,6 +99,53 @@ def obtener_todos_scores() -> list:
     return items
 
 
+def detectar_consenso_trampa(simbolo: str, tf_actual: str, direccion: str) -> str:
+    """
+    Detecta si TODOS los TFs publicados para el símbolo están alineados en la misma
+    dirección que la señal propuesta. Cuando el consenso es total, es estadísticamente
+    inusual y puede indicar una trampa coordinada de market makers que barren stops
+    antes de invertir.
+
+    Returns:
+        str vacío si no hay riesgo de trampa.
+        str con descripción del riesgo si todos los TFs coinciden.
+    """
+    MINIMO_TFS_PARA_TRAMPA = 3   # necesitamos al menos 3 TFs alineados para alertar
+    with _lock:
+        sesgo_simbolo = dict(_bias_store.get(simbolo, {}))
+
+    tfs_validos = []
+    tfs_contrarios = []
+    tfs_sin_datos = []
+
+    for tf, entrada in sesgo_simbolo.items():
+        if tf == tf_actual:
+            continue  # no comparamos con nosotros mismos
+        edad_horas = (datetime.now() - entrada['ts']).total_seconds() / 3600
+        if edad_horas > TTL_SESGO_HORAS:
+            tfs_sin_datos.append(tf)
+        elif entrada['bias'] == direccion:
+            tfs_validos.append(tf)
+        elif entrada['bias'] != BIAS_NEUTRAL:
+            tfs_contrarios.append(tf)
+
+    # Solo alertar si hay suficientes TFs con datos y TODOS apuntan al mismo lado
+    total_con_datos = len(tfs_validos) + len(tfs_contrarios)
+    if total_con_datos < MINIMO_TFS_PARA_TRAMPA:
+        return ''
+    if len(tfs_contrarios) > 0:
+        return ''  # hay al menos un TF en contra → consenso no es total
+
+    # Consenso total: todos los TFs disponibles apuntan al mismo lado que la señal
+    dir_label = '🔴 SELL' if direccion == BIAS_BEARISH else '🟢 BUY'
+    tfs_str = ', '.join(tfs_validos)
+    return (
+        f"Todos los TFs coinciden en {dir_label} ({tfs_str}). "
+        f"Consenso total = posible barrido de stops antes de inversión. "
+        f"Considera reducir tamaño o esperar confirmación en TF superior."
+    )
+
+
 def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str, score: int = 0) -> tuple:
     """
     Verifica la confluencia de TFs superiores para la dirección propuesta.

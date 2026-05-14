@@ -202,10 +202,12 @@ class EURUSDDetector5M(BaseDetector):
             if patron_envolvente_alcista(df):
                 score_buy += 2
 
-            if detectar_stop_hunt_bajista(df):
+            _sh_baj_activo = detectar_stop_hunt_bajista(df)
+            _sh_alc_activo = detectar_stop_hunt_alcista(df)
+            if _sh_baj_activo:
                 score_sell += 3
                 logger.info("  🎯 [EURUSD 5M] Stop Hunt BAJISTA — +3 SELL")
-            if detectar_stop_hunt_alcista(df):
+            if _sh_alc_activo:
                 score_buy += 3
                 logger.info("  🎯 [EURUSD 5M] Stop Hunt ALCISTA — +3 BUY")
 
@@ -439,7 +441,15 @@ class EURUSDDetector5M(BaseDetector):
                 cancelar_buy = True
 
             simbolo_db = f"{simbolo}_5M"
-
+            # ── ANTI-TRAMPA: Stop Hunt contralateral ─────────────────────────────
+            if senal_sell_fuerte and _sh_alc_activo:
+                logger.warning(f"  🚫 [ANTI-TRAMPA EURUSD 5M] SELL bloqueada: Stop Hunt ALCISTA activo")
+                senal_sell_fuerte = False
+            if senal_buy_fuerte and _sh_baj_activo:
+                logger.warning(f"  🚫 [ANTI-TRAMPA EURUSD 5M] BUY bloqueada: Stop Hunt BAJISTA activo")
+                senal_buy_fuerte = False
+            _warn_consenso_sell = tf_bias.detectar_consenso_trampa(simbolo, '5M', tf_bias.BIAS_BEARISH)
+            _warn_consenso_buy  = tf_bias.detectar_consenso_trampa(simbolo, '5M', tf_bias.BIAS_BULLISH)
             # ── Patrones para mensaje ─────────────────────────────────────────
             patrones = []
             if patron_envolvente_bajista(df):
@@ -448,9 +458,9 @@ class EURUSDDetector5M(BaseDetector):
                 patrones.append("📈 Envolvente Alcista")
             if patron_doji(df):
                 patrones.append("⚪ Doji")
-            if detectar_stop_hunt_bajista(df):
+            if _sh_baj_activo:
                 patrones.append("🎯 Stop Hunt Bajista")
-            if detectar_stop_hunt_alcista(df):
+            if _sh_alc_activo:
                 patrones.append("🎯 Stop Hunt Alcista")
             if _dt:
                 patrones.append(f"🔻 Doble Techo {_dt_niv:.5f}")
@@ -498,6 +508,8 @@ class EURUSDDetector5M(BaseDetector):
                     )
                     if _conf_sell:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
+                    if _warn_consenso_sell:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_sell}"
                     if self.db:
                         try:
                             self._guardar_senal({
@@ -540,6 +552,8 @@ class EURUSDDetector5M(BaseDetector):
                     )
                     if _conf_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                    if _warn_consenso_buy:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_buy}"
                     if self.db:
                         try:
                             self._guardar_senal({

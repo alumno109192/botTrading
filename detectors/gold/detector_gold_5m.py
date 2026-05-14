@@ -278,10 +278,13 @@ class GoldDetector5M(BaseDetector):
                 score_buy += 2
 
             # Stop Hunt / Falsa Ruptura (patrón de alta fiabilidad en Gold)
-            if detectar_stop_hunt_bajista(df):
+            # Guardamos en variables para reutilizar más adelante como filtro anti-trampa
+            _sh_baj_activo = detectar_stop_hunt_bajista(df)
+            _sh_alc_activo = detectar_stop_hunt_alcista(df)
+            if _sh_baj_activo:
                 score_sell += 4  # +1 vs antes: patrón más fiable en XAUUSD_5M (0% SL histórico)
                 logger.info(f"  🎯 [5M] Stop Hunt BAJISTA detectado — +4 pts SELL")
-            if detectar_stop_hunt_alcista(df):
+            if _sh_alc_activo:
                 score_buy += 4  # +1 vs antes: patrón más fiable en XAUUSD_5M (57% TP3 histórico)
                 logger.info(f"  🎯 [5M] Stop Hunt ALCISTA detectado — +4 pts BUY")
 
@@ -811,6 +814,34 @@ class GoldDetector5M(BaseDetector):
 
             simbolo_db = f"{simbolo}_5M"
             
+            # ── ANTI-TRAMPA: Stop Hunt contralateral ──────────────────────────────
+            # Si la señal SELL se dispara pero hay un Stop Hunt ALCISTA activo
+            # (= el bot también detectó que el barrido bajista fue una trampa),
+            # la señal SELL es directamente contradictoria → bloquear.
+            # Mismo razonamiento en sentido inverso para BUY.
+            if senal_sell_fuerte and _sh_alc_activo:
+                logger.warning(
+                    f"  🚫 [ANTI-TRAMPA] SELL bloqueada: Stop Hunt ALCISTA activo "
+                    f"(el movimiento bajista fue un barrido de stops — señal de BUY, no SELL)"
+                )
+                senal_sell_fuerte = False
+            if senal_buy_fuerte and _sh_baj_activo:
+                logger.warning(
+                    f"  🚫 [ANTI-TRAMPA] BUY bloqueada: Stop Hunt BAJISTA activo "
+                    f"(el movimiento alcista fue un barrido de stops — señal de SELL, no BUY)"
+                )
+                senal_buy_fuerte = False
+
+            # ── Aviso consenso sospechoso ──────────────────────────────────────────
+            # Si TODOS los TFs disponibles apuntan en la misma dirección,
+            # es estadísticamente raro y puede indicar trampa coordinada.
+            _warn_consenso_sell = tf_bias.detectar_consenso_trampa(simbolo, '5M', tf_bias.BIAS_BEARISH)
+            _warn_consenso_buy  = tf_bias.detectar_consenso_trampa(simbolo, '5M', tf_bias.BIAS_BULLISH)
+            if senal_sell_fuerte and _warn_consenso_sell:
+                logger.warning(f"  ⚠️ [CONSENSO] {_warn_consenso_sell}")
+            if senal_buy_fuerte and _warn_consenso_buy:
+                logger.warning(f"  ⚠️ [CONSENSO] {_warn_consenso_buy}")
+
             # ── Construir diagnóstico de patrones detectados ──
             patrones_detectados = []
             if patron_envolvente_bajista(df):
@@ -819,9 +850,9 @@ class GoldDetector5M(BaseDetector):
                 patrones_detectados.append("📈 Envolvente Alcista")
             if patron_doji(df):
                 patrones_detectados.append("⚪ Doji (indecisión)")
-            if detectar_stop_hunt_bajista(df):
+            if _sh_baj_activo:
                 patrones_detectados.append("🎯 Stop Hunt Bajista (trampa alcista)")
-            if detectar_stop_hunt_alcista(df):
+            if _sh_alc_activo:
                 patrones_detectados.append("🎯 Stop Hunt Alcista (trampa bajista)")
             if _dt_5m:
                 patrones_detectados.append(f"🔻 Doble Techo en ${_dt_nivel_5m:.1f}")
@@ -864,6 +895,8 @@ class GoldDetector5M(BaseDetector):
                            f"🔒 MICRO-SCALP — Cerrar máx 30 min")
                     if _conf_sell:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
+                    if _warn_consenso_sell:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_sell}"
                     if self.db:
                         try:
                             self._guardar_senal({
@@ -876,7 +909,7 @@ class GoldDetector5M(BaseDetector):
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                 'score': score_sell,
                                 'indicadores': json.dumps(_condiciones_bd),
-                                'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
+                                'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_baj_activo}",
                                 'version_detector': '5M-MICRO-v2.1'
                             })
                         except Exception as e:
@@ -913,6 +946,8 @@ class GoldDetector5M(BaseDetector):
                            f"🔒 MICRO-SCALP — Cerrar máx 30 min")
                     if _conf_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                    if _warn_consenso_buy:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_buy}"
                     if self.db:
                         try:
                             self._guardar_senal({
@@ -925,7 +960,7 @@ class GoldDetector5M(BaseDetector):
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                 'score': score_buy,
                                 'indicadores': json.dumps(_condiciones_bd),
-                                'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}, DobleSuelo:{_ds_5m}",
+                                'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_alc_activo}, DobleSuelo:{_ds_5m}",
                                 'version_detector': '5M-MICRO-v2.1'
                             })
                         except Exception as e:

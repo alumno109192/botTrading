@@ -607,6 +607,24 @@ class GoldDetector15M(BaseDetector):
                 f"   Entrada anterior: ${_rentry_buy['precio_entrada']:.2f} | TP1: ${_rentry_buy['tp1']:.2f}"
             ) if _rentry_buy else ""
 
+            # ── ANTI-TRAMPA: Stop Hunt contralateral (gold 15M) ─────────────────────
+            _sh_baj_activo = detectar_stop_hunt_bajista(df)
+            _sh_alc_activo = detectar_stop_hunt_alcista(df)
+            if senal_sell_fuerte and _sh_alc_activo:
+                logger.warning(
+                    f"  🚫 [ANTI-TRAMPA 15M] SELL bloqueada: Stop Hunt ALCISTA activo "
+                    f"(el barrido bajista fue una trampa — señal real es BUY)"
+                )
+                senal_sell_fuerte = False
+            if senal_buy_fuerte and _sh_baj_activo:
+                logger.warning(
+                    f"  🚫 [ANTI-TRAMPA 15M] BUY bloqueada: Stop Hunt BAJISTA activo "
+                    f"(el barrido alcista fue una trampa — señal real es SELL)"
+                )
+                senal_buy_fuerte = False
+            _warn_consenso_sell = tf_bias.detectar_consenso_trampa(simbolo, '15M', tf_bias.BIAS_BEARISH)
+            _warn_consenso_buy  = tf_bias.detectar_consenso_trampa(simbolo, '15M', tf_bias.BIAS_BULLISH)
+
             # ── Construir diagnóstico de patrones detectados ──
             patrones_detectados = []
             if patron_envolvente_bajista(df):
@@ -615,9 +633,9 @@ class GoldDetector15M(BaseDetector):
                 patrones_detectados.append("📈 Envolvente Alcista")
             if patron_doji(df):
                 patrones_detectados.append("⚪ Doji (indecisión)")
-            if detectar_stop_hunt_bajista(df):
+            if _sh_baj_activo:
                 patrones_detectados.append("🎯 Stop Hunt Bajista (trampa alcista)")
-            if detectar_stop_hunt_alcista(df):
+            if _sh_alc_activo:
                 patrones_detectados.append("🎯 Stop Hunt Alcista (trampa bajista)")
             if detectar_doble_techo(df, atr):
                 patrones_detectados.append("🔻 Doble Techo (M)")
@@ -673,7 +691,7 @@ class GoldDetector15M(BaseDetector):
                                 'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
                                 'score': score_sell,
                                 'indicadores': json.dumps(_condiciones_bd),
-                                'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_bajista(df)}",
+                                'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_baj_activo}",
                                 'version_detector': '15M-SCALP-v2.1'
                             })
                         except Exception as e:
@@ -708,6 +726,8 @@ class GoldDetector15M(BaseDetector):
                            f"🔍 <b>Patrones Detectados:</b>\n{diagnostico_patrones}")
                     if _conf_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                    if _warn_consenso_buy:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_buy}"
                     if _ctx_htf:
                         msg += _ctx_htf
                     msg += _sfx_buy
@@ -723,7 +743,7 @@ class GoldDetector15M(BaseDetector):
                                 'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
                                 'score': score_buy,
                                 'indicadores': json.dumps(_condiciones_bd),
-                                'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{detectar_stop_hunt_alcista(df)}",
+                                'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_alc_activo}",
                                 'version_detector': '15M-SCALP-v2.1'
                             })
                         except Exception as e:

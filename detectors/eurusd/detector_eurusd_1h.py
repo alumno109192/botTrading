@@ -191,9 +191,11 @@ class EURUSDDetector1H(BaseDetector):
             if patron_envolvente_alcista(df):
                 score_buy += 2
 
-            if detectar_stop_hunt_bajista(df):
+            _sh_baj_activo = detectar_stop_hunt_bajista(df)
+            _sh_alc_activo = detectar_stop_hunt_alcista(df)
+            if _sh_baj_activo:
                 score_sell += 3
-            if detectar_stop_hunt_alcista(df):
+            if _sh_alc_activo:
                 score_buy += 3
 
             _lkb = params['sr_lookback']
@@ -352,11 +354,21 @@ class EURUSDDetector1H(BaseDetector):
                 patrones.append("📉 Envolvente Bajista")
             if patron_envolvente_alcista(df):
                 patrones.append("📈 Envolvente Alcista")
+            # ── ANTI-TRAMPA: Stop Hunt contralateral ────────────────────────────────
+            if senal_sell_fuerte and _sh_alc_activo:
+                logger.warning(f"  🚫 [ANTI-TRAMPA EURUSD 1H] SELL bloqueada: Stop Hunt ALCISTA activo")
+                senal_sell_fuerte = False
+            if senal_buy_fuerte and _sh_baj_activo:
+                logger.warning(f"  🚫 [ANTI-TRAMPA EURUSD 1H] BUY bloqueada: Stop Hunt BAJISTA activo")
+                senal_buy_fuerte = False
+            _warn_consenso_sell = tf_bias.detectar_consenso_trampa(simbolo, '1H', tf_bias.BIAS_BEARISH)
+            _warn_consenso_buy  = tf_bias.detectar_consenso_trampa(simbolo, '1H', tf_bias.BIAS_BULLISH)
+
             if patron_doji(df):
                 patrones.append("⚪ Doji")
-            if detectar_stop_hunt_bajista(df):
+            if _sh_baj_activo:
                 patrones.append("🎯 Stop Hunt Bajista")
-            if detectar_stop_hunt_alcista(df):
+            if _sh_alc_activo:
                 patrones.append("🎯 Stop Hunt Alcista")
             if _retest_res:
                 patrones.append(f"🔻 Retest Resist {_niv_rr:.5f}")
@@ -406,6 +418,8 @@ class EURUSDDetector1H(BaseDetector):
                     )
                     if _conf_sell:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
+                    if _warn_consenso_sell:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_sell}"
                     if self.db:
                         try:
                             self._guardar_senal({
@@ -447,6 +461,8 @@ class EURUSDDetector1H(BaseDetector):
                     )
                     if _conf_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                    if _warn_consenso_buy:
+                        msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_buy}"
                     if self.db:
                         try:
                             self._guardar_senal({
