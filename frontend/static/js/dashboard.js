@@ -112,6 +112,7 @@ function dashboardApp() {
           tp1_alcanzado: _tpAlcanzado(s, 'tp1'),
           tp2_alcanzado: _tpAlcanzado(s, 'tp2'),
           tp3_alcanzado: _tpAlcanzado(s, 'tp3'),
+          _bar:          _calcBar(s),
         }));
       } catch (_) {}
     },
@@ -436,6 +437,43 @@ function _tpAlcanzado(s, campo) {
   const tp = s[campo], actual = s.precio_actual, entrada = s.precio_entrada;
   if (!tp || !actual || !entrada) return false;
   return s.direccion === 'COMPRA' ? actual >= tp : actual <= tp;
+}
+
+/**
+ * Calcula la posición de la barra SL → TP.
+ * SL siempre en 0 % (izquierda), el TP más alejado en 100 % (derecha).
+ * Funciona igual para COMPRA y VENTA.
+ */
+function _calcBar(s) {
+  const isBuy  = s.direccion === 'COMPRA';
+  const sl     = parseFloat(s.sl) || 0;
+  const ent    = parseFloat(s.precio_entrada) || 0;
+  const act    = parseFloat(s.precio_actual) || ent;
+  const tp1    = parseFloat(s.tp1) || 0;
+  const tp2    = parseFloat(s.tp2) || 0;
+  const tp3    = parseFloat(s.tp3) || 0;
+  const tpEdge = tp3 || tp2 || tp1;  // TP más alejado disponible
+
+  if (!sl || !ent || !tpEdge) return null;
+
+  // Normalizar a [0,100] donde 0=SL y 100=tpEdge
+  const pct = v => isBuy
+    ? Math.max(0, Math.min(100, (v - sl) / (tpEdge - sl) * 100))
+    : Math.max(0, Math.min(100, (sl - v) / (sl - tpEdge) * 100));
+
+  const pctEntry  = pct(ent);
+  const pctActual = pct(act);
+  const pctTp1    = tp1 ? pct(tp1) : null;
+  const pctTp2    = tp2 ? pct(tp2) : null;
+  const pctTp3    = tp3 ? pct(tp3) : null;
+
+  // Moverse a la derecha = alejarse del SL = hacia TP = verde
+  const towardsTP  = pctActual >= pctEntry;
+  const fillLeft   = Math.min(pctActual, pctEntry);
+  const fillWidth  = Math.abs(pctActual - pctEntry);
+  const pctDisplay = fillWidth.toFixed(1);
+
+  return { pctActual, pctEntry, pctTp1, pctTp2, pctTp3, fillLeft, fillWidth, towardsTP, pctDisplay };
 }
 
 let _notifPermiso = (typeof Notification !== 'undefined') ? Notification.permission : 'denied';

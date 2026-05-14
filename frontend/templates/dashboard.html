@@ -181,14 +181,37 @@
               </div>
             </div>
 
-            <!-- Progreso TP1 -->
-            <div class="data-block" x-show="s.tp1_progreso > 0">
-              <span class="data-label">Progreso TP1</span>
-              <span class="data-value tabular" x-text="(s.tp1_progreso || 0).toFixed(1) + '%'">0%</span>
-              <div class="progress-track" style="margin-top:6px">
-                <div class="progress-fill"
-                     :class="s.direccion === 'COMPRA' ? 'buy-fill' : 'sell-fill'"
-                     :style="`width:${Math.min(s.tp1_progreso || 0, 100)}%`"></div>
+            <!-- Barra de posición SL → TP1 → TP2 → TP3 -->
+            <div class="data-block pbar-block" x-show="s._bar">
+              <div class="pbar-header">
+                <span class="data-label">Posición</span>
+                <span class="data-value tabular"
+                      :class="s._bar && s._bar.towardsTP ? 'tp-pct' : 'sl-value'"
+                      x-text="s._bar ? (s._bar.towardsTP ? '+' : '-') + s._bar.pctDisplay + '%' : ''">—</span>
+              </div>
+              <!-- Etiquetas SL / TP1 / TP2 / TP3 -->
+              <div class="pbar-labels" x-show="s._bar">
+                <span class="pbar-lbl pbar-lbl-sl">SL</span>
+                <span class="pbar-lbl pbar-lbl-tp"
+                      x-show="s._bar && s._bar.pctTp1 !== null"
+                      :style="`left:${s._bar ? s._bar.pctTp1 : 0}%`">TP1</span>
+                <span class="pbar-lbl pbar-lbl-tp"
+                      x-show="s._bar && s._bar.pctTp2 !== null"
+                      :style="`left:${s._bar ? s._bar.pctTp2 : 0}%`">TP2</span>
+                <span class="pbar-lbl pbar-lbl-tp pbar-lbl-tp3"
+                      x-show="s._bar && s._bar.pctTp3 !== null"
+                      :style="`left:${s._bar ? s._bar.pctTp3 : 0}%`">TP3</span>
+              </div>
+              <!-- Pista -->
+              <div class="pbar-track" x-show="s._bar">
+                <!-- Relleno entre entrada y precio actual -->
+                <div class="pbar-fill"
+                     :class="s._bar && s._bar.towardsTP ? 'pbar-fill--tp' : 'pbar-fill--sl'"
+                     :style="`left:${s._bar ? s._bar.fillLeft : 0}%;width:${s._bar ? s._bar.fillWidth : 0}%`"></div>
+                <!-- Marcador de entrada -->
+                <div class="pbar-entry" :style="`left:${s._bar ? s._bar.pctEntry : 0}%`"></div>
+                <!-- Cursor precio actual -->
+                <div class="pbar-cursor" :style="`left:${s._bar ? s._bar.pctActual : 0}%`"></div>
               </div>
             </div>
 

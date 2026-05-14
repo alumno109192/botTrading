@@ -358,6 +358,24 @@ nav {
 .progress-fill.buy-fill  { background: linear-gradient(90deg, var(--buy-dim), var(--buy)); }
 .progress-fill.sell-fill { background: linear-gradient(90deg, var(--sell-dim), var(--sell)); }
 
+/* ── Barra de posición SL → TP ───────────────────────── */
+.pbar-block    { grid-column: 1 / -1; }
+.pbar-header   { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.tp-pct        { color: var(--buy) !important; }
+
+.pbar-labels   { position: relative; height: 16px; font-size: 0.58rem; font-weight: 600; letter-spacing: 0.07em; margin-bottom: 3px; }
+.pbar-lbl      { position: absolute; }
+.pbar-lbl-sl   { left: 0; color: var(--sell); }
+.pbar-lbl-tp   { transform: translateX(-50%); color: var(--muted-2); }
+.pbar-lbl-tp3  { color: var(--buy); }
+
+.pbar-track    { position: relative; height: 6px; background: var(--border); border-radius: 99px; overflow: visible; margin-bottom: 2px; }
+.pbar-fill     { position: absolute; height: 100%; border-radius: 99px; transition: left 0.5s ease, width 0.5s ease; }
+.pbar-fill--tp { background: linear-gradient(90deg, var(--buy-dim), var(--buy)); }
+.pbar-fill--sl { background: linear-gradient(90deg, var(--sell), var(--sell-dim)); }
+.pbar-entry    { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--muted-2); border-radius: 1px; transform: translateX(-50%); }
+.pbar-cursor   { position: absolute; top: -4px; width: 3px; height: 14px; background: #e2e8f0; border-radius: 2px; transform: translateX(-50%); box-shadow: 0 0 6px rgba(226,232,240,0.5); transition: left 0.5s ease; }
+
 /* Meta */
 .card-meta {
   grid-column: 1 / -1;
