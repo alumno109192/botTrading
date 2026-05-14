@@ -801,7 +801,38 @@ class GoldDetector5M(BaseDetector):
             _titulo_buy  = ("⚡ ENTRADA PRECISA — <b>Setup 1H / Entrada 5M</b>"
                             if _modo_caza_buy  else f"🔥 BUY FUERTE — <b>{self.nombre_display} 5M MICRO-SCALP</b>")
 
-            # ── FILTRO R:R MÍNIMO 1.5 (Micro-Scalp 5M) ──
+            # ── MODO CAZA 15M: cascada 15M → 5M → 1M puntilla ───────────────────────
+            # El 15M publicó una zona con score ≥ 3; si el precio del 5M está en esa zona
+            # y el score propio es ≥ 6, se activa la señal con etiqueta "Setup 15M / Entrada 5M"
+            _zona_15m_buy  = tf_bias.obtener_zona_activa_15m(simbolo, tf_bias.BIAS_BULLISH)
+            _zona_15m_sell = tf_bias.obtener_zona_activa_15m(simbolo, tf_bias.BIAS_BEARISH)
+            _UMBRAL_CAZA_15M = 6   # más bajo que 1H (=8) porque 15M ya confirmó el contexto
+
+            if _zona_15m_buy and not senal_buy_fuerte and not _modo_caza_buy and self.en_sesion_optima():
+                _tol_15m    = _zona_15m_buy['atr'] * 0.5
+                _en_zona_15m = (_zona_15m_buy['zsl'] - _tol_15m <= close <= _zona_15m_buy['zsh'] + _tol_15m)
+                if _en_zona_15m and score_buy >= _UMBRAL_CAZA_15M:
+                    senal_buy_fuerte = True
+                    _modo_caza_buy   = True
+                    _titulo_buy = f"⚡ ENTRADA PRECISA — <b>Setup 15M / Entrada 5M</b>"
+                    _conf_buy = (f"⚡ <b>Setup 15M / Entrada 5M</b>\n"
+                                 f"📍 Zona 15M soporte: ${_zona_15m_buy['zsl']:.2f}–${_zona_15m_buy['zsh']:.2f} | Score 15M: {_zona_15m_buy['score_15m']}\n"
+                                 f"📌 Ref 15M: ${_zona_15m_buy['buy_limit']:.2f} → ajustado 5M: ${buy_limit:.2f}")
+                    logger.info(f"  🎯 [5M] MODO CAZA 15M BUY — zona activa (score_5M={score_buy}, score_15M={_zona_15m_buy['score_15m']}) → señal activada")
+
+            if _zona_15m_sell and not senal_sell_fuerte and not _modo_caza_sell and self.en_sesion_optima():
+                _tol_15m    = _zona_15m_sell['atr'] * 0.5
+                _en_zona_15m = (_zona_15m_sell['zrl'] - _tol_15m <= close <= _zona_15m_sell['zrh'] + _tol_15m)
+                if _en_zona_15m and score_sell >= _UMBRAL_CAZA_15M:
+                    senal_sell_fuerte = True
+                    _modo_caza_sell   = True
+                    _titulo_sell = f"⚡ ENTRADA PRECISA — <b>Setup 15M / Entrada 5M</b>"
+                    _conf_sell = (f"⚡ <b>Setup 15M / Entrada 5M</b>\n"
+                                  f"📍 Zona 15M resistencia: ${_zona_15m_sell['zrl']:.2f}–${_zona_15m_sell['zrh']:.2f} | Score 15M: {_zona_15m_sell['score_15m']}\n"
+                                  f"📌 Ref 15M: ${_zona_15m_sell['sell_limit']:.2f} → ajustado 5M: ${sell_limit:.2f}")
+                    logger.info(f"  🎯 [5M] MODO CAZA 15M SELL — zona activa (score_5M={score_sell}, score_15M={_zona_15m_sell['score_15m']}) → señal activada")
+
+
             RR_MINIMO = 1.5
             rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
             rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)

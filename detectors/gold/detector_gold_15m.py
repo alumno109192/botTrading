@@ -493,6 +493,33 @@ class GoldDetector15M(BaseDetector):
             _sesgo_dir = tf_bias.BIAS_BEARISH if score_sell > score_buy else tf_bias.BIAS_BULLISH if score_buy > score_sell else tf_bias.BIAS_NEUTRAL
             tf_bias.publicar_sesgo(simbolo, '15M', _sesgo_dir, max(score_sell, score_buy))
             tf_bias.publicar_scores(simbolo, '15M', score_sell, score_buy, 5)
+
+            # ── Publicar zona activa 15M para MODO CAZA 5M ────────────────────────
+            # Umbral bajo (3) = setup incipiente — el 5M confirmará con su propio score
+            # TTL 45 min en tf_bias — zona se limpia si el 15M deja de ver el setup
+            _UMBRAL_ZONA_15M = 3
+            if score_buy >= _UMBRAL_ZONA_15M and not cancelar_buy and self.en_sesion_optima():
+                tf_bias.publicar_zona_activa_15m(simbolo, tf_bias.BIAS_BULLISH, {
+                    'zsl': zsl, 'zsh': zsh,
+                    'buy_limit': buy_limit, 'sl': sl_compra,
+                    'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
+                    'atr': atr, 'score_15m': score_buy,
+                })
+                logger.info(f"  🏗️ [15M→5M] Zona BUY publicada — soporte ${zsl:.2f}-${zsh:.2f}, limit ${buy_limit:.2f} (score {score_buy})")
+            else:
+                tf_bias.limpiar_zona_activa_15m(simbolo, tf_bias.BIAS_BULLISH)
+
+            if score_sell >= _UMBRAL_ZONA_15M and not cancelar_sell and self.en_sesion_optima():
+                tf_bias.publicar_zona_activa_15m(simbolo, tf_bias.BIAS_BEARISH, {
+                    'zrl': zrl, 'zrh': zrh,
+                    'sell_limit': sell_limit, 'sl': sl_venta,
+                    'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v,
+                    'atr': atr, 'score_15m': score_sell,
+                })
+                logger.info(f"  🏗️ [15M→5M] Zona SELL publicada — resistencia ${zrl:.2f}-${zrh:.2f}, limit ${sell_limit:.2f} (score {score_sell})")
+            else:
+                tf_bias.limpiar_zona_activa_15m(simbolo, tf_bias.BIAS_BEARISH)
+
             _conf_sell = ""; _conf_buy = ""
             if senal_sell_fuerte:
                 _ok, _desc = tf_bias.verificar_confluencia(simbolo, '15M', tf_bias.BIAS_BEARISH, score_sell)

@@ -395,3 +395,39 @@ def limpiar_zona_activa(simbolo: str, direccion: str) -> None:
     with _lock:
         if simbolo in _zona_activa_store:
             _zona_activa_store[simbolo].pop(direccion, None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ZONA ACTIVA 15M — publicada por detector_gold_15m cuando score ≥ umbral
+# El 5M la consume para activar MODO CAZA 15M (entrada de precisión)
+# TTL 45 min = 3 velas 15M — zona expira si el 15M no renueva la señal
+# ═══════════════════════════════════════════════════════════════════════════════
+TTL_ZONA_15M_MIN: int = 45
+_zona_activa_15m_store: dict = {}   # {simbolo: {BIAS_BULLISH/BIAS_BEARISH: {...}}}
+
+
+def publicar_zona_activa_15m(simbolo: str, direccion: str, zona: dict) -> None:
+    """Publica (o actualiza) una zona 15M para que el 5M pueda cazar la entrada."""
+    with _lock:
+        if simbolo not in _zona_activa_15m_store:
+            _zona_activa_15m_store[simbolo] = {}
+        _zona_activa_15m_store[simbolo][direccion] = {**zona, 'ts': datetime.now()}
+
+
+def obtener_zona_activa_15m(simbolo: str, direccion: str) -> dict | None:
+    """Devuelve la zona 15M activa si existe y no ha caducado; None en caso contrario."""
+    with _lock:
+        zona = _zona_activa_15m_store.get(simbolo, {}).get(direccion)
+        if zona is None:
+            return None
+        edad_min = (datetime.now() - zona['ts']).total_seconds() / 60
+        if edad_min > TTL_ZONA_15M_MIN:
+            return None
+        return dict(zona)
+
+
+def limpiar_zona_activa_15m(simbolo: str, direccion: str) -> None:
+    """Limpia la zona 15M cuando el 15M invalida el setup."""
+    with _lock:
+        if simbolo in _zona_activa_15m_store:
+            _zona_activa_15m_store[simbolo].pop(direccion, None)
