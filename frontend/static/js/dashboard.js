@@ -45,12 +45,16 @@ function dashboardApp() {
     /* ── Seguimiento ── */
     _idsConocidos:       new Set(),
     _estadosConocidos:   {},
+
+    /* ── SSE ── */
+    _sse:                null,           // EventSource activo
     init(vistaInicial = 'activas') {
       this.vistaActual = vistaInicial;
       _solicitarNotifPermiso();
       this.initPush();
       this.cargarTodo();
       setInterval(() => this.cargarTodo(), POLL_INTERVAL_MS);
+      this.initSSE();
 
       // Re-renderizar gráfico cuando el usuario vuelve a Stats
       this.$watch('vistaActual', v => {
@@ -58,6 +62,64 @@ function dashboardApp() {
           this.$nextTick(() => this.renderEquityChart(this._equityPuntos));
         }
       });
+    },
+
+    /* ══════════════════════════════════════════
+       SERVER-SENT EVENTS
+    ══════════════════════════════════════════ */
+    initSSE() {
+      if (!window.EventSource) return;
+      const conectar = () => {
+        if (this._sse) this._sse.close();
+        const es = new EventSource('/api/v1/events');
+        this._sse = es;
+
+        // Evento de señal: nueva señal o actualización de estado
+        es.addEventListener('senal', (e) => {
+          try {
+            const d = JSON.parse(e.data);
+            const tipo = d.tipo || 'actualizacion';
+            if (tipo === 'nueva') {
+              const dir = d.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL';
+              this.toast('nueva',
+                `🔔 Nueva señal ${dir}`,
+                `${d.simbolo} ${d.timeframe} @ ${this.formatPrecio(d.precio_entrada)}`,
+                '/dashboard/activas'
+              );
+            } else if (['tp1','tp2','tp3'].includes(tipo)) {
+              this.toast('tp',
+                `✅ ${tipo.toUpperCase()} alcanzado`,
+                `${d.simbolo} ${d.timeframe}`
+              );
+            } else if (tipo === 'sl') {
+              this.toast('sl',
+                `🛑 Stop Loss activado`,
+                `${d.simbolo} ${d.timeframe}`
+              );
+            }
+            // Recargar señales activas para reflejar el nuevo estado
+            this.cargarActivas();
+            this.cargarHistorial();
+          } catch (_) {}
+        });
+
+        // Evento de precio: actualización en tiempo real
+        es.addEventListener('precio', (e) => {
+          try {
+            const d = JSON.parse(e.data);
+            if (d.symbol === 'XAUUSD' && d.precio != null) {
+              this.precioActual = d.precio;
+            }
+          } catch (_) {}
+        });
+
+        es.onerror = () => {
+          es.close();
+          // Reconectar tras 5 segundos si la conexión se pierde
+          setTimeout(() => conectar(), 5_000);
+        };
+      };
+      conectar();
     },
 
     /* ══════════════════════════════════════════
