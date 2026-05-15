@@ -65,7 +65,9 @@ SIMBOLOS = {
         'atr_tp2_mult':       2.5,    # TP2: 2.5× ATR
         'atr_tp3_mult':       4.0,    # TP3: 4.0× ATR (objetivo ambicioso)
         'vol_mult':           1.2,
-        'spread':             0.35,         # Spread típico broker CFD (XAUUSD)
+        'spread':             0.35,         # Spread bid/ask broker CFD (XAUUSD)
+        'commission':         0.30,         # Comisión broker por lado en $/oz
+                                            # Ajusta según tarifa real de tu broker
     }
 }
 ultimo_analisis  = {}
@@ -281,10 +283,12 @@ class GoldDetector1H(BaseDetector):
                all(l <= float(sub_sl['Low'].iloc[i+j]) for j in range(1, swing_wing+1)):
                 swing_l_vals.append(l)
 
-        # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
-        spread = params.get('spread', 0.35)
-        sell_entry = round(sell_limit - spread, 2)
-        buy_entry  = round(buy_limit  + spread, 2)
+        # Ajuste de spread + comisión del broker: coste total por lado
+        spread     = params.get('spread', 0.35)
+        commission = params.get('commission', 0.30)
+        cost = spread + commission
+        sell_entry = round(sell_limit - cost, 2)
+        buy_entry  = round(buy_limit  + cost, 2)
 
         # Para SELL: SL en último swing HIGH por encima de la entrada + 0.3×ATR buffer
         # Cap: si el swing está muy lejos, usar el techo de zona + buffer (invalidación natural)
@@ -397,15 +401,15 @@ class GoldDetector1H(BaseDetector):
                     _tp_desde_sr(_resis_sobre, 3, buy_entry + atr * params['atr_tp3_mult'] * _vol_factor),
                     tp2_c, resistencias_sr, atr)
 
-        # Ajuste spread: SL más amplio y TPs más alejados para reflejar costo real de cierre
-        sl_venta  = round(sl_venta  + spread, 2)
-        sl_compra = round(sl_compra - spread, 2)
-        tp1_v = round(tp1_v - spread, 2)
-        tp2_v = round(tp2_v - spread, 2)
-        tp3_v = round(tp3_v - spread, 2)
-        tp1_c = round(tp1_c + spread, 2)
-        tp2_c = round(tp2_c + spread, 2)
-        tp3_c = round(tp3_c + spread, 2)
+        # Ajuste spread + comisión: SL más amplio y TPs más alejados para reflejar costo real de cierre
+        sl_venta  = round(sl_venta  + cost, 2)
+        sl_compra = round(sl_compra - cost, 2)
+        tp1_v = round(tp1_v - cost, 2)
+        tp2_v = round(tp2_v - cost, 2)
+        tp3_v = round(tp3_v - cost, 2)
+        tp1_c = round(tp1_c + cost, 2)
+        tp2_c = round(tp2_c + cost, 2)
+        tp3_c = round(tp3_c + cost, 2)
 
         avg_candle_range    = df['total_range'].iloc[-6:-1].mean()
         aproximando_resist  = (zrl - close > 0 and zrl - close < avg_candle_range * av and close > float(df['Close'].iloc[-5]))
@@ -1254,6 +1258,17 @@ class GoldDetector1H(BaseDetector):
         # CASO ESPECIAL: si el canal roto va CONTRA la tendencia superior (1D/1W),
         # el retest NO es una señal en esa dirección, sino un PULLBACK de la tendencia
         # mayor → aviso de zona de compra/venta en dirección de la tendencia principal.
+
+        # retest SELL (canal alcista roto) pero 1D/1W sigue bullish → sólo pullback
+        pullback_alcista = (
+            retest_canal_sell and
+            (_dir_1d == tf_bias.BIAS_BULLISH or _dir_1w == tf_bias.BIAS_BULLISH)
+        )
+        # retest BUY (canal bajista roto) pero 1D/1W sigue bearish → sólo pullback
+        pullback_bajista = (
+            retest_canal_buy and
+            (_dir_1d == tf_bias.BIAS_BEARISH or _dir_1w == tf_bias.BIAS_BEARISH)
+        )
 
         if retest_canal_sell and not self.ya_enviada(f"{clave_vela}_RETEST_SELL"):
             if pullback_alcista:

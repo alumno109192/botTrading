@@ -66,7 +66,9 @@ SIMBOLOS = {
         'atr_tp2_mult':       3.5,          # TP2: 3.5× ATR
         'atr_tp3_mult':       5.5,          # TP3: 5.5× ATR (objetivo swing)
         'vol_mult':           1.2,
-        'spread':             0.35,         # Spread típico broker CFD (XAUUSD)
+        'spread':             0.35,         # Spread bid/ask broker CFD (XAUUSD)
+        'commission':         0.30,         # Comisión broker por lado en $/oz
+                                            # Ajusta según tarifa real de tu broker
     }
 }
 
@@ -858,13 +860,15 @@ class GoldDetector4H(BaseDetector):
             senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima = \
                 self.umbral_activo_por_sesion(senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima, tf_corto=False)
 
-        # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
-        spread = params.get('spread', 0.35)
-        sell_entry = round(sell_limit - spread, 2)
-        buy_entry  = round(buy_limit  + spread, 2)
+        # Ajuste de spread + comisión del broker: coste total por lado
+        spread     = params.get('spread', 0.35)
+        commission = params.get('commission', 0.30)
+        cost = spread + commission
+        sell_entry = round(sell_limit - cost, 2)
+        buy_entry  = round(buy_limit  + cost, 2)
 
-        sl_venta  = round(sell_entry + atr * asm + spread, 2)
-        sl_compra = round(buy_entry  - atr * asm - spread, 2)
+        sl_venta  = round(sell_entry + atr * asm + cost, 2)
+        sl_compra = round(buy_entry  - atr * asm - cost, 2)
 
         # VATR: factor de volumen — amplía TPs en mercados con impulso, los reduce en apáticos
         _vol_avg20  = float(df['vol_avg'].iloc[-1])
@@ -872,12 +876,12 @@ class GoldDetector4H(BaseDetector):
         _vol_factor = min(max(_vol_last / _vol_avg20, 0.75), 1.50) if _vol_avg20 > 0 else 1.0
 
         # TPs dinámicos basados en ATR ajustado por volumen (VATR) — ajustados por spread de cierre
-        tp1_v = round(sell_entry - atr * params['atr_tp1_mult'] * _vol_factor - spread, 2)
-        tp2_v = round(sell_entry - atr * params['atr_tp2_mult'] * _vol_factor - spread, 2)
-        tp3_v = round(sell_entry - atr * params['atr_tp3_mult'] * _vol_factor - spread, 2)
-        tp1_c = round(buy_entry  + atr * params['atr_tp1_mult'] * _vol_factor + spread, 2)
-        tp2_c = round(buy_entry  + atr * params['atr_tp2_mult'] * _vol_factor + spread, 2)
-        tp3_c = round(buy_entry  + atr * params['atr_tp3_mult'] * _vol_factor + spread, 2)
+        tp1_v = round(sell_entry - atr * params['atr_tp1_mult'] * _vol_factor - cost, 2)
+        tp2_v = round(sell_entry - atr * params['atr_tp2_mult'] * _vol_factor - cost, 2)
+        tp3_v = round(sell_entry - atr * params['atr_tp3_mult'] * _vol_factor - cost, 2)
+        tp1_c = round(buy_entry  + atr * params['atr_tp1_mult'] * _vol_factor + cost, 2)
+        tp2_c = round(buy_entry  + atr * params['atr_tp2_mult'] * _vol_factor + cost, 2)
+        tp3_c = round(buy_entry  + atr * params['atr_tp3_mult'] * _vol_factor + cost, 2)
 
         def rr(limit, sl, tp):
             return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0

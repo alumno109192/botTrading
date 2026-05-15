@@ -71,7 +71,10 @@ SIMBOLOS = {
         'ema_trend_len':      21,
         'atr_length':         7,
         'atr_sl_mult':        1.5,          # SL más amplio para dar espacio
-        'spread':             0.35,          # Spread típico broker CFD (XAUUSD)
+        'spread':             0.35,          # Spread bid/ask broker CFD (XAUUSD)
+        'commission':         0.30,          # Comisión broker por lado en $/oz
+                                             # VT Markets Raw ~$3/lote ÷ 100oz = 0.03
+                                             # Ajusta este valor según tu tarifa real
         'vol_mult':           1.3,
         'min_score_scalping': 3,
         'max_perdidas_dia':   3,
@@ -545,9 +548,11 @@ class GoldDetector5M(BaseDetector):
                 logger.warning(f"  ⚠️ [5M] ATR bajo ({atr:.2f} < {params.get('atr_min', 5.0)}) — usando ATR mínimo {atr_efectivo:.2f}")
 
             asm = params['atr_sl_mult']
-            spread = params.get('spread', 0.35)
-            sl_venta  = close + (atr_efectivo * asm) + spread
-            sl_compra = close - (atr_efectivo * asm) - spread
+            spread     = params.get('spread', 0.35)
+            commission = params.get('commission', 0.30)
+            cost = spread + commission  # coste total por lado (spread + comisión)
+            sl_venta  = close + (atr_efectivo * asm) + cost
+            sl_compra = close - (atr_efectivo * asm) - cost
 
             offset_pct = params['limit_offset_pct']
             sell_limit = close * (1 + offset_pct / 100)
@@ -559,12 +564,12 @@ class GoldDetector5M(BaseDetector):
             _vol_factor = min(max(_vol_last / _vol_avg20, 0.75), 1.50) if _vol_avg20 > 0 else 1.0
 
             # TPs dinámicos basados en ATR ajustado por volumen (VATR) — ajustados por spread de cierre
-            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'] * _vol_factor - spread, 2)
-            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'] * _vol_factor - spread, 2)
-            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'] * _vol_factor - spread, 2)
-            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'] * _vol_factor + spread, 2)
-            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'] * _vol_factor + spread, 2)
-            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'] * _vol_factor + spread, 2)
+            tp1_v = round(sell_limit - atr_efectivo * params['atr_tp1_mult'] * _vol_factor - cost, 2)
+            tp2_v = round(sell_limit - atr_efectivo * params['atr_tp2_mult'] * _vol_factor - cost, 2)
+            tp3_v = round(sell_limit - atr_efectivo * params['atr_tp3_mult'] * _vol_factor - cost, 2)
+            tp1_c = round(buy_limit  + atr_efectivo * params['atr_tp1_mult'] * _vol_factor + cost, 2)
+            tp2_c = round(buy_limit  + atr_efectivo * params['atr_tp2_mult'] * _vol_factor + cost, 2)
+            tp3_c = round(buy_limit  + atr_efectivo * params['atr_tp3_mult'] * _vol_factor + cost, 2)
 
             def rr(limit, sl, tp):
                 return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
