@@ -1118,13 +1118,37 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
         try:
             precio_entrada = float(senal['precio_entrada'])
             tp1 = float(senal['tp1'])
-            tp2 = float(senal['tp2'])
-            tp3 = float(senal['tp3'])
+            tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
+            tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
             sl  = float(senal['sl'])
             score = senal.get('score', '?')
         except (TypeError, ValueError):
-            precio_entrada = tp1 = tp2 = tp3 = sl = 0.0
-            score = '?'
+            logger.warning(f"  ⚠️ [#{senal['id']}] Precios inválidos en PENDIENTE_CONFIRM — saltando")
+            continue
+
+        # ── Verificar si el precio ya superó TP1 sin que hubiera posición ──
+        precios_now = _fetch_precios_ticker(ticker, db=db)
+        if precios_now is not None:
+            precio_actual, precio_max, precio_min = precios_now
+            tp1_superado = (
+                (direccion == 'VENTA'  and precio_min <= tp1) or
+                (direccion == 'COMPRA' and precio_max >= tp1)
+            )
+            if tp1_superado:
+                db.caducar_senal_pendiente(senal_id)
+                icono_dir = '📉' if direccion == 'VENTA' else '📈'
+                msg_perdida = (
+                    f"⚡ <b>Señal perdida — TP1 alcanzado sin posición</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"{icono_dir} {simbolo} | {direccion}\n"
+                    f"💰 Entrada esperada: ${precio_entrada:.2f}\n"
+                    f"🎯 TP1 ya superado: ${tp1:.2f}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"ℹ️ La señal estaba pendiente de confirmación — no había posición abierta"
+                )
+                enviar_notificacion_telegram(msg_perdida, simbolo, reply_to_message_id=senal.get('telegram_message_id'))
+                logger.info(f"  ⚡ Señal {senal_id} ({simbolo} {direccion}) caducada: TP1 alcanzado sin posición")
+                continue
 
         # Analizar velas 1M en tiempo real
         confirmado, desc_1m = _confirmar_con_velas_1m(ticker, direccion, precio_entrada)
@@ -1149,9 +1173,11 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
             f"🛑 <b>Stop Loss:</b> ${sl:.2f}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 <b>TP1:</b> ${tp1:.2f}\n"
-            f"🎯 <b>TP2:</b> ${tp2:.2f}\n"
-            f"🎯 <b>TP3:</b> ${tp3:.2f}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
+            + (f"🎯 <b>TP2:</b> ${tp2:.2f}\n"
+               f"🎯 <b>TP3:</b> ${tp3:.2f}\n"
+               if tp2 is not None else
+               f"⚠️ <i>Solo TP1 — señal contra tendencia</i>\n")
+            + f"━━━━━━━━━━━━━━━━━━━━\n"
             f"📊 <b>Score {_tf_display}:</b> {score}/21  ⏱️ <b>TF:</b> {_tf_display}+1M\n"
             f"<code>{desc_1m}</code>"
         )
@@ -1520,8 +1546,8 @@ def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
         try:
             precio_entrada = float(senal['precio_entrada'])
             tp1 = float(senal['tp1'])
-            tp2 = float(senal['tp2'])
-            tp3 = float(senal['tp3'])
+            tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
+            tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
             sl  = float(senal['sl'])
         except (TypeError, ValueError):
             logger.warning(f"  ⚠️ [#{senal_id}] Precios inválidos en ESPERANDO — saltando")
@@ -1586,9 +1612,11 @@ def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
             f"📍 <b>Precio actual:</b> {_fmt(precio_actual)}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 <b>TP1:</b> {_fmt(tp1)}\n"
-            f"🎯 <b>TP2:</b> {_fmt(tp2)}\n"
-            f"🎯 <b>TP3:</b> {_fmt(tp3)}\n"
-            f"🛑 <b>Stop Loss:</b> {_fmt(sl)}\n"
+            + (f"🎯 <b>TP2:</b> {_fmt(tp2)}\n"
+               f"🎯 <b>TP3:</b> {_fmt(tp3)}\n"
+               if tp2 is not None else
+               f"⚠️ <i>Solo TP1 — señal contra tendencia</i>\n")
+            + f"🛑 <b>Stop Loss:</b> {_fmt(sl)}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"⚡ <b>El trade está ahora activo.</b> Gestiona tu posición.\n"
             f"🔖 <code>#{senal_id}</code>"
