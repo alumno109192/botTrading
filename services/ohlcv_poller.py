@@ -42,6 +42,37 @@ POLL_TARGETS = [
 CHECK_INTERVAL = 60   # segundos entre ciclos del bucle principal
 _ultimo_purge  = 0    # timestamp del último purge (cada 8h)
 
+# Mapa ticker_yf → símbolo normalizado para SSE (solo intervalos cortos)
+_TICKER_SSE_SYMBOL = {
+    'GC=F':     'XAUUSD',
+    'EURUSD=X': 'EURUSD',
+}
+# Solo publicar precio SSE para intervalos de 1m y 5m (más frescos)
+_SSE_INTERVALS = {'1m', '5m'}
+
+
+def _publicar_precio_sse(ticker_yf: str, interval: str) -> None:
+    """Lee el último precio de la BD y lo publica en el broker SSE (best-effort)."""
+    symbol = _TICKER_SSE_SYMBOL.get(ticker_yf)
+    if not symbol:
+        return
+    try:
+        from bridge.sse_broker import broker
+        if broker.num_clientes == 0:
+            return
+        from adapters.database import DatabaseManager
+        db = DatabaseManager()
+        # Leer la vela más reciente directamente de la tabla ohlcv
+        result = db.ejecutar_query(
+            "SELECT close FROM ohlcv WHERE symbol=? AND interval=? ORDER BY ts DESC LIMIT 1",
+            (ticker_yf, interval)
+        )
+        if result and result.rows:
+            precio = float(result.rows[0][0])
+            broker.publicar_precio(symbol=symbol, precio=precio)
+    except Exception:
+        pass  # nunca interrumpir el polling por un error SSE
+
 
 def main():
     from adapters.data_provider import poll_ohlcv
@@ -80,6 +111,9 @@ def main():
                     ok = poll_ohlcv(target['ticker_yf'], target['interval'])
                     if ok:
                         _ultimo_poll[clave] = ts_ahora
+                        # Publicar precio actualizado en SSE para intervalos frescos
+                        if target['interval'] in _SSE_INTERVALS:
+                            _publicar_precio_sse(target['ticker_yf'], target['interval'])
                     else:
                         logger.warning(f"  ⚠️ [ohlcv_poller] #{ciclo} No se pudo actualizar "
                               f"{target['ticker_yf']} {target['interval']}")

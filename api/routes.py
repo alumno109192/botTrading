@@ -512,6 +512,48 @@ def create_app(estado_sistema, threads_detectores):
             logger.error(f"❌ /api/v1/push/unsubscribe error: {e}")
             return jsonify({'error': str(e)}), 500
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Server-Sent Events (SSE) — eventos en tiempo real al frontend
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/api/v1/events')
+    def sse_events():
+        """Stream SSE de eventos en tiempo real (señales y precios).
+
+        El frontend se conecta una vez y recibe:
+          - event: senal  → nueva señal activada o actualización de estado
+          - event: precio → actualización de precio de un activo
+        """
+        from flask import Response, stream_with_context
+        from bridge.sse_broker import broker
+
+        def _generar():
+            import queue as _queue
+            q = broker.suscribir()
+            try:
+                # Comentario inicial para que el navegador reconozca el stream
+                yield ": conectado\n\n"
+                while True:
+                    try:
+                        msg = q.get(timeout=25)
+                        yield msg
+                    except _queue.Empty:
+                        # Timeout de 25 s → enviar heartbeat para mantener la conexión
+                        yield ": ping\n\n"
+            except GeneratorExit:
+                pass
+            finally:
+                broker.desuscribir(q)
+
+        return Response(
+            stream_with_context(_generar()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',   # Nginx: deshabilitar buffer
+            },
+        )
+
     # Servir el Service Worker desde la raíz (requerido por la spec)
     @app.route('/sw.js')
     def service_worker():

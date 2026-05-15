@@ -140,6 +140,50 @@ def obtener_precio_actual(simbolo: str) -> tuple | None:
     return _fetch_precios_ticker(ticker)
 
 
+def _sse_tipo_desde_mensaje(mensaje: str) -> str:
+    """Detecta el tipo de evento SSE a partir del texto del mensaje."""
+    txt = mensaje.upper()
+    if '50%' in txt or 'AVANZANDO' in txt:
+        return 'progreso'
+    if 'TP3' in txt:
+        return 'tp3'
+    if 'TP2' in txt:
+        return 'tp2'
+    if 'TP1' in txt:
+        return 'tp1'
+    if 'STOP LOSS' in txt or '❌' in txt:
+        return 'sl'
+    if 'BREAKEVEN' in txt:
+        return 'breakeven'
+    if 'CADUCAD' in txt:
+        return 'caducada'
+    return 'actualizacion'
+
+
+def _publicar_sse_senal(mensaje: str, simbolo: str) -> None:
+    """Publica el evento de señal en el broker SSE (best-effort)."""
+    try:
+        from bridge.sse_broker import broker
+        if broker.num_clientes == 0:
+            return
+        # simbolo puede ser 'XAUUSD_1H', 'XAUUSD_4H', etc.
+        partes = simbolo.split('_') if simbolo else []
+        simbolo_base = partes[0] if partes else (simbolo or '')
+        timeframe = partes[1].upper() if len(partes) > 1 else ''
+        import re
+        dir_match = re.search(r'\b(COMPRA|VENTA)\b', mensaje, re.IGNORECASE)
+        ent_match = re.search(r'Entrada[:\s$€£]+([0-9]+(?:[.,][0-9]+)?)', mensaje, re.IGNORECASE)
+        broker.publicar_senal(
+            tipo=_sse_tipo_desde_mensaje(mensaje),
+            simbolo=simbolo_base,
+            timeframe=timeframe,
+            direccion=(dir_match.group(1).upper() if dir_match else ''),
+            precio_entrada=float(ent_match.group(1).replace(',', '.')) if ent_match else 0.0,
+        )
+    except Exception:
+        pass
+
+
 def enviar_notificacion_telegram(mensaje: str, simbolo: str = None, reply_to_message_id: int = None):
     """Envía una notificación a Telegram al hilo correcto según el símbolo"""
     try:
@@ -160,6 +204,8 @@ def enviar_notificacion_telegram(mensaje: str, simbolo: str = None, reply_to_mes
 
         if response.status_code == 200:
             logger.info(f"✅ Notificación enviada: {mensaje[:50]}...")
+            # Publicar en SSE para que el frontend lo reciba en tiempo real
+            _publicar_sse_senal(mensaje, simbolo or '')
         else:
             logger.error(f"⚠️ Error enviando notificación: {response.status_code}")
             
