@@ -782,6 +782,18 @@ class GoldDetector1H(BaseDetector):
             senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima = \
                 self.umbral_activo_por_sesion(senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima, tf_corto=False)
 
+        # ── Contra-tendencia 4H/1D: señal opuesta al sesgo HTF → solo TP1 ────────
+        # Si 4H o 1D apuntan en dirección contraria a la señal, el precio suele
+        # retomar la tendencia dominante tras alcanzar TP1.
+        _contra_tend_sell_1h = (
+            _dir_4h == tf_bias.BIAS_BULLISH or _dir_1d == tf_bias.BIAS_BULLISH
+        )
+        _contra_tend_buy_1h = (
+            _dir_4h == tf_bias.BIAS_BEARISH or _dir_1d == tf_bias.BIAS_BEARISH
+        )
+        # Nota: cuando ambos 4H+1D son contrarios la señal ya fue bloqueada arriba
+        # Solo llega aquí si UNO está en contra (señal pasa pero con objetivo reducido)
+
         def rr(limit, sl, tp):
             return round(abs(tp - limit) / abs(sl - limit), 1) if abs(sl - limit) > 0 else 0
 
@@ -1027,8 +1039,11 @@ class GoldDetector1H(BaseDetector):
                    f"🛑 <b>Stop Loss:</b> ${sl_venta:.2f}  ← swing high estructural\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_entry, sl_venta, tp1_v)}:1  (zona S/R)\n"
-                   f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1  (zona S/R)\n"
-                   f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1  (zona S/R)\n"
+                   + (f"⚠️ <i>Solo TP1 — contra tendencia HTF</i>\n"
+                      if _contra_tend_sell_1h else
+                      f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1  (zona S/R)\n"
+                      f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1  (zona S/R)\n")
+                   + 
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    + (f"🔻 <b>Canal alcista ROTO</b> — nivel canal ${linea_soporte_canal:.2f}\n" if canal_alcista_roto else "")
                    + f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
@@ -1045,7 +1060,10 @@ class GoldDetector1H(BaseDetector):
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                             'direccion': 'VENTA', 'precio_entrada': sell_entry,
-                            'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                            'tp1': tp1_v,
+                            'tp2': None if _contra_tend_sell_1h else tp2_v,
+                            'tp3': None if _contra_tend_sell_1h else tp3_v,
+                            'sl': sl_venta,
                             'score': score_sell,
                             'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
@@ -1076,8 +1094,11 @@ class GoldDetector1H(BaseDetector):
                    f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  ← swing low estructural\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_entry, sl_compra, tp1_c)}:1  (zona S/R)\n"
-                   f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1  (zona S/R)\n"
-                   f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1  (zona S/R)\n"
+                   + (f"⚠️ <i>Solo TP1 — contra tendencia HTF</i>\n"
+                      if _contra_tend_buy_1h else
+                      f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1  (zona S/R)\n"
+                      f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1  (zona S/R)\n")
+                   + 
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    + (f"🔺 <b>Canal bajista ROTO</b> — nivel canal ${linea_resist_canal:.2f}\n" if canal_bajista_roto else "")
                    + f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
@@ -1094,7 +1115,10 @@ class GoldDetector1H(BaseDetector):
                         self._guardar_senal({
                             'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                             'direccion': 'COMPRA', 'precio_entrada': buy_entry,
-                            'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                            'tp1': tp1_c,
+                            'tp2': None if _contra_tend_buy_1h else tp2_c,
+                            'tp3': None if _contra_tend_buy_1h else tp3_c,
+                            'sl': sl_compra,
                             'score': score_buy,
                             'indicadores': json.dumps(_condiciones_bd),
                             'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",
@@ -1152,8 +1176,11 @@ class GoldDetector1H(BaseDetector):
                                f"🛑 <b>Stop Loss:</b>  ${sl_venta:.2f}  (-${round(sl_venta - sell_entry, 2)})\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"🎯 <b>TP1:</b> ${tp1_v:.2f}  R:R {rr(sell_entry, sl_venta, tp1_v)}:1\n"
-                               f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
-                               f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n"
+                               + (f"⚠️ <i>Solo TP1 — contra tendencia HTF</i>\n"
+                                  if _contra_tend_sell_1h else
+                                  f"🎯 <b>TP2:</b> ${tp2_v:.2f}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
+                                  f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n")
+                               + 
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"📐 <b>ATR:</b> ${atr:.2f}\n"
@@ -1169,7 +1196,10 @@ class GoldDetector1H(BaseDetector):
                                 self._guardar_senal({
                                     'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                                     'direccion': 'VENTA', 'precio_entrada': sell_entry,
-                                    'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                                    'tp1': tp1_v,
+                                    'tp2': None if _contra_tend_sell_1h else tp2_v,
+                                    'tp3': None if _contra_tend_sell_1h else tp3_v,
+                                    'sl': sl_venta,
                                     'score': score_sell,
                                     'indicadores': json.dumps(_condiciones_bd),
                                     'patron_velas': f"Evening Star:{evening_star}, Shooting Star:{shooting_star}",
@@ -1223,8 +1253,11 @@ class GoldDetector1H(BaseDetector):
                                f"🛑 <b>Stop Loss:</b> ${sl_compra:.2f}  (-${round(buy_entry - sl_compra, 2)})\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"🎯 <b>TP1:</b> ${tp1_c:.2f}  R:R {rr(buy_entry, sl_compra, tp1_c)}:1\n"
-                               f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
-                               f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n"
+                               + (f"⚠️ <i>Solo TP1 — contra tendencia HTF</i>\n"
+                                  if _contra_tend_buy_1h else
+                                  f"🎯 <b>TP2:</b> ${tp2_c:.2f}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
+                                  f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n")
+                               + 
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"📐 <b>ATR:</b> ${atr:.2f}\n"
@@ -1240,7 +1273,10 @@ class GoldDetector1H(BaseDetector):
                                 self._guardar_senal({
                                     'timestamp': datetime.now(timezone.utc), 'simbolo': simbolo_db,
                                     'direccion': 'COMPRA', 'precio_entrada': buy_entry,
-                                    'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                                    'tp1': tp1_c,
+                                    'tp2': None if _contra_tend_buy_1h else tp2_c,
+                                    'tp3': None if _contra_tend_buy_1h else tp3_c,
+                                    'sl': sl_compra,
                                     'score': score_buy,
                                     'indicadores': json.dumps(_condiciones_bd),
                                     'patron_velas': f"Morning Star:{morning_star}, Hammer:{hammer}",

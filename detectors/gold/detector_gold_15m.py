@@ -541,6 +541,9 @@ class GoldDetector15M(BaseDetector):
             # para que solo señales muy claras (Stop Hunt + patrón + RSI extremo) pasen.
             _SCORE_CONTRA_4H = 13
             _bias_4h = tf_bias.obtener_sesgo(simbolo, '4H')
+            _b4h_ct = _bias_4h['bias'] if _bias_4h else tf_bias.BIAS_NEUTRAL
+            _contra_tend_sell = (_b4h_ct == tf_bias.BIAS_BULLISH)  # SELL vs 4H alcista
+            _contra_tend_buy  = (_b4h_ct == tf_bias.BIAS_BEARISH)  # BUY  vs 4H bajista
             if _bias_4h:
                 _b4h = _bias_4h['bias']
                 if senal_sell_fuerte and _b4h == tf_bias.BIAS_BULLISH and score_sell < _SCORE_CONTRA_4H:
@@ -692,8 +695,11 @@ class GoldDetector15M(BaseDetector):
                            f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"🎯 <b>TP1:</b> ${tp1_v}  R:R {rr(sell_entry, sl_venta, tp1_v)}:1\n"
-                           f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
-                           f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n"
+                           + (f"⚠️ <i>Solo TP1 — contra tendencia 4H ({_b4h_ct})</i>\n"
+                              if _contra_tend_sell else
+                              f"🎯 <b>TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
+                              f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n")
+                           + 
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_sell}/5  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                            f"⏱️ <b>TF:</b> 15M\n"
@@ -715,7 +721,10 @@ class GoldDetector15M(BaseDetector):
                                 'asset': 'GOLD',
                                 'timeframe': '15M',
                                 'direccion': 'VENTA', 'precio_entrada': sell_entry,
-                                'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                                'tp1': tp1_v,
+                                'tp2': None if _contra_tend_sell else tp2_v,
+                                'tp3': None if _contra_tend_sell else tp3_v,
+                                'sl': sl_venta,
                                 'score': score_sell,
                                 'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_baj_activo}",
@@ -742,8 +751,11 @@ class GoldDetector15M(BaseDetector):
                            f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"🎯 <b>TP1:</b> ${tp1_c}  R:R {rr(buy_entry, sl_compra, tp1_c)}:1\n"
-                           f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
-                           f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n"
+                           + (f"⚠️ <i>Solo TP1 — contra tendencia 4H ({_b4h_ct})</i>\n"
+                              if _contra_tend_buy else
+                              f"🎯 <b>TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
+                              f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n")
+                           + 
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_buy}/5  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                            f"⏱️ <b>TF:</b> 15M\n"
@@ -767,7 +779,10 @@ class GoldDetector15M(BaseDetector):
                                 'asset': 'GOLD',
                                 'timeframe': '15M',
                                 'direccion': 'COMPRA', 'precio_entrada': buy_entry,
-                                'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                                'tp1': tp1_c,
+                                'tp2': None if _contra_tend_buy else tp2_c,
+                                'tp3': None if _contra_tend_buy else tp3_c,
+                                'sl': sl_compra,
                                 'score': score_buy,
                                 'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_alc_activo}",

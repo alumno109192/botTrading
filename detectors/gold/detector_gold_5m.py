@@ -655,6 +655,14 @@ class GoldDetector5M(BaseDetector):
             tf_bias.publicar_scores(simbolo, '5M', score_sell, score_buy, max_score)
             _conf_sell = ""; _conf_buy = ""
 
+            # ── Contra-tendencia 4H: señal opuesta al sesgo superior → solo TP1 ──────
+            # Si el 4H es ALCISTA y mandamos SELL (o viceversa), el precio suele llegar
+            # solo a TP1 antes de retomar la tendencia dominante.
+            _bias_4h_ct = tf_bias.obtener_sesgo(simbolo, '4H')
+            _b4h_ct = _bias_4h_ct['bias'] if _bias_4h_ct else tf_bias.BIAS_NEUTRAL
+            _contra_tend_sell = (_b4h_ct == tf_bias.BIAS_BULLISH)  # SELL vs 4H alcista
+            _contra_tend_buy  = (_b4h_ct == tf_bias.BIAS_BEARISH)  # BUY  vs 4H bajista
+
             # ── AVISO SETUP TEMPRANO (score ≥ umbral, independiente de filtros) ───
             # Se envía aunque confluencia/R:R/señal-activa lo bloqueen después.
             # Guarda señal en BD para que el monitor de P&L haga seguimiento TP/SL.
@@ -679,7 +687,9 @@ class GoldDetector5M(BaseDetector):
                                     'simbolo': _simbolo_db_5m,
                                     'direccion': 'VENTA',
                                     'precio_entrada': round(close, 2),
-                                    'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v,
+                                    'tp1': tp1_v,
+                                    'tp2': None if _contra_tend_sell else tp2_v,
+                                    'tp3': None if _contra_tend_sell else tp3_v,
                                     'sl': round(sl_venta, 2),
                                     'score': score_sell,
                                     'indicadores': json.dumps(_condiciones_bd),
@@ -698,8 +708,11 @@ class GoldDetector5M(BaseDetector):
                             f"� <b>Entrada SELL LIMIT: ${round(sell_limit, 2)}</b>  ← pon la orden aquí\n"
                             f"🛑 SL ref:  ${round(sl_venta, 2)}  ({round(sl_venta - sell_limit, 1):+.1f} pts desde entrada)\n"
                             f"🎯 TP1 ref: ${tp1_v}  R:R {rr_sell_tp1}:1\n"
-                            f"💎 <b>TP RECOMENDADO → TP2: ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1</b>\n"
-                            f"🎯 TP3 ref: ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                            + (f"⚠️ <i>Solo TP1 — contra tendencia 4H ({_b4h_ct})</i>\n"
+                               if _contra_tend_sell else
+                               f"💎 <b>TP RECOMENDADO → TP2: ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1</b>\n"
+                               f"🎯 TP3 ref: ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n")
+                            + 
                             f"━━━━━━━━━━━━━━━━━━━━\n"
                             f"📊 Score: {score_sell}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
                             f"⏱️ 5M  📅 {fecha}"
@@ -723,7 +736,9 @@ class GoldDetector5M(BaseDetector):
                                     'simbolo': _simbolo_db_5m,
                                     'direccion': 'COMPRA',
                                     'precio_entrada': round(close, 2),
-                                    'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
+                                    'tp1': tp1_c,
+                                    'tp2': None if _contra_tend_buy else tp2_c,
+                                    'tp3': None if _contra_tend_buy else tp3_c,
                                     'sl': round(sl_compra, 2),
                                     'score': score_buy,
                                     'indicadores': json.dumps(_condiciones_bd),
@@ -742,8 +757,11 @@ class GoldDetector5M(BaseDetector):
                             f"� <b>Entrada BUY LIMIT: ${round(buy_limit, 2)}</b>  ← pon la orden aquí\n"
                             f"🛑 SL ref:  ${round(sl_compra, 2)}  ({round(sl_compra - buy_limit, 1):+.1f} pts desde entrada)\n"
                             f"🎯 TP1 ref: ${tp1_c}  R:R {rr_buy_tp1}:1\n"
-                            f"💎 <b>TP RECOMENDADO → TP2: ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1</b>\n"
-                            f"🎯 TP3 ref: ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                            + (f"⚠️ <i>Solo TP1 — contra tendencia 4H ({_b4h_ct})</i>\n"
+                               if _contra_tend_buy else
+                               f"💎 <b>TP RECOMENDADO → TP2: ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1</b>\n"
+                               f"🎯 TP3 ref: ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n")
+                            + 
                             f"━━━━━━━━━━━━━━━━━━━━\n"
                             f"📊 Score: {score_buy}/{max_score}  RSI: {round(rsi,1)}  ADX: {round(adx,1)}\n"
                             f"⏱️ 5M  📅 {fecha}"
@@ -922,8 +940,11 @@ class GoldDetector5M(BaseDetector):
                            f"🛑 <b>Stop Loss:</b>  ${round(sl_venta, 2)}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"{'💎' if _modo_caza_15m_sell else '🎯'} <b>{'TP RECOMENDADO → ' if _modo_caza_15m_sell else ''}TP1:</b> ${tp1_v}  R:R {rr(sell_limit, sl_venta, tp1_v)}:1\n"
-                           f"{'🎯' if _modo_caza_15m_sell else '💎 <b>TP RECOMENDADO → '}{'TP2:</b>' if not _modo_caza_15m_sell else 'TP2:'} ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
-                           f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n"
+                           + (f"⚠️ <i>Solo TP1 — contra tendencia 4H ({_b4h_ct})</i>\n"
+                              if _contra_tend_sell else
+                              f"{'🎯' if _modo_caza_15m_sell else '💎 <b>TP RECOMENDADO → '}{'TP2:</b>' if not _modo_caza_15m_sell else 'TP2:'} ${tp2_v}  R:R {rr(sell_limit, sl_venta, tp2_v)}:1\n"
+                              f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_limit, sl_venta, tp3_v)}:1\n")
+                           + 
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_sell}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                            f"⏱️ <b>TF:</b> 5M\n"
@@ -946,7 +967,10 @@ class GoldDetector5M(BaseDetector):
                                 'asset': 'GOLD',
                                 'timeframe': '5M',
                                 'direccion': 'VENTA', 'precio_entrada': sell_limit,
-                                'tp1': tp1_v, 'tp2': tp2_v, 'tp3': tp3_v, 'sl': sl_venta,
+                                'tp1': tp1_v,
+                                'tp2': None if _contra_tend_sell else tp2_v,
+                                'tp3': None if _contra_tend_sell else tp3_v,
+                                'sl': sl_venta,
                                 'score': score_sell,
                                 'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_baj_activo}",
@@ -973,8 +997,11 @@ class GoldDetector5M(BaseDetector):
                            f"🛑 <b>Stop Loss:</b> ${round(sl_compra, 2)}\n"
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"{'💎' if _modo_caza_15m_buy else '🎯'} <b>{'TP RECOMENDADO → ' if _modo_caza_15m_buy else ''}TP1:</b> ${tp1_c}  R:R {rr(buy_limit, sl_compra, tp1_c)}:1\n"
-                           f"{'🎯' if _modo_caza_15m_buy else '💎 <b>TP RECOMENDADO → '}{'TP2:</b>' if not _modo_caza_15m_buy else 'TP2:'} ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
-                           f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n"
+                           + (f"⚠️ <i>Solo TP1 — contra tendencia 4H ({_b4h_ct})</i>\n"
+                              if _contra_tend_buy else
+                              f"{'🎯' if _modo_caza_15m_buy else '💎 <b>TP RECOMENDADO → '}{'TP2:</b>' if not _modo_caza_15m_buy else 'TP2:'} ${tp2_c}  R:R {rr(buy_limit, sl_compra, tp2_c)}:1\n"
+                              f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_limit, sl_compra, tp3_c)}:1\n")
+                           + 
                            f"━━━━━━━━━━━━━━━━━━━━\n"
                            f"📊 <b>Score:</b> {score_buy}/{max_score}  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                            f"⏱️ <b>TF:</b> 5M\n"
@@ -997,7 +1024,10 @@ class GoldDetector5M(BaseDetector):
                                 'asset': 'GOLD',
                                 'timeframe': '5M',
                                 'direccion': 'COMPRA', 'precio_entrada': buy_limit,
-                                'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c, 'sl': sl_compra,
+                                'tp1': tp1_c,
+                                'tp2': None if _contra_tend_buy else tp2_c,
+                                'tp3': None if _contra_tend_buy else tp3_c,
+                                'sl': sl_compra,
                                 'score': score_buy,
                                 'indicadores': json.dumps(_condiciones_bd),
                                 'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_alc_activo}, DobleSuelo:{_ds_5m}",

@@ -239,12 +239,13 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     try:
         precio_entrada = float(senal['precio_entrada'])
         tp1 = float(senal['tp1'])
-        tp2 = float(senal['tp2'])
-        tp3 = float(senal['tp3'])
         sl  = float(senal['sl'])
     except (TypeError, ValueError):
         logger.info(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
         return
+    # tp2/tp3 pueden ser None en señales contra tendencia (solo TP1 activo)
+    tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
+    tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
     # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
     tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
     tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
@@ -252,7 +253,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     sl_alcanzado  = bool(int(senal.get('sl_alcanzado')  or 0))
 
     # Verificar TP3 (mayor prioridad) — usa High reciente para capturar picos entre polls
-    if precio_max >= tp3 and not tp3_alcanzado:
+    if tp3 is not None and precio_max >= tp3 and not tp3_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp3, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
         db.registrar_tp3_hit(senal_id, simbolo, 'COMPRA', tp3, precio_actual, beneficio)
@@ -276,7 +277,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         return
 
     # Verificar TP2 — usa High reciente
-    if precio_max >= tp2 and not tp2_alcanzado:
+    if tp2 is not None and precio_max >= tp2 and not tp2_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp2, 'COMPRA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
         db.registrar_tp2_hit(senal_id, simbolo, 'COMPRA', tp2, precio_actual, beneficio)
@@ -306,6 +307,11 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
         db.registrar_tp1_hit(senal_id, simbolo, 'COMPRA', tp1, precio_actual, beneficio)
 
+        _accion_tp1_buy = (
+            f"🔴 Cerrar 33% de la posición\n🔒 Mover SL a breakeven (${precio_entrada:.2f})\n⏳ Dejar correr hacia TP2 (${tp2:.2f})"
+            if tp2 is not None
+            else f"🔴 Cerrar el 100% — objetivo único (señal contra tendencia)\n🔒 No dejar correr más allá de TP1"
+        )
         mensaje = f"""
 🎯 <b>TP1 ALCANZADO</b>
 
@@ -316,9 +322,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 💵 Beneficio: +{beneficio:.2f}%
 
 📋 <b>ACCIÓN RECOMENDADA:</b>
-🔴 Cerrar 33% de la posición
-🔒 Mover SL a breakeven (${precio_entrada:.2f})
-⏳ Dejar correr hacia TP2 (${tp2:.2f})
+{_accion_tp1_buy}
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
@@ -408,12 +412,13 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     try:
         precio_entrada = float(senal['precio_entrada'])
         tp1 = float(senal['tp1'])
-        tp2 = float(senal['tp2'])
-        tp3 = float(senal['tp3'])
         sl  = float(senal['sl'])
     except (TypeError, ValueError):
         logger.warning(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
         return
+    # tp2/tp3 pueden ser None en señales contra tendencia (solo TP1 activo)
+    tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
+    tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
     # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
     tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
     tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
@@ -421,7 +426,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     sl_alcanzado  = bool(int(senal.get('sl_alcanzado')  or 0))
 
     # Verificar TP3 (menor precio) — usa Low reciente para capturar picos entre polls
-    if precio_min <= tp3 and not tp3_alcanzado:
+    if tp3 is not None and precio_min <= tp3 and not tp3_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp3, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP3', beneficio)
         db.registrar_tp3_hit(senal_id, simbolo, 'VENTA', tp3, precio_actual, beneficio)
@@ -445,7 +450,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         return
 
     # Verificar TP2 — usa Low reciente
-    if precio_min <= tp2 and not tp2_alcanzado:
+    if tp2 is not None and precio_min <= tp2 and not tp2_alcanzado:
         beneficio = calcular_beneficio_pct(precio_entrada, tp2, 'VENTA')
         db.actualizar_estado_senal(senal_id, 'TP2', beneficio)
         db.registrar_tp2_hit(senal_id, simbolo, 'VENTA', tp2, precio_actual, beneficio)
@@ -475,6 +480,11 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         db.actualizar_estado_senal(senal_id, 'TP1', beneficio)
         db.registrar_tp1_hit(senal_id, simbolo, 'VENTA', tp1, precio_actual, beneficio)
 
+        _accion_tp1_sell = (
+            f"🔴 Cerrar 33% de la posición\n🔒 Mover SL a breakeven (${precio_entrada:.2f})\n⏳ Dejar correr hacia TP2 (${tp2:.2f})"
+            if tp2 is not None
+            else f"🔴 Cerrar el 100% — objetivo único (señal contra tendencia)\n🔒 No dejar correr más allá de TP1"
+        )
         mensaje = f"""
 🎯 <b>TP1 ALCANZADO</b>
 
@@ -485,9 +495,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 💵 Beneficio: +{beneficio:.2f}%
 
 📋 <b>ACCIÓN RECOMENDADA:</b>
-🔴 Cerrar 33% de la posición
-🔒 Mover SL a breakeven (${precio_entrada:.2f})
-⏳ Dejar correr hacia TP2 (${tp2:.2f})
+{_accion_tp1_sell}
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
