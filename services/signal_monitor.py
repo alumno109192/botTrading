@@ -763,14 +763,11 @@ def _verificar_reversal_post_tp1(senal: dict, _reversal_tp1_avisado: set, db) ->
             # Reversión confirmada → cerrar en breakeven automáticamente
             db.actualizar_estado_senal(senal_id, 'BREAKEVEN')
             msg = (
-                f"🚫 <b>SEÑAL CERRADA — Reversión confirmada</b>\n"
+                f"🚫 <b>SEÑAL CERRADA</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"{icono} {simbolo} | {direccion}\n"
                 f"💰 Entrada: ${precio_entrada:.2f}\n"
                 f"📍 Cierre en breakeven: ${sl:.2f}\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🔍 <b>Reversión confirmada (3/3):</b>\n"
-                + senal_lines + "\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"✅ Capital protegido — sin pérdida\n"
                 f"🔖 <code>#{senal_id}</code>"
@@ -779,24 +776,11 @@ def _verificar_reversal_post_tp1(senal: dict, _reversal_tp1_avisado: set, db) ->
                 f"  🚫 [{simbolo}] Señal #{senal_id} CERRADA por reversión confirmada (3/3)"
             )
         else:
-            # 2/3: bajo presión pero SL garantiza el capital → mantener
-            msg = (
-                f"📊 <b>Señal bajo presión — manteniendo posición</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"{icono} {simbolo} | {direccion}\n"
-                f"💰 Entrada: ${precio_entrada:.2f}\n"
-                f"📍 Actual:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <b>Presión detectada (2/3 — no confirmada):</b>\n"
-                + senal_lines + "\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🔒 SL en breakeven ${sl:.2f} — capital garantizado\n"
-                f"🎯 Mantenemos hacia TP2: ${tp2:.2f}\n"
-                f"🔖 <code>#{senal_id}</code>"
-            )
+            # 2/3: bajo presión pero SL garantiza el capital → no notificar, seguir monitoreando
             logger.info(
-                f"  📊 [{simbolo}] Señal #{senal_id} bajo presión (2/3) — manteniendo hacia TP2"
+                f"  📊 [{simbolo}] Señal #{senal_id} bajo presión (2/3) — manteniendo hacia TP2 (sin notificación)"
             )
+            return
 
         enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
         _reversal_tp1_avisado.add(senal_id)
@@ -939,34 +923,18 @@ def _verificar_reversal_post_tp2(senal: dict, _reversal_tp2_avisado: set, db) ->
                 f"💰 Entrada: ${precio_entrada:.2f}\n"
                 f"📍 Cierre:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🔍 <b>Reversión confirmada (3/3):</b>\n"
-                + senal_lines + "\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"💵 Ganancia bloqueada — TP3 cancelado\n"
+                f" Ganancia bloqueada — TP3 cancelado\n"
                 f"🔖 <code>#{senal_id}</code>"
             )
             logger.info(
                 f"  ✅ [{simbolo}] Señal #{senal_id} CERRADA en TP2 por reversión confirmada (3/3)"
             )
         else:
-            # 2/3: presión no confirmada → mantener con beneficio protegido
-            msg = (
-                f"📊 <b>Señal bajo presión — manteniendo beneficio</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"{icono} {simbolo} | {direccion}\n"
-                f"💰 Entrada: ${precio_entrada:.2f}\n"
-                f"📍 Actual:  ${precio_actual:.2f}  ({beneficio:+.2f}%)\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <b>Presión detectada (2/3 — no confirmada):</b>\n"
-                + senal_lines + "\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🔒 TP2 ya asegurado — beneficio protegido\n"
-                f"🎯 Mantenemos hacia TP3: ${tp3:.2f}\n"
-                f"🔖 <code>#{senal_id}</code>"
-            )
+            # 2/3: presión no confirmada → no notificar, seguir monitoreando hacia TP3
             logger.info(
-                f"  📊 [{simbolo}] Señal #{senal_id} bajo presión (2/3) — manteniendo hacia TP3"
+                f"  📊 [{simbolo}] Señal #{senal_id} bajo presión (2/3) — manteniendo hacia TP3 (sin notificación)"
             )
+            return
 
         enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
         _reversal_tp2_avisado.add(senal_id)
