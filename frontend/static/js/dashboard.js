@@ -116,7 +116,7 @@ function dashboardApp() {
         es.onerror = () => {
           es.close();
           // Reconectar tras 5 segundos si la conexión se pierde
-          setTimeout(() => conectar(), 5_000);
+          setTimeout(() => conectar(), 5000);
         };
       };
       conectar();

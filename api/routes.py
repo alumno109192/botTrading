@@ -528,6 +528,7 @@ def create_app(estado_sistema, threads_detectores):
         from bridge.sse_broker import broker
 
         def _generar():
+            import queue as _queue
             q = broker.suscribir()
             try:
                 # Comentario inicial para que el navegador reconozca el stream
@@ -536,7 +537,7 @@ def create_app(estado_sistema, threads_detectores):
                     try:
                         msg = q.get(timeout=25)
                         yield msg
-                    except Exception:
+                    except _queue.Empty:
                         # Timeout de 25 s → enviar heartbeat para mantener la conexión
                         yield ": ping\n\n"
             except GeneratorExit:

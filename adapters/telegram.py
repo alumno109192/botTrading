@@ -28,21 +28,22 @@ def _intentar_publicar_sse(mensaje: str) -> None:
         from bridge.sse_broker import broker
         if broker.num_clientes == 0:
             return
-        simbolo   = (_RE_SIMBOLO.search(mensaje)   or [None, None])[1]
-        tf_match  = _RE_TIMEFRAME.search(mensaje)
-        dir_match = _RE_DIRECCION.search(mensaje)
-        ent_match = _RE_ENTRADA.search(mensaje)
-        if simbolo and tf_match and dir_match:
-            direccion = dir_match.group(1).upper()
+        m_sim = _RE_SIMBOLO.search(mensaje)
+        m_tf  = _RE_TIMEFRAME.search(mensaje)
+        m_dir = _RE_DIRECCION.search(mensaje)
+        m_ent = _RE_ENTRADA.search(mensaje)
+        simbolo = m_sim.group(1) if m_sim else None
+        if simbolo and m_tf and m_dir:
+            direccion = m_dir.group(1).upper()
             if direccion == 'BUY':
                 direccion = 'COMPRA'
             elif direccion == 'SELL':
                 direccion = 'VENTA'
-            precio = float(ent_match.group(1).replace(',', '.')) if ent_match else 0.0
+            precio = float(m_ent.group(1).replace(',', '.')) if m_ent else 0.0
             broker.publicar_senal(
                 tipo='nueva',
                 simbolo=simbolo,
-                timeframe=tf_match.group(1).upper(),
+                timeframe=m_tf.group(1).upper(),
                 direccion=direccion,
                 precio_entrada=precio,
             )
