@@ -167,6 +167,10 @@ def create_app(estado_sistema, threads_detectores):
     def dashboard_stats():
         return render_template('dashboard.html', vista_inicial='stats')
 
+    @app.route('/dashboard/pendientes')
+    def dashboard_pendientes():
+        return render_template('dashboard.html', vista_inicial='pendientes')
+
     # ─────────────────────────────────────────────────────────────────────────
     # API v1 — señales
     # ─────────────────────────────────────────────────────────────────────────

@@ -68,10 +68,14 @@
   <!-- ════════════════════════════════════════
        NAVEGACIÓN
   ════════════════════════════════════════ -->
-  <nav style="display:flex;padding:0 1.5rem">
+  <nav class="main-nav">
     <a href="/dashboard/activas" class="nav-tab" :class="vistaActual === 'activas' ? 'active' : ''">
       Señales Activas
       <span class="nav-badge" x-show="senalesActivas.length > 0" x-text="senalesActivas.length"></span>
+    </a>
+    <a href="/dashboard/pendientes" class="nav-tab" :class="vistaActual === 'pendientes' ? 'active' : ''">
+      Pendientes
+      <span class="nav-badge nav-badge--warn" x-show="senalesPendientes.length > 0" x-text="senalesPendientes.length"></span>
     </a>
     <a href="/dashboard/historial" class="nav-tab" :class="vistaActual === 'historial' ? 'active' : ''">Historial</a>
     <a href="/dashboard/stats" class="nav-tab" :class="vistaActual === 'stats' ? 'active' : ''">Stats &amp; Equity</a>
@@ -240,6 +244,102 @@
               <span x-show="s.nivel">Nivel: <strong x-text="s.nivel"></strong></span>
             </div>
           </div><!-- /.card-body -->
+          </div><!-- /.signal-card -->
+        </template>
+      </div>
+    </section>
+
+    <!-- ── SEÑALES PENDIENTES ──────────────────────────────── -->
+    <section x-show="vistaActual === 'pendientes'">
+
+      <!-- Info banner -->
+      <div class="pending-info">
+        <span>⏳</span>
+        <span>Señales en estado <strong>PENDIENTE_CONFIRM</strong> — esperando confirmación de entrada antes de activarse.</span>
+      </div>
+
+      <!-- Empty state -->
+      <div class="empty-state" x-show="senalesPendientesFiltradas.length === 0">
+        <span class="empty-icon">✅</span>
+        <p class="empty-text">No hay señales pendientes<br>de confirmación</p>
+      </div>
+
+      <!-- Grid de cards pendientes -->
+      <div class="activas-grid">
+        <template x-for="s in senalesPendientesFiltradas" :key="s.id">
+          <div class="signal-card signal-card--pending"
+               :class="[s.direccion === 'COMPRA' ? 'card-buy' : 'card-sell', s._expanded ? 'card-expanded' : '']">
+
+            <!-- Cabecera -->
+            <div class="card-header" @click="s._expanded = !s._expanded">
+              <span class="dir-badge" :class="s.direccion === 'COMPRA' ? 'buy' : 'sell'"
+                    x-text="s.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL'">BUY</span>
+
+              <span class="card-ticker" x-text="s.asset || s.simbolo">GOLD</span>
+              <span class="card-tf" x-text="s.timeframe">1H</span>
+
+              <span class="nivel-badge" x-show="s.nivel"
+                    :class="'nivel-' + s.nivel"
+                    x-text="s.nivel"></span>
+
+              <span class="pending-badge">⏳ PENDING</span>
+
+              <div style="flex:1"></div>
+
+              <span class="card-pnl"
+                    :class="(s.pnl_pct || 0) >= 0 ? 'pos' : 'neg'"
+                    x-text="formatPnl(s.pnl_pct)">—</span>
+
+              <span class="card-chevron" :class="s._expanded ? 'open' : ''">▼</span>
+            </div>
+
+            <!-- Cuerpo desplegable -->
+            <div class="card-body" x-show="s._expanded"
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100">
+
+              <div class="data-block">
+                <span class="data-label">Entrada</span>
+                <span class="data-value tabular" x-text="formatPrecio(s.precio_entrada)">—</span>
+                <span class="data-sub" x-text="formatFecha(s.timestamp)">—</span>
+              </div>
+
+              <div class="data-block">
+                <span class="data-label">Stop Loss</span>
+                <span class="data-value sl-value tabular" x-text="formatPrecio(s.sl)">—</span>
+              </div>
+
+              <div class="data-block">
+                <span class="data-label">Take Profits</span>
+                <div class="tp-list">
+                  <div class="tp-item" x-show="s.tp1">
+                    <span class="tp-label">TP1</span>
+                    <span class="tp-price tabular" x-text="formatPrecio(s.tp1)">—</span>
+                  </div>
+                  <div class="tp-item" x-show="s.tp2">
+                    <span class="tp-label">TP2</span>
+                    <span class="tp-price tabular" x-text="formatPrecio(s.tp2)">—</span>
+                  </div>
+                  <div class="tp-item" x-show="s.tp3">
+                    <span class="tp-label">TP3</span>
+                    <span class="tp-price tabular" x-text="formatPrecio(s.tp3)">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="data-block">
+                <span class="data-label">Precio actual</span>
+                <span class="data-value tabular" x-text="precioActual ? precioActual.toFixed(2) : '—'">—</span>
+              </div>
+
+              <div class="card-meta">
+                <span>Score: <strong x-text="s.score || '—'"></strong></span>
+                <span x-show="s.patron_velas">Patrón: <strong x-text="s.patron_velas"></strong></span>
+                <span>Esperando: <strong x-text="duracion(s.timestamp)"></strong></span>
+                <span x-show="s.nivel">Nivel: <strong x-text="s.nivel"></strong></span>
+              </div>
+            </div><!-- /.card-body -->
           </div><!-- /.signal-card -->
         </template>
       </div>

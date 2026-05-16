@@ -135,6 +135,8 @@ header {
 nav {
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
+  display: flex;
+  padding: 0 1.5rem;
 }
 
 .nav-tab {
@@ -186,6 +188,12 @@ nav {
   color: var(--accent);
   border-radius: 99px;
   border: 1px solid rgba(41,182,246,0.25);
+}
+
+.nav-badge--warn {
+  background: rgba(255,145,0,0.12);
+  color: var(--warn);
+  border-color: rgba(255,145,0,0.35);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -773,10 +781,113 @@ nav {
 .font-bold   { font-weight: 700; }
 .text-right  { text-align: right; }
 
+/* ── Pendientes ───────────────────────────────────────── */
+.pending-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+  background: rgba(255,145,0,0.1);
+  color: var(--warn);
+  border: 1px solid rgba(255,145,0,0.35);
+  flex-shrink: 0;
+}
+
+.signal-card--pending {
+  border-style: dashed;
+  opacity: 0.92;
+}
+.signal-card--pending .card-header {
+  background: rgba(255,145,0,0.025);
+}
+
+.pending-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  background: rgba(255,145,0,0.06);
+  border: 1px solid rgba(255,145,0,0.22);
+  border-radius: var(--radius);
+  font-size: 0.7rem;
+  color: var(--muted-2);
+  line-height: 1.5;
+}
+.pending-info strong { color: var(--warn); }
+
 /* ── Mobile ───────────────────────────────────────── */
 @media (max-width: 640px) {
-  header { padding: 0 1rem; gap: 8px; }
-  .main-content { padding: 12px 1rem 50px; }
-  .tf-bar { padding: 8px 1rem; }
-  nav { padding-left: 1rem; }
+  /* Header: scrollable horizontalmente, compacto */
+  header {
+    padding: 0 0.75rem;
+    gap: 6px;
+    height: 48px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+  header::-webkit-scrollbar { display: none; }
+  .header-sep   { display: none; }
+  .update-badge { display: none; }
+  .logo-text    { font-size: 0.78rem; }
+  .header-chip  { padding: 2px 7px; font-size: 0.63rem; gap: 4px; flex-shrink: 0; }
+
+  /* Nav: scroll horizontal sin barra */
+  nav {
+    padding: 0 0.75rem !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  .nav-tab { padding: 0.65rem 0.9rem; font-size: 0.72rem; }
+
+  /* TF pills */
+  .tf-bar { padding: 8px 0.75rem; gap: 5px; }
+
+  /* Main content */
+  .main-content { padding: 10px 0.75rem 80px; }
+
+  /* Signal cards: una por fila */
+  .signal-card { flex: 1 1 100%; max-width: 100%; min-width: 0; }
+
+  /* Historial cards: una por fila */
+  .hgcard { flex: 1 1 100%; max-width: 100%; min-width: 0; }
+
+  /* Market pulse: más compacto */
+  .mkt-pulse       { padding: 8px 10px; }
+  .mkt-pulse-item  { padding: 2px 6px; font-size: 0.63rem; }
+
+  /* KPI cards: más compactas */
+  .kpi-card  { padding: 12px 14px; }
+  .kpi-value { font-size: 1.25rem; }
+  .kpi-icon  { font-size: 1rem; }
+
+  /* Stats table: texto más pequeño */
+  .stats-table th,
+  .stats-table td { padding: 7px 8px; font-size: 0.67rem; }
+  .wr-bar-track { display: none; }
+
+  /* Toast: ocupa todo el ancho */
+  #toast-container { right: 10px; left: 10px; width: auto; }
+  .toast { padding: 10px 11px; }
+
+  /* Chart */
+  .chart-wrap { height: 160px; }
+}
+
+@media (max-width: 400px) {
+  .header-chip  { padding: 2px 5px; font-size: 0.6rem; }
+  .logo-text    { font-size: 0.72rem; }
+  .card-header  { gap: 7px; padding: 10px 12px; }
+  .card-pnl     { font-size: 0.75rem; }
+  .hgcard-ticker{ font-size: 0.76rem; }
+  .kpi-value    { font-size: 1.1rem; }
+  .stats-table th,
+  .stats-table td { padding: 6px 6px; font-size: 0.63rem; }
 }

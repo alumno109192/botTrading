@@ -247,6 +247,15 @@ function dashboardApp() {
       return this.senalesActivas.filter(s => this.tfSeleccionados.includes(s.timeframe));
     },
 
+    get senalesPendientes() {
+      return this.senalesActivas.filter(s => s.estado === 'PENDIENTE_CONFIRM');
+    },
+
+    get senalesPendientesFiltradas() {
+      if (!this.tfSeleccionados.length) return this.senalesPendientes;
+      return this.senalesPendientes.filter(s => this.tfSeleccionados.includes(s.timeframe));
+    },
+
     get scoresPorSimbolo() {
       const map = {};
       for (const s of this.scores) {
