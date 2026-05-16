@@ -33,6 +33,7 @@ function dashboardApp() {
     scores:              [],        // [{simbolo, tf, score_sell, score_buy, max_score, ts}]
 
     /* ── UI ── */
+    menuAbierto:         false,
     ultimaActualizacion: '',
     toasts:              [],
     _toastCounter:       0,

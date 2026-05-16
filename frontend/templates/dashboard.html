@@ -63,7 +63,74 @@
             x-show="pushEstado !== 'no-soportado'"
             x-text="pushEstado === 'activo' ? '🔔 ON' : '🔔 OFF'">
     </button>
+
+    <!-- Botón hamburguesa (solo móvil) -->
+    <button class="hamburger-btn" @click="menuAbierto = true" aria-label="Abrir menú">☰</button>
   </header>
+
+  <!-- ════════════════════════════════════════
+       DRAWER MÓVIL
+  ════════════════════════════════════════ -->
+  <!-- Overlay oscuro -->
+  <div class="nav-drawer-overlay"
+       x-show="menuAbierto"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       @click="menuAbierto = false">
+  </div>
+
+  <!-- Panel lateral -->
+  <div class="nav-drawer" :class="menuAbierto ? 'nav-drawer--open' : ''">
+
+    <!-- Cabecera del drawer -->
+    <div class="nav-drawer-header">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:1rem">📊</span>
+        <span class="logo-text">BotTrading</span>
+      </div>
+      <button class="nav-drawer-close" @click="menuAbierto = false" aria-label="Cerrar menú">✕</button>
+    </div>
+
+    <!-- Links de navegación -->
+    <div class="nav-drawer-links">
+      <a href="/dashboard/activas"
+         :class="vistaActual === 'activas' ? 'active' : ''"
+         @click="menuAbierto = false">
+        <span>📡</span> Señales Activas
+        <span class="nav-badge" x-show="senalesActivas.length > 0" x-text="senalesActivas.length"></span>
+      </a>
+      <a href="/dashboard/pendientes"
+         :class="vistaActual === 'pendientes' ? 'active' : ''"
+         @click="menuAbierto = false">
+        <span>⏳</span> Pendientes
+        <span class="nav-badge nav-badge--warn" x-show="senalesPendientes.length > 0" x-text="senalesPendientes.length"></span>
+      </a>
+      <a href="/dashboard/historial"
+         :class="vistaActual === 'historial' ? 'active' : ''"
+         @click="menuAbierto = false">
+        <span>📂</span> Historial
+      </a>
+      <a href="/dashboard/stats"
+         :class="vistaActual === 'stats' ? 'active' : ''"
+         @click="menuAbierto = false">
+        <span>📈</span> Stats &amp; Equity
+      </a>
+    </div>
+
+    <!-- Footer con estado del sistema -->
+    <div class="nav-drawer-footer">
+      <span class="status-dot"
+            :style="status.threads_vivos > 0
+              ? 'background:var(--buy);animation:statusPulse 2s ease infinite'
+              : 'background:var(--sell)'"></span>
+      <span :style="status.threads_vivos > 0 ? 'color:var(--buy)' : 'color:var(--sell)'"
+            x-text="status.threads_vivos > 0 ? 'Sistema ONLINE' : 'Sistema OFFLINE'"></span>
+    </div>
+  </div>
 
   <!-- ════════════════════════════════════════
        NAVEGACIÓN

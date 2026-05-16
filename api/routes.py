@@ -24,7 +24,11 @@ def create_app(estado_sistema, threads_detectores):
 
     @app.route('/')
     def home():
-        """Endpoint principal - Health check"""
+        """Endpoint principal — redirige al dashboard si es un navegador."""
+        from flask import redirect, request as freq
+        accept = freq.headers.get('Accept', '')
+        if 'text/html' in accept:
+            return redirect('/dashboard', code=302)
         return jsonify({
             'status': 'online',
             'servicio': 'Bot Trading - Detectores de Señales',
