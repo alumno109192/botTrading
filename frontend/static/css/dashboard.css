@@ -922,6 +922,35 @@ nav {
 }
 .pending-info strong { color: var(--warn); }
 
+/* ── Banner batería Android ───────────────────────── */
+.push-bateria-aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(56, 189, 248, 0.07);
+  border-top: 2px solid rgba(56, 189, 248, 0.35);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+  font-size: 0.72rem;
+  color: var(--muted-2);
+  line-height: 1.55;
+}
+.push-bateria-icono { font-size: 1.3rem; flex-shrink: 0; margin-top: 1px; }
+.push-bateria-texto { flex: 1; }
+.push-bateria-texto strong { color: #38bdf8; }
+.push-bateria-texto em { font-style: normal; opacity: .75; }
+.push-bateria-cerrar {
+  background: none;
+  border: none;
+  color: var(--muted-2);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 4px;
+  flex-shrink: 0;
+  align-self: center;
+}
+[x-cloak] { display: none !important; }
+
 /* ── Mobile ───────────────────────────────────────── */
 @media (max-width: 640px) {
   /* Mostrar hamburguesa, ocultar nav de pestañas */

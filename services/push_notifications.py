@@ -101,6 +101,12 @@ def enviar_push_senal(senal_id: int, titulo: str, cuerpo: str,
                 data=payload,
                 vapid_private_key=_VAPID_PRIVATE_KEY,
                 vapid_claims=vapid_claims,
+                # Urgency high → FCM entrega inmediatamente aunque Android
+                # tenga Chrome en modo "Optimizado" de batería.
+                # TTL 24h → el push se reintenta hasta 24h si el dispositivo
+                # está offline en el momento del envío.
+                headers={"urgency": "high"},
+                ttl=86400,
             )
             enviados += 1
         except Exception as exc:

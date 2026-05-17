@@ -69,6 +69,20 @@
   </header>
 
   <!-- ════════════════════════════════════════
+       BANNER BATERÍA ANDROID (se muestra una sola vez tras suscribirse)
+  ════════════════════════════════════════ -->
+  <div class="push-bateria-aviso" x-show="pushBateriaAviso" x-cloak>
+    <div class="push-bateria-icono">🔋</div>
+    <div class="push-bateria-texto">
+      <strong>Último paso para recibir alertas al instante:</strong><br>
+      En Android ve a <em>Ajustes → Aplicaciones → Chrome → Batería</em>
+      y selecciona <strong>Sin restricciones</strong>.
+      De lo contrario Chrome puede retrasar las notificaciones.
+    </div>
+    <button class="push-bateria-cerrar" @click="pushBateriaAviso = false" aria-label="Cerrar">✕</button>
+  </div>
+
+  <!-- ════════════════════════════════════════
        DRAWER MÓVIL
   ════════════════════════════════════════ -->
   <!-- Overlay oscuro -->

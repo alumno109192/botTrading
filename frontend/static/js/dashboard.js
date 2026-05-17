@@ -42,6 +42,7 @@ function dashboardApp() {
 
     /* ── Push ── */
     pushEstado:          'desconocido',  // 'desconocido' | 'activo' | 'inactivo' | 'no-soportado'
+    pushBateriaAviso:   false,           // true → muestra banner instrucciones batería Android
 
     /* ── Seguimiento ── */
     _idsConocidos:       new Set(),
@@ -498,6 +499,10 @@ function dashboardApp() {
         if (save.ok) {
           this.pushEstado = 'activo';
           this.mostrarToast('🔔 Notificaciones activadas', 'Recibirás alertas de nuevas señales', 'ok');
+          // En Android mostrar banner con instrucciones de batería (solo la primera vez)
+          if (/android/i.test(navigator.userAgent)) {
+            this.pushBateriaAviso = true;
+          }
         } else {
           this.mostrarToast('❌ Error al guardar suscripción', '', 'error');
         }
