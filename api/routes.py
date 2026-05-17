@@ -208,8 +208,9 @@ def create_app(estado_sistema, threads_detectores):
             if db is None:
                 return jsonify({'error': 'BD no disponible'}), 503
 
-            activas = db.obtener_senales_activas()  # ACTIVA + PENDIENTE_CONFIRM
-            senales = activas
+            activas   = db.obtener_senales_activas()    # ACTIVA + PENDIENTE_CONFIRM
+            esperando = db.obtener_senales_esperando()    # BUY/SELL LIMIT pendientes de entrada
+            senales   = activas + esperando
 
             tf_filter = request.args.get('tf')
             if tf_filter:
@@ -467,6 +468,32 @@ def create_app(estado_sistema, threads_detectores):
     # ─────────────────────────────────────────────────────────────────────────
     # Web Push Notifications (VAPID)
     # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/api/v1/push/test', methods=['GET', 'POST'])
+    def push_test():
+        """Envía una notificación push de prueba a todos los suscriptores y devuelve el resultado."""
+        from services.push_notifications import enviar_push_senal, _push_disponible
+        from adapters.database import get_db
+        import json as _json
+
+        db = get_db()
+        result = db.ejecutar_query('SELECT endpoint, created_at FROM push_subscriptions')
+        subs = [dict(r) for r in result.rows] if result.rows else []
+
+        enviados = enviar_push_senal(
+            senal_id=0,
+            titulo='🧪 Test push — BotTrading',
+            cuerpo='Si ves esto, las notificaciones funcionan correctamente.',
+        )
+        return jsonify({
+            'ok': True,
+            'suscriptores_en_bd': len(subs),
+            'enviados': enviados,
+            'suscriptores': [
+                {'endpoint': s['endpoint'][:80] + '...', 'created_at': s['created_at']}
+                for s in subs
+            ],
+        })
 
     @app.route('/api/v1/push/vapid-public-key')
     def push_vapid_public_key():

@@ -101,7 +101,7 @@
          :class="vistaActual === 'activas' ? 'active' : ''"
          @click="menuAbierto = false">
         <span>📡</span> Señales Activas
-        <span class="nav-badge" x-show="senalesActivas.length > 0" x-text="senalesActivas.length"></span>
+        <span class="nav-badge" x-show="senalesActivasCount > 0" x-text="senalesActivasCount"></span>
       </a>
       <a href="/dashboard/pendientes"
          :class="vistaActual === 'pendientes' ? 'active' : ''"
@@ -138,7 +138,7 @@
   <nav class="main-nav">
     <a href="/dashboard/activas" class="nav-tab" :class="vistaActual === 'activas' ? 'active' : ''">
       Señales Activas
-      <span class="nav-badge" x-show="senalesActivas.length > 0" x-text="senalesActivas.length"></span>
+      <span class="nav-badge" x-show="senalesActivasCount > 0" x-text="senalesActivasCount"></span>
     </a>
     <a href="/dashboard/pendientes" class="nav-tab" :class="vistaActual === 'pendientes' ? 'active' : ''">
       Pendientes
@@ -322,7 +322,7 @@
       <!-- Info banner -->
       <div class="pending-info">
         <span>⏳</span>
-        <span>Señales en estado <strong>PENDIENTE_CONFIRM</strong> — esperando confirmación de entrada antes de activarse.</span>
+        <span>Señales <strong>BUY LIMIT / SELL LIMIT</strong> — orden colocada, esperando que el precio llegue a la entrada para activarse.</span>
       </div>
 
       <!-- Empty state -->
@@ -349,7 +349,7 @@
                     :class="'nivel-' + s.nivel"
                     x-text="s.nivel"></span>
 
-              <span class="pending-badge">⏳ PENDING</span>
+              <span class="pending-badge">⏳ LIMIT</span>
 
               <div style="flex:1"></div>
 

@@ -244,12 +244,20 @@ function dashboardApp() {
        GETTERS REACTIVOS
     ══════════════════════════════════════════ */
     get senalesFiltradas() {
-      if (!this.tfSeleccionados.length) return this.senalesActivas;
-      return this.senalesActivas.filter(s => this.tfSeleccionados.includes(s.timeframe));
+      // La pestaña Activas muestra ACTIVA + PENDIENTE_CONFIRM, nunca ESPERANDO
+      const activas = this.senalesActivas.filter(s => s.estado !== 'ESPERANDO');
+      if (!this.tfSeleccionados.length) return activas;
+      return activas.filter(s => this.tfSeleccionados.includes(s.timeframe));
     },
 
     get senalesPendientes() {
-      return this.senalesActivas.filter(s => s.estado === 'PENDIENTE_CONFIRM');
+      // Pendientes = señales BUY/SELL LIMIT esperando que el precio llegue a la entrada
+      return this.senalesActivas.filter(s => s.estado === 'ESPERANDO');
+    },
+
+    get senalesActivasCount() {
+      // Cuenta solo ACTIVA + PENDIENTE_CONFIRM (excluye ESPERANDO que va a su propia pestaña)
+      return this.senalesActivas.filter(s => s.estado !== 'ESPERANDO').length;
     },
 
     get senalesPendientesFiltradas() {
