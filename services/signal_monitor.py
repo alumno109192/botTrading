@@ -1721,6 +1721,11 @@ def monitor_senales():
                 enviar_notificacion_telegram(msg)
                 _semana_apertura_enviada = semana_actual
                 logger.info(f"[{ahora_utc.strftime('%H:%M')} UTC] 🟢 Mensaje apertura enviado a Telegram")
+                try:
+                    from services.market_state import set_mercado_abierto
+                    set_mercado_abierto(True, origen="APERTURA DE MERCADOS")
+                except Exception as _e:
+                    logger.warning(f"[market_state] No se pudo actualizar estado apertura: {_e}")
 
             # ── Notificación CIERRE DE MERCADOS (Viernes ≥21:00 UTC) ────────
             if ahora_utc.weekday() == 4 and ahora_utc.hour >= 21 and semana_actual != _semana_cierre_enviada:
@@ -1732,6 +1737,11 @@ def monitor_senales():
                 enviar_notificacion_telegram(msg)
                 _semana_cierre_enviada = semana_actual
                 logger.info(f"[{ahora_utc.strftime('%H:%M')} UTC] 🔴 Mensaje cierre enviado a Telegram")
+                try:
+                    from services.market_state import set_mercado_abierto
+                    set_mercado_abierto(False, origen="CIERRE DE MERCADOS")
+                except Exception as _e:
+                    logger.warning(f"[market_state] No se pudo actualizar estado cierre: {_e}")
 
             ahora = ahora_utc.astimezone()   # hora local para logs existentes
             logger.info(f"\n[{ahora.strftime('%H:%M:%S')}] 🔄 Tick #{ciclo}")

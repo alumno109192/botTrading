@@ -172,6 +172,18 @@ class BaseDetector(ABC):
 
     def _guardar_senal(self, senal_data: dict) -> int:
         """Proxy sobre db.guardar_senal que inyecta telegram_thread_id, timestamp_entry y nivel."""
+        # ── Guard mercado cerrado ─────────────────────────────────────────────
+        try:
+            from services.market_state import is_mercado_abierto
+            if not is_mercado_abierto():
+                _logger.info(
+                    f"[{self.simbolo}] 🔴 Señal BLOQUEADA — mercado cerrado "
+                    f"(dir: {senal_data.get('direccion', '?')}, tf: {self.tf_label})"
+                )
+                return None
+        except ImportError:
+            pass  # módulo no disponible → continuar normalmente
+        # ─────────────────────────────────────────────────────────────────────
         senal_data.setdefault('telegram_thread_id', self.telegram_thread_id)
         # Inyectar timestamp de la vela si no viene explícito
         if 'timestamp_entry' not in senal_data and self._current_candle_ts is not None:
@@ -483,6 +495,19 @@ class BaseDetector(ABC):
         senal_id = self._last_senal_id
         self._last_senal_id = None          # consumir siempre
         self._last_senal_esperando = False  # consumir siempre
+
+        # ── Guard mercado cerrado ─────────────────────────────────────────────
+        try:
+            from services.market_state import is_mercado_abierto
+            if not is_mercado_abierto():
+                _logger.info(
+                    f"[{self.simbolo}] 🔴 enviar() bloqueado — mercado cerrado "
+                    f"(msg: {mensaje[:60]}…)"
+                )
+                return False
+        except ImportError:
+            pass  # módulo no disponible → continuar normalmente
+        # ─────────────────────────────────────────────────────────────────────
 
         if senal_id:
             # Calcular hora estimada de caducidad según timeframe del símbolo
