@@ -32,14 +32,18 @@ def _calcular_estado_inicial() -> bool:
     """Determina si el mercado está abierto en el momento de arrancar.
 
     Mercado cerrado:
-      - Sábado (weekday == 5)
-      - Viernes >= 21:00 UTC (weekday == 4 y hour >= 21)
+      - Sábado entero                       (weekday == 5)
+      - Viernes >= 21:00 UTC                (weekday == 4, hour >= 21)
+      - Domingo < 18:00 UTC                 (weekday == 6, hour < 18)
+        Globex (futuros Gold/CME) abre a las 18:00 UTC del Domingo.
     """
     ahora = datetime.now(timezone.utc)
     weekday = ahora.weekday()  # 0=Lun … 4=Vie, 5=Sáb, 6=Dom
     if weekday == 5:
         return False
     if weekday == 4 and ahora.hour >= 21:
+        return False
+    if weekday == 6 and ahora.hour < 18:
         return False
     return True
 
