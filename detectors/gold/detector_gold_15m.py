@@ -609,8 +609,8 @@ class GoldDetector15M(BaseDetector):
                 )
                 cancelar_buy = True
 
-            # ── FILTRO R:R MÍNIMO 2.0 (Scalping 15M) ──
-            RR_MINIMO = 2.0
+            # ── FILTRO R:R MÍNIMO 1.6 (Scalping 15M) ──
+            RR_MINIMO = 1.6
             rr_sell_tp1 = rr(sell_entry, sl_venta,  tp1_v)
             rr_buy_tp1  = rr(buy_entry,  sl_compra, tp1_c)
             if rr_sell_tp1 < RR_MINIMO:
