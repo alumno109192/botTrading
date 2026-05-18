@@ -6,18 +6,11 @@ inversa más robusta con el oro a medio plazo:
     Yield real SUBE → coste de oportunidad de tener oro sube → presión BAJISTA en Gold
     Yield real BAJA → coste de oportunidad de tener oro baja → presión ALCISTA en Gold
 
-Fuentes (Yahoo Finance, sin API key):
-    ^TNX  — Treasury Note 10Y Yield (nominal, %)
-    RINF  — ProShares Inflation Expectations ETF (proxy breakeven)
-         ó
-    TIP   — iShares TIPS Bond ETF (proxy alternativo)
-
-Yield real aproximado: yield_real ≈ TNX (%) - breakeven (%)
-donde breakeven = ((TIP_precio / 100) * factor) ← aproximación lineal sobre cambio % diario
+Fuente: FRED (Federal Reserve Economic Data) — serie DGS10, gratuita sin API key
+    https://fred.stlouisfed.org/series/DGS10
 
 Método simplificado y robusto:
-    - Se descarga ^TNX (yield nominal 10Y, últimas 30 velas diarias)
-    - Se descarga ^FVX (Treasury 5Y) como señal de dirección del tramo corto
+    - Se descarga DGS10 (yield nominal 10Y, datos diarios) desde FRED
     - Se usa el cambio en TNX vs su media 10D para determinar dirección:
         TNX subiendo (por encima de media 10D) → yields reales subiendo → BEARISH Gold
         TNX bajando  (por debajo de media 10D) → yields reales bajando → BULLISH Gold
@@ -30,8 +23,11 @@ Uso:
     score_buy, score_sell = ajustar_score_por_yield(score_buy, score_sell, bias)
 """
 
+import io
 import threading
 import logging
+import requests
+import pandas as pd
 from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
@@ -43,22 +39,28 @@ _cache_lock = threading.Lock()
 
 def _fetch_yields() -> tuple[float | None, float | None]:
     """
-    Descarga ^TNX (yield nominal 10Y) via yfinance y calcula la media 10D.
+    Descarga DGS10 (yield nominal 10Y) desde FRED y calcula la media 10D.
+    FRED es gratuito, no requiere API key.
     Retorna (yield_actual, yield_media_10d) o (None, None) si falla.
     """
     try:
-        import yfinance as yf
-        tick = yf.Ticker('^TNX')
-        df = tick.history(period='30d', interval='1d', auto_adjust=True)
-        if df is None or len(df) < 11:
-            logger.warning('  ⚠️ [YIELD] Datos ^TNX insuficientes')
+        resp = requests.get(
+            'https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10',
+            timeout=10,
+            headers={'User-Agent': 'BotTrading/1.0'}
+        )
+        resp.raise_for_status()
+        df = pd.read_csv(io.StringIO(resp.text), parse_dates=['DATE'])
+        df['DGS10'] = pd.to_numeric(df['DGS10'], errors='coerce')
+        df = df.dropna(subset=['DGS10']).tail(30)
+        if len(df) < 11:
+            logger.warning('  ⚠️ [YIELD] Datos DGS10 insuficientes')
             return None, None
-        close = df['Close']
-        yield_actual = float(close.iloc[-1])
-        yield_ma10   = float(close.iloc[-11:-1].mean())  # media de las 10 anteriores (excluye hoy)
+        yield_actual = float(df['DGS10'].iloc[-1])
+        yield_ma10   = float(df['DGS10'].iloc[-11:-1].mean())  # media de las 10 anteriores
         return yield_actual, yield_ma10
     except Exception as e:
-        logger.warning(f'  ⚠️ [YIELD] Error descargando ^TNX: {e}')
+        logger.warning(f'  ⚠️ [YIELD] Error descargando DGS10 de FRED: {e}')
         return None, None
 
 

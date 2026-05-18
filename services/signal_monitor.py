@@ -70,7 +70,7 @@ def obtener_thread_id(simbolo: str):
     # 4H, 1D y sin sufijo → Swing
     return THREAD_ID_SWING
 
-# Mapeo de símbolos a tickers de yfinance
+# Mapeo de símbolos de señal → ticker interno (clave en data_provider/_TICKER_MAP_TWELVE)
 SIMBOLO_TO_TICKER = {
     'BTCUSD':  'BTC-USD',
     'XAUUSD':  'GC=F',      # Gold Futures
