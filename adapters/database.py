@@ -577,13 +577,34 @@ class DatabaseManager:
             return result.rows[0]
         return None
 
-    def existe_senal_activa_tf(self, simbolo: str, horas: int = 4) -> bool:
+    # Ventana de deduplicación según TF del símbolo
+    _DEDUP_HORAS_POR_TF = {
+        '_1M':  1,
+        '_5M':  2,
+        '_15M': 4,
+        '_1H':  8,
+        '_2H':  12,
+        '_4H':  24,
+        '_1D':  72,
+    }
+
+    def existe_senal_activa_tf(self, simbolo: str, horas: int = None) -> bool:
         """
         Bloquea nueva señal si ya existe UNA ACTIVA/PENDIENTE/ESPERANDO para este símbolo
         creada en las últimas N horas, independientemente de la dirección (COMPRA o VENTA).
+
+        La ventana se deriva automáticamente del TF del símbolo (ej. XAUUSD_4H → 24h).
+        Si no se reconoce el TF, se usa 4h como fallback.
+
         Usa el mismo formato de simbolo que guardar_senal: XAUUSD_1D, XAUUSD_4H, etc.
         """
         from datetime import datetime, timezone, timedelta
+        if horas is None:
+            sym_upper = simbolo.upper()
+            horas = next(
+                (v for k, v in self._DEDUP_HORAS_POR_TF.items() if sym_upper.endswith(k)),
+                4  # fallback
+            )
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
         query = """
         SELECT COUNT(*) as count
