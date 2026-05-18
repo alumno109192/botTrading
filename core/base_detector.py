@@ -32,6 +32,7 @@ import adapters.telegram as _telegram_mod
 # Requiere MT5_AUTO_TRADE=true en .env y MetaTrader5 instalado (solo Windows).
 # En entornos Linux (Render) la importación falla silenciosamente.
 from adapters.mt5_broker import broker as _mt5_broker
+from adapters.fix_broker import broker as _fix_broker
 from core.indicators import (
     calcular_rsi, calcular_ema, calcular_atr,
     calcular_bollinger_bands, calcular_macd, calcular_obv, calcular_adx,
@@ -555,6 +556,29 @@ class BaseDetector(ABC):
                     f"MT5 hook: error al intentar abrir operación — {_e}"
                 )
         # ── Fin hook MT5 ───────────────────────────────────────────────────────
+
+        # ── Hook FIX API — ejecución automática vía cTrader FIX (Pepperstone) ──
+        # Activo cuando FIX_AUTO_TRADE=true en .env y credenciales configuradas.
+        if senal_id and self.db and _fix_broker.auto_trade:
+            try:
+                _result_fix = self.db.ejecutar_query(
+                    "SELECT direccion, precio_entrada AS entry, sl, tp1, "
+                    "score, timeframe, simbolo FROM senales WHERE id = ?",
+                    (senal_id,)
+                )
+                if _result_fix and _result_fix.rows:
+                    _row_fix = dict(_result_fix.rows[0])
+                    _dir_map = {'COMPRA': 'BUY', 'VENTA': 'SELL'}
+                    _row_fix['direccion'] = _dir_map.get(
+                        str(_row_fix.get('direccion', '')).upper(),
+                        _row_fix.get('direccion', '')
+                    )
+                    _fix_broker.abrir_operacion(_row_fix)
+            except Exception as _e:
+                _logger.warning(
+                    f"FIX hook: error al intentar abrir operación — {_e}"
+                )
+        # ── Fin hook FIX ───────────────────────────────────────────────────────
 
         # Guardar message_id en BD para poder hacer reply en alertas TP/SL
         if message_id and senal_id and self.db:
