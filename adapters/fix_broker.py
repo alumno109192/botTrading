@@ -68,9 +68,10 @@ ORD_TYPE_STOP   = b'3'
 
 
 def _fix_utcnow() -> bytes:
-    """Timestamp FIX en formato YYYYMMDD-HH:MM:SS.sss (UTC)."""
+    """Timestamp FIX en formato YYYYMMDD-HH:MM:SS.sss (UTC, exactamente 3 decimales)."""
     now = datetime.now(timezone.utc)
-    return now.strftime('%Y%m%d-%H:%M:%S.%f')[:23].encode()
+    ms = now.microsecond // 1000
+    return f"{now.strftime('%Y%m%d-%H:%M:%S')}.{ms:03d}".encode()
 
 
 def _fix_utcdate() -> bytes:
