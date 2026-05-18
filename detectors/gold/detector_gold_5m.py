@@ -796,9 +796,9 @@ class GoldDetector5M(BaseDetector):
             _modo_caza_sell    = False
             _modo_caza_15m_buy  = False   # cascada 15M → TP objetivo = TP1 (recorrido corto)
             _modo_caza_15m_sell = False
-            _UMBRAL_CAZA    = 8   # el 1H confirma el contexto pero necesitamos señal sólida
+            _UMBRAL_CAZA    = 10  # el 1H confirma el contexto pero necesitamos señal sólida
 
-            if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima():
+            if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima() and adx >= _ADX_MIN_5M:
                 _tol_1h = _zona_1h_buy['atr'] * 0.6
                 _en_zona_1h = (_zona_1h_buy['zsl'] - _tol_1h <= close <= _zona_1h_buy['zsh'] + _tol_1h)
                 if _en_zona_1h and score_buy >= _UMBRAL_CAZA:
@@ -809,7 +809,7 @@ class GoldDetector5M(BaseDetector):
                                  f"📌 Limit 1H: ${_zona_1h_buy['buy_limit']:.2f} → ajustado 5M: ${buy_limit:.2f}")
                     logger.info(f"  🎯 [5M] MODO CAZA BUY — zona 1H activa (score {score_buy}) → señal activada")
 
-            if _zona_1h_sell and not senal_sell_fuerte and self.en_sesion_optima():
+            if _zona_1h_sell and not senal_sell_fuerte and self.en_sesion_optima() and adx >= _ADX_MIN_5M:
                 _tol_1h = _zona_1h_sell['atr'] * 0.6
                 _en_zona_1h = (_zona_1h_sell['zrl'] - _tol_1h <= close <= _zona_1h_sell['zrh'] + _tol_1h)
                 if _en_zona_1h and score_sell >= _UMBRAL_CAZA:
@@ -831,9 +831,9 @@ class GoldDetector5M(BaseDetector):
             # y el score propio es ≥ 6, se activa la señal con etiqueta "Setup 15M / Entrada 5M"
             _zona_15m_buy  = tf_bias.obtener_zona_activa_15m(simbolo, tf_bias.BIAS_BULLISH)
             _zona_15m_sell = tf_bias.obtener_zona_activa_15m(simbolo, tf_bias.BIAS_BEARISH)
-            _UMBRAL_CAZA_15M = 6   # más bajo que 1H (=8) porque 15M ya confirmó el contexto
+            _UMBRAL_CAZA_15M = 10  # umbral elevado: el 15M confirma pero el mercado debe tener dirección
 
-            if _zona_15m_buy and not senal_buy_fuerte and not _modo_caza_buy and self.en_sesion_optima():
+            if _zona_15m_buy and not senal_buy_fuerte and not _modo_caza_buy and self.en_sesion_optima() and adx >= _ADX_MIN_5M:
                 _tol_15m    = _zona_15m_buy['atr'] * 0.5
                 _en_zona_15m = (_zona_15m_buy['zsl'] - _tol_15m <= close <= _zona_15m_buy['zsh'] + _tol_15m)
                 if _en_zona_15m and score_buy >= _UMBRAL_CAZA_15M:
@@ -846,7 +846,7 @@ class GoldDetector5M(BaseDetector):
                                  f"📌 Ref 15M: ${_zona_15m_buy['buy_limit']:.2f} → ajustado 5M: ${buy_limit:.2f}")
                     logger.info(f"  🎯 [5M] MODO CAZA 15M BUY — zona activa (score_5M={score_buy}, score_15M={_zona_15m_buy['score_15m']}) → señal activada")
 
-            if _zona_15m_sell and not senal_sell_fuerte and not _modo_caza_sell and self.en_sesion_optima():
+            if _zona_15m_sell and not senal_sell_fuerte and not _modo_caza_sell and self.en_sesion_optima() and adx >= _ADX_MIN_5M:
                 _tol_15m    = _zona_15m_sell['atr'] * 0.5
                 _en_zona_15m = (_zona_15m_sell['zrl'] - _tol_15m <= close <= _zona_15m_sell['zrh'] + _tol_15m)
                 if _en_zona_15m and score_sell >= _UMBRAL_CAZA_15M:
