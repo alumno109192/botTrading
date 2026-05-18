@@ -745,6 +745,31 @@ class GoldDetector1H(BaseDetector):
             senal_sell_media = senal_sell_alerta = False
             senal_buy_media  = senal_buy_alerta  = False
 
+        # ── Filtro tendencia DMI 1H — basado en análisis de 52 señales históricas ──
+        # VENTA: el análisis muestra que cuando DI+ < 8 (bear sobreextendido), el
+        #        mercado rebota y el SL salta. 10 SL evitables vs 1 TP perdido.
+        #        Cuando DI- ≤ DI+ no hay presión bajista real → no vender.
+        # COMPRA: comprar contra tendencia bajista (DI- ≥ DI+) = 12 SL, 0 TP.
+        #         Solo comprar si el mercado está en tendencia alcista real.
+        if senal_sell_maxima or senal_sell_fuerte or senal_sell_media or senal_sell_alerta:
+            if di_minus <= di_plus:
+                logger.info(f"  🚫 [1H] SELL bloqueada — sin presión bajista DMI (DI-={di_minus:.1f} ≤ DI+={di_plus:.1f})")
+                senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+            elif di_plus < 8:
+                logger.info(f"  🚫 [1H] SELL bloqueada — tendencia bajista agotada/sobreextendida (DI+={di_plus:.1f} < 8)")
+                senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False
+        if senal_buy_maxima or senal_buy_fuerte or senal_buy_media or senal_buy_alerta:
+            if di_plus <= di_minus:
+                logger.info(f"  🚫 [1H] BUY bloqueada — sin presión alcista DMI (DI+={di_plus:.1f} ≤ DI-={di_minus:.1f})")
+                senal_buy_maxima = senal_buy_fuerte = senal_buy_media = senal_buy_alerta = False
+
+        # ── Filtro RSI 1H para BUY: evitar compras sobrecompradas ─────────────────
+        # Análisis histórico: COMPRA con RSI 1H > 65 = 5 SL, 1 TP (#463-475).
+        # El oro ya subió demasiado en 1H → alta probabilidad de corrección.
+        if (senal_buy_maxima or senal_buy_fuerte) and rsi > 65:
+            logger.info(f"  🚫 [1H] BUY bloqueada — RSI 1H sobrecomprado ({rsi:.1f} > 65)")
+            senal_buy_maxima = senal_buy_fuerte = False
+
         # ── Filtro zona estricta (estrategia EMA + S/R): solo señales en zona ──
         # Las señales por debajo de MAXIMA deben tener precio dentro de zona S/R.
         # Sin esto, los scores de cuñas/patrones/V-Reversal disparan señales lejos
