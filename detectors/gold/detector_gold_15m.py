@@ -395,13 +395,13 @@ class GoldDetector15M(BaseDetector):
             sl_compra = close - (atr * asm) - spread
         
             # Límites de entrada
-            # SELL LIMIT: espera que el precio suba hasta la resistencia antes de vender
             offset_pct = params['limit_offset_pct']
             sell_limit = close * (1 + offset_pct / 100)
+            buy_limit  = close * (1 - offset_pct / 100)
+
+            # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
             sell_entry = round(sell_limit - spread, 2)
-            # BUY: entrada a precio de mercado (ask actual) — el close ya está en soporte,
-            # poner el limit por debajo garantiza que nunca se ejecuta si el precio rebota
-            buy_entry  = round(close + spread, 2)
+            buy_entry  = round(buy_limit  + spread, 2)
 
             # VATR: factor de volumen — amplía TPs en mercados con impulso, los reduce en apáticos
             _vol_avg20  = float(df['Volume'].rolling(20).mean().iloc[-1])
@@ -501,11 +501,11 @@ class GoldDetector15M(BaseDetector):
             if score_buy >= _UMBRAL_ZONA_15M and not cancelar_buy and self.en_sesion_optima():
                 tf_bias.publicar_zona_activa_15m(simbolo, tf_bias.BIAS_BULLISH, {
                     'zsl': zsl, 'zsh': zsh,
-                    'buy_limit': buy_entry, 'sl': sl_compra,
+                    'buy_limit': buy_limit, 'sl': sl_compra,
                     'tp1': tp1_c, 'tp2': tp2_c, 'tp3': tp3_c,
                     'atr': atr, 'score_15m': score_buy,
                 })
-                logger.info(f"  🏗️ [15M→5M] Zona BUY publicada — soporte ${zsl:.2f}-${zsh:.2f}, limit ${buy_entry:.2f} (score {score_buy})")
+                logger.info(f"  🏗️ [15M→5M] Zona BUY publicada — soporte ${zsl:.2f}-${zsh:.2f}, limit ${buy_limit:.2f} (score {score_buy})")
             else:
                 tf_bias.limpiar_zona_activa_15m(simbolo, tf_bias.BIAS_BULLISH)
 
@@ -570,7 +570,7 @@ class GoldDetector15M(BaseDetector):
                     _modo_caza_buy   = True
                     _conf_buy = (f"⚡ <b>Setup 1H / Entrada 15M</b>\n"
                                  f"📍 Zona 1H soporte: ${_zona_1h_buy['zsl']:.2f}–${_zona_1h_buy['zsh']:.2f} | Score 1H: {_zona_1h_buy['score_1h']}/21\n"
-                                 f"📌 Limit 1H: ${_zona_1h_buy['buy_limit']:.2f} → ajustado 15M: ${buy_entry:.2f}")
+                                 f"📌 Limit 1H: ${_zona_1h_buy['buy_limit']:.2f} → ajustado 15M: ${buy_limit:.2f}")
                     logger.info(f"  🎯 [15M] MODO CAZA BUY — zona 1H activa (score {score_buy}) → señal activada")
 
             if _zona_1h_sell and not senal_sell_fuerte and self.en_sesion_optima() and adx >= _ADX_MIN_15M:
