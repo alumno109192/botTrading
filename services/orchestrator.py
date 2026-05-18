@@ -19,11 +19,11 @@ logger = logging.getLogger('bottrading')
 # ═══════════════════════════════════════════════════════════
 DETECTOR_REGISTRY = {
     # ── GOLD ───────────────────────────────────────────────
-    'gold_1d':  {'module': 'detectors.gold.detector_gold_1d',  'label': 'DETECTOR GOLD 1D',  'enabled': True},
-    'gold_4h':  {'module': 'detectors.gold.detector_gold_4h',  'label': 'DETECTOR GOLD 4H',  'enabled': True},
+    'gold_1d':  {'module': 'detectors.gold.detector_gold_1d',  'label': 'DETECTOR GOLD 1D',  'enabled': False},
+    'gold_4h':  {'module': 'detectors.gold.detector_gold_4h',  'label': 'DETECTOR GOLD 4H',  'enabled': False},
     'gold_1h':  {'module': 'detectors.gold.detector_gold_1h',  'label': 'DETECTOR GOLD 1H',  'enabled': True},
     'gold_15m': {'module': 'detectors.gold.detector_gold_15m', 'label': 'DETECTOR GOLD 15M', 'enabled': True},
-    'gold_5m':  {'module': 'detectors.gold.detector_gold_5m',  'label': 'DETECTOR GOLD 5M',  'enabled': True},
+    'gold_5m':  {'module': 'detectors.gold.detector_gold_5m',  'label': 'DETECTOR GOLD 5M',  'enabled': False},
     # ── EUR/USD ────────────────────────────────────────────
     'eurusd_4h':  {'module': 'detectors.eurusd.detector_eurusd_4h',  'label': 'DETECTOR EURUSD 4H',  'enabled': False},
     'eurusd_1h':  {'module': 'detectors.eurusd.detector_eurusd_1h',  'label': 'DETECTOR EURUSD 1H',  'enabled': False},
