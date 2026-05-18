@@ -417,6 +417,22 @@ class DatabaseManager:
             )
             return None
 
+        # Normalizar precisión de precios: >100 → 2 dec (XAUUSD), <10 → 5 dec (forex)
+        def _redondear(v):
+            if v is None:
+                return None
+            try:
+                f = float(v)
+                return round(f, 2) if f > 100 else round(f, 5)
+            except (TypeError, ValueError):
+                return v
+
+        senal_data['precio_entrada'] = _redondear(senal_data.get('precio_entrada'))
+        senal_data['tp1']            = _redondear(senal_data.get('tp1'))
+        senal_data['tp2']            = _redondear(senal_data.get('tp2'))
+        senal_data['tp3']            = _redondear(senal_data.get('tp3'))
+        senal_data['sl']             = _redondear(senal_data.get('sl'))
+
         params = (
             senal_data.get('timestamp', datetime.now(timezone.utc)).isoformat(),
             senal_data['simbolo'],
