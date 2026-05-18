@@ -59,7 +59,7 @@ SIMBOLOS = {
         'atr_tp1_mult':       1.5,          # TP1: 1.5× ATR 15M (~$30-50 desde entry)
         'atr_tp2_mult':       2.5,          # TP2: 2.5× ATR
         'atr_tp3_mult':       4.0,          # TP3: 4.0× ATR (objetivo scalping amplio)
-        'limit_offset_pct':   0.15,         # Offset muy pequeño (scalping)
+        'limit_offset_pct':   0.13,         # Offset muy pequeño (scalping)
         'anticipar_velas':    2,            # Menos anticipación
         'cancelar_dist':      1.2,          # Distancia de cancelación ajustada
         # Indicadores optimizados para SCALPING
