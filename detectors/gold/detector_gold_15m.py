@@ -363,9 +363,9 @@ class GoldDetector15M(BaseDetector):
                 senal_sell_fuerte = False
                 senal_buy_fuerte  = False
 
-            # ── Filtro RSI extremo: análisis histórico → RSI>62 BUY y RSI<30 SELL tienen WR<30% ──
-            _RSI_MAX_BUY  = 62   # BUY con RSI>62 → comprando sobrecomprado → WR 27%
-            _RSI_MIN_SELL = 30   # SELL con RSI<30 → vendiendo sobrevendido clásico → WR bajo
+            # ── Filtro RSI extremo: niveles clásicos sobrecomprado/sobrevendido ──
+            _RSI_MAX_BUY  = 70   # BUY bloqueada si RSI>70 (sobrecomprado clásico)
+            _RSI_MIN_SELL = 30   # SELL bloqueada si RSI<30 (sobrevendido clásico)
             if senal_buy_fuerte and rsi > _RSI_MAX_BUY:
                 logger.info(f"  🚫 [15M] BUY bloqueada: RSI={round(rsi,1)} > {_RSI_MAX_BUY} (zona sobrecomprada, WR histórico <30%)")
                 senal_buy_fuerte = False
