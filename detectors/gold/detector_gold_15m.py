@@ -255,8 +255,8 @@ class GoldDetector15M(BaseDetector):
                         f"{'SOPO' if en_zona_soporte else 'aprox_sopo' if aproximando_soporte else ''} | "
                         f"Vol={vol:.0f} (media={vol_medio:.0f})")
 
-            # Umbral: 4 = EMA + S/R alineados → señal. 5 = + confirmación EMA tendencia
-            _umbral_fue = 4
+            # Umbral: 5 = EMA + S/R + confirmación tendencia (los 3 alineados)
+            _umbral_fue = 5
             senal_sell_fuerte = score_sell >= _umbral_fue
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
