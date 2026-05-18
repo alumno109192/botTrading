@@ -91,23 +91,31 @@ SIMBOLO_TO_TICKER = {
 def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
     """Obtiene (precio_actual, precio_max_5velas, precio_min_5velas) para un ticker.
 
-    Estrategia sin contención de lock:
-      1. Lee de la tabla ohlcv de BD (datos frescos del ohlcv_poller, sin lock).
+    Estrategia:
+      1. Lee datos 1m de BD (ohlcv_poller — precisión minuto, captura mechas intra-vela).
          Si la vela más reciente tiene <= 10 min → devuelve directamente.
-      2. Fallback a Twelve Data (get_ohlcv) si la BD no tiene datos recientes.
+      2. Fallback a datos 5m de BD si no hay 1m frescos.
+      3. Fallback a Twelve Data (get_ohlcv 1m) si la BD no tiene datos recientes.
     """
-    # ── Paso 1: BD (rápido, sin lock) ────────────────────────────────────────
+    # ── Paso 1: BD 1m (rápido, precisión al minuto) ───────────────────────────
     if db is not None:
+        try:
+            res = db.obtener_precio_reciente_bd(ticker, '1m', max_minutos=10)
+            if res is not None:
+                return res
+        except Exception as e:
+            logger.error(f"⚠️ [{ticker}] Error leyendo precio 1m de BD: {e}")
+        # ── Paso 2: BD 5m (fallback si no hay 1m) ────────────────────────────
         try:
             res = db.obtener_precio_reciente_bd(ticker, '5m', max_minutos=10)
             if res is not None:
                 return res
         except Exception as e:
-            logger.error(f"⚠️ [{ticker}] Error leyendo precio de BD: {e}")
+            logger.error(f"⚠️ [{ticker}] Error leyendo precio 5m de BD: {e}")
 
-    # ── Paso 2: Twelve Data vía get_ohlcv (fallback cuando BD > 10 min) ───────
+    # ── Paso 3: Twelve Data vía get_ohlcv 1m (fallback cuando BD > 10 min) ───
     try:
-        hist, _ = _get_ohlcv(ticker, period='1d', interval='5m')
+        hist, _ = _get_ohlcv(ticker, period='1d', interval='1m')
         if hist is None or hist.empty:
             return None
         precio_actual = float(hist['Close'].iloc[-1])
