@@ -357,7 +357,7 @@ class GoldDetector15M(BaseDetector):
                 senal_buy_fuerte  = False
 
             # ── Filtro ADX mínimo 15M: mercado plano → bloquear señales ─────────
-            _ADX_MIN_15M = 20
+            _ADX_MIN_15M = 18
             if adx < _ADX_MIN_15M:
                 logger.info(f"  😴 [15M] ADX {round(adx, 1)} < {_ADX_MIN_15M} — mercado plano, señales bloqueadas")
                 senal_sell_fuerte = False
