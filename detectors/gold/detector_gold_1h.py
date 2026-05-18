@@ -715,7 +715,7 @@ class GoldDetector1H(BaseDetector):
         # ── FILTRO ADX MÍNIMO: mercado plano → bloquear todas las señales ──────
         # ADX < 15 = mercado sin tendencia (dormido). Las señales en este contexto
         # generan falsos positivos: RSI en 50, ATR colapsando, precio sin dirección.
-        _ADX_MIN = 15
+        _ADX_MIN = 20
         if adx < _ADX_MIN:
             logger.info(f"  😴 [1H] ADX {round(adx, 1)} < {_ADX_MIN} — mercado plano, todas las señales bloqueadas")
             senal_sell_maxima = senal_sell_fuerte = senal_sell_media = senal_sell_alerta = False

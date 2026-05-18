@@ -562,7 +562,7 @@ class GoldDetector15M(BaseDetector):
             _modo_caza_sell = False
             _UMBRAL_CAZA    = 12  # el 1H confirma el contexto — mínimo MEDIA (antes: 8)
 
-            if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima():
+            if _zona_1h_buy and not senal_buy_fuerte and self.en_sesion_optima() and adx >= _ADX_MIN_15M:
                 _tol_1h = _zona_1h_buy['atr'] * 0.6
                 _en_zona_1h = (_zona_1h_buy['zsl'] - _tol_1h <= close <= _zona_1h_buy['zsh'] + _tol_1h)
                 if _en_zona_1h and score_buy >= _UMBRAL_CAZA:
@@ -573,7 +573,7 @@ class GoldDetector15M(BaseDetector):
                                  f"📌 Limit 1H: ${_zona_1h_buy['buy_limit']:.2f} → ajustado 15M: ${buy_limit:.2f}")
                     logger.info(f"  🎯 [15M] MODO CAZA BUY — zona 1H activa (score {score_buy}) → señal activada")
 
-            if _zona_1h_sell and not senal_sell_fuerte and self.en_sesion_optima():
+            if _zona_1h_sell and not senal_sell_fuerte and self.en_sesion_optima() and adx >= _ADX_MIN_15M:
                 _tol_1h = _zona_1h_sell['atr'] * 0.6
                 _en_zona_1h = (_zona_1h_sell['zrl'] - _tol_1h <= close <= _zona_1h_sell['zrh'] + _tol_1h)
                 if _en_zona_1h and score_sell >= _UMBRAL_CAZA:
@@ -609,8 +609,8 @@ class GoldDetector15M(BaseDetector):
                 )
                 cancelar_buy = True
 
-            # ── FILTRO R:R MÍNIMO 1.5 (Scalping 15M) ──
-            RR_MINIMO = 1.5
+            # ── FILTRO R:R MÍNIMO 2.0 (Scalping 15M) ──
+            RR_MINIMO = 2.0
             rr_sell_tp1 = rr(sell_entry, sl_venta,  tp1_v)
             rr_buy_tp1  = rr(buy_entry,  sl_compra, tp1_c)
             if rr_sell_tp1 < RR_MINIMO:

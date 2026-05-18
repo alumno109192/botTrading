@@ -492,7 +492,7 @@ class GoldDetector5M(BaseDetector):
             senal_buy_fuerte  = score_buy  >= _umbral_fue
 
             # ── FILTRO ADX MÍNIMO 5M: mercado plano → bloquear señales ─────────
-            _ADX_MIN_5M = 15
+            _ADX_MIN_5M = 20
             if adx < _ADX_MIN_5M:
                 logger.info(f"  😴 [5M] ADX {round(adx, 1)} < {_ADX_MIN_5M} — mercado plano, señales bloqueadas")
                 senal_sell_fuerte = False
@@ -860,7 +860,7 @@ class GoldDetector5M(BaseDetector):
                     logger.info(f"  🎯 [5M] MODO CAZA 15M SELL — zona activa (score_5M={score_sell}, score_15M={_zona_15m_sell['score_15m']}) → señal activada")
 
 
-            RR_MINIMO = 1.5
+            RR_MINIMO = 2.0
             rr_sell_tp1 = rr(sell_limit, sl_venta,  tp1_v)
             rr_buy_tp1  = rr(buy_limit,  sl_compra, tp1_c)
             if rr_sell_tp1 < RR_MINIMO:
