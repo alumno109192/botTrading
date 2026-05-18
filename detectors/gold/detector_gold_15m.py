@@ -261,6 +261,16 @@ class GoldDetector15M(BaseDetector):
             if en_zona_soporte or aproximando_soporte:
                 score_buy += 2
 
+            # 4. Stop Hunt en zona S/R: señal institucional confirmada
+            # stop_hunt_alcista = precio perforó mínimos pero cerró arriba → institucionales compraron
+            # stop_hunt_bajista = precio perforó máximos pero cerró abajo → institucionales vendieron
+            _sh_alc = detectar_stop_hunt_alcista(df)
+            _sh_baj = detectar_stop_hunt_bajista(df)
+            if _sh_alc and (en_zona_soporte or aproximando_soporte):
+                score_buy  += 2   # caza de stops + zona soporte = setup institucional BUY
+            if _sh_baj and (en_zona_resist or aproximando_resistencia):
+                score_sell += 2   # caza de stops + zona resist  = setup institucional SELL
+
             # Log informativo (no afecta score)
             logger.info(f"  📊 [15M] Score SELL={score_sell} BUY={score_buy} | "
                         f"EMA {'SELL' if ema_fast.iloc[-1] < ema_slow.iloc[-1] else 'BUY'} | "
@@ -407,6 +417,39 @@ class GoldDetector15M(BaseDetector):
                 if not en_zona_soporte:
                     logger.info(f"  🚫 [15M] BUY score={score_buy} < {_SCORE_ZONA_ESTRICTA}: precio no en zona soporte ({close:.2f} vs {zsl:.2f}-{zsh:.2f}) — bloqueada")
                     senal_buy_fuerte = False
+
+            # ── MODO NY OPEN: posicionarse con los institucionales (12:00-17:59 UTC) ──────────
+            # Los grandes operadores cazan stops en NY open antes de tomar su posición real.
+            # Condición: stop hunt confirmado EN zona S/R + volumen elevado + ADX tendencia.
+            # La dirección del trade es el REBOTE tras la caza (contrario a la dirección del hunt).
+            _hora_ny = datetime.now(timezone.utc).hour
+            _en_ny_open = 12 <= _hora_ny < 18
+            _modo_ny_open_buy  = False
+            _modo_ny_open_sell = False
+
+            if _en_ny_open:
+                _ADX_NY  = 20    # ADX mínimo: NY open sin tendencia = ruido
+                _VOL_NY  = 1.5   # volumen mínimo 1.5× media: confirma participación institucional
+
+                # Stop Hunt ALCISTA en soporte → institucionales compraron → BUY
+                if (not senal_buy_fuerte and _sh_alc and en_zona_soporte
+                        and adx >= _ADX_NY
+                        and vol > vol_medio * _VOL_NY
+                        and rsi <= 60
+                        and _atr_ratio < 2.0):
+                    senal_buy_fuerte  = True
+                    _modo_ny_open_buy = True
+                    logger.info(f"  🏹 [15M] MODO NY OPEN BUY — stop hunt alcista + zona ${zsl:.0f}-${zsh:.0f} (ADX={adx:.1f} vol×{vol/vol_medio:.1f})")
+
+                # Stop Hunt BAJISTA en resistencia → institucionales vendieron → SELL
+                if (not senal_sell_fuerte and _sh_baj and en_zona_resist
+                        and adx >= _ADX_NY
+                        and vol > vol_medio * _VOL_NY
+                        and rsi >= 40
+                        and _atr_ratio < 2.0):
+                    senal_sell_fuerte  = True
+                    _modo_ny_open_sell = True
+                    logger.info(f"  🏹 [15M] MODO NY OPEN SELL — stop hunt bajista + zona ${zrl:.0f}-${zrh:.0f} (ADX={adx:.1f} vol×{vol/vol_medio:.1f})")
 
             # Cancelaciones (más estrictas en scalping)
             simbolo_db_15m = f"{simbolo}_15M"
@@ -618,9 +661,15 @@ class GoldDetector15M(BaseDetector):
 
             # Títulos dinámicos según modo
             _titulo_sell = ("⚡ ENTRADA PRECISA — <b>Setup 1H / Entrada 15M</b>"
-                            if _modo_caza_sell else "🔥 SELL FUERTE — <b>GOLD 15M SCALPING</b>")
+                            if _modo_caza_sell else
+                            "🏹 NY OPEN — <b>STOP HUNT SELL · GOLD 15M</b>"
+                            if _modo_ny_open_sell else
+                            "🔥 SELL FUERTE — <b>GOLD 15M SCALPING</b>")
             _titulo_buy  = ("⚡ ENTRADA PRECISA — <b>Setup 1H / Entrada 15M</b>"
-                            if _modo_caza_buy  else "🔥 BUY FUERTE — <b>GOLD 15M SCALPING</b>")
+                            if _modo_caza_buy  else
+                            "🏹 NY OPEN — <b>STOP HUNT BUY · GOLD 15M</b>"
+                            if _modo_ny_open_buy  else
+                            "🔥 BUY FUERTE — <b>GOLD 15M SCALPING</b>")
 
             # ════════════════════════════════
             # ENVIAR SEÑALES SCALPING
