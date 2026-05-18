@@ -195,6 +195,16 @@ class BaseDetector(ABC):
             senal_data['nivel'] = self._derivar_nivel(score, self.tf_label)
         # Por defecto, las señales se guardan como ESPERANDO hasta que el precio alcance la entrada
         senal_data.setdefault('estado', 'ESPERANDO')
+        # ── Guard cooldown post-cancelación ──────────────────────────────────
+        _simbolo_cd   = senal_data.get('simbolo', '')
+        _direccion_cd = senal_data.get('direccion', '')
+        if _simbolo_cd and _direccion_cd and self.db.existe_cooldown_cancelada(_simbolo_cd, _direccion_cd):
+            _logger.warning(
+                f"[{_simbolo_cd}] 🔴 Señal BLOQUEADA — cooldown post-cancelación "
+                f"({_direccion_cd})"
+            )
+            return None
+        # ─────────────────────────────────────────────────────────────────────
         senal_id = self.db.guardar_senal(senal_data)
         self._last_senal_id = senal_id  # lo consumirá el próximo enviar()
         self._last_senal_esperando = senal_data.get('estado') == 'ESPERANDO'

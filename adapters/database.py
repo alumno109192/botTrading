@@ -619,6 +619,50 @@ class DatabaseManager:
             return True
         return False
 
+    # Cooldown post-cancelación: mitad de la ventana principal por TF
+    _COOLDOWN_CANCELADA_HORAS = {
+        '_1M':  0.5,
+        '_5M':  1,
+        '_15M': 2,
+        '_1H':  4,
+        '_2H':  6,
+        '_4H':  12,
+        '_1D':  36,
+    }
+
+    def existe_cooldown_cancelada(self, simbolo: str, direccion: str, horas: float = None) -> bool:
+        """
+        Devuelve True si existe una señal CANCELADA reciente para el mismo
+        símbolo + dirección. Evita re-entrar inmediatamente en la misma zona
+        tras una cancelación (precio nunca llegó a la entrada o SL cruzado).
+
+        La ventana se deriva del TF del símbolo (ej. XAUUSD_1H → 4h cooldown).
+        """
+        from datetime import datetime, timezone, timedelta
+        if horas is None:
+            sym_upper = simbolo.upper()
+            horas = next(
+                (v for k, v in self._COOLDOWN_CANCELADA_HORAS.items() if sym_upper.endswith(k)),
+                2  # fallback
+            )
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
+        query = """
+        SELECT COUNT(*) as count
+        FROM senales
+        WHERE simbolo = ?
+        AND direccion = ?
+        AND estado IN ('CANCELADA', 'CADUCADA')
+        AND timestamp > ?
+        """
+        result = self.ejecutar_query(query, (simbolo, direccion, cutoff))
+        if result.rows and int(result.rows[0]['count']) > 0:
+            logger.warning(
+                f"⚠️ Cooldown post-cancelación activo: {simbolo} {direccion} "
+                f"({horas}h) — señal bloqueada"
+            )
+            return True
+        return False
+
     def contar_perdidas_consecutivas(self, simbolo: str) -> int:
         """
         Cuenta cuántas señales consecutivas más recientes terminaron en SL
