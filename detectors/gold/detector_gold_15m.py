@@ -594,6 +594,21 @@ class GoldDetector15M(BaseDetector):
             # ENVIAR SEÑALES SCALPING
             # ════════════════════════════════
 
+            # ── GUARD: distancia mínima SL-entrada (evita SL=entry cuando ATR≈offset) ──
+            SL_MIN_DIST = 1.0   # mínimo 1$ de distancia entre SL y precio de entrada
+            if abs(sl_venta  - sell_entry) < SL_MIN_DIST:
+                logger.warning(
+                    f'  ⛔ SELL bloqueada: SL ({sl_venta:.2f}) demasiado cerca de '
+                    f'entrada ({sell_entry:.2f}) — dist={abs(sl_venta - sell_entry):.3f} < {SL_MIN_DIST}$'
+                )
+                cancelar_sell = True
+            if abs(sl_compra - buy_entry)  < SL_MIN_DIST:
+                logger.warning(
+                    f'  ⛔ BUY bloqueada: SL ({sl_compra:.2f}) demasiado cerca de '
+                    f'entrada ({buy_entry:.2f}) — dist={abs(sl_compra - buy_entry):.3f} < {SL_MIN_DIST}$'
+                )
+                cancelar_buy = True
+
             # ── FILTRO R:R MÍNIMO 1.5 (Scalping 15M) ──
             RR_MINIMO = 1.5
             rr_sell_tp1 = rr(sell_entry, sl_venta,  tp1_v)

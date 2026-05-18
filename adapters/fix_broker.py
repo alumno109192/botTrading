@@ -39,12 +39,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-try:
-    import simplefix
-    _SIMPLEFIX_OK = True
-except ImportError:
-    _SIMPLEFIX_OK = False
-
 from dotenv import load_dotenv
 
 load_dotenv()

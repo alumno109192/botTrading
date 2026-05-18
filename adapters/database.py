@@ -405,6 +405,18 @@ class DatabaseManager:
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{estado}', ?, ?, ?, ?, ?, ?, ?)
         """
         
+        # Guard: rechazar señales con SL en o demasiado cerca del precio de entrada
+        _entrada = senal_data.get('precio_entrada') or 0
+        _sl      = senal_data.get('sl') or 0
+        if _entrada and _sl and abs(_sl - _entrada) < 0.5:
+            import logging as _lg
+            _lg.getLogger('bottrading.db').warning(
+                f"guardar_senal: RECHAZADA — SL ({_sl}) ≈ entrada ({_entrada}), "
+                f"dist={abs(_sl - _entrada):.3f}. Señal: {senal_data.get('simbolo')} "
+                f"{senal_data.get('direccion')}"
+            )
+            return None
+
         params = (
             senal_data.get('timestamp', datetime.now(timezone.utc)).isoformat(),
             senal_data['simbolo'],
