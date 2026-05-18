@@ -21,7 +21,7 @@ DETECTOR_REGISTRY = {
     # ── GOLD ───────────────────────────────────────────────
     'gold_1d':  {'module': 'detectors.gold.detector_gold_1d',  'label': 'DETECTOR GOLD 1D',  'enabled': False},
     'gold_4h':  {'module': 'detectors.gold.detector_gold_4h',  'label': 'DETECTOR GOLD 4H',  'enabled': False},
-    'gold_1h':  {'module': 'detectors.gold.detector_gold_1h',  'label': 'DETECTOR GOLD 1H',  'enabled': False},  # WR 19.2% — desactivado
+    'gold_1h':  {'module': 'detectors.gold.detector_gold_1h',  'label': 'DETECTOR GOLD 1H',  'enabled': True},   # BIAS ONLY — publica zonas tf_bias para MODO CAZA 15M (no envía a Telegram)
     'gold_15m': {'module': 'detectors.gold.detector_gold_15m', 'label': 'DETECTOR GOLD 15M', 'enabled': True},
     'gold_5m':  {'module': 'detectors.gold.detector_gold_5m',  'label': 'DETECTOR GOLD 5M',  'enabled': False},
     # ── EUR/USD ────────────────────────────────────────────
