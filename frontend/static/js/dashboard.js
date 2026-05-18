@@ -81,6 +81,11 @@ function dashboardApp() {
           try {
             const d = JSON.parse(e.data);
             const tipo = d.tipo || 'actualizacion';
+
+            // Pre-registrar el ID antes de cargarActivas() para evitar
+            // que ésta muestre un segundo toast por el mismo evento.
+            if (d.senal_id) this._idsConocidos.add(d.senal_id);
+
             if (tipo === 'nueva') {
               const dir = d.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL';
               this.toast('nueva',

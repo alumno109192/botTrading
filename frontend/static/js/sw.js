@@ -39,7 +39,19 @@ self.addEventListener('push', function(event) {
         ],
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    // Si el dashboard ya está abierto y visible en primer plano,
+    // no mostrar la notificación push (el SSE ya mostrará el toast).
+    const mostrar = self.clients
+        .matchAll({ type: 'window', includeUncontrolled: true })
+        .then(function(clientList) {
+            const dashboardVisible = clientList.some(function(c) {
+                return c.url.includes('/dashboard') && c.focused;
+            });
+            if (dashboardVisible) return;  // app en primer plano → silenciar push
+            return self.registration.showNotification(title, options);
+        });
+
+    event.waitUntil(mostrar);
 });
 
 // ── Clic en la notificación ───────────────────────────────────────────────
