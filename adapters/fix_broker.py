@@ -152,7 +152,8 @@ class FIXSession:
             (52, now),
         ]
         if self.sender_sub:
-            header_fields.insert(2, (50, self.sender_sub))
+            header_fields.insert(2, (50, self.sender_sub))  # SenderSubID
+            header_fields.insert(3, (57, self.sender_sub))  # TargetSubID (mismo valor)
 
         # Cuerpo = header_fields + 35=MsgType + fields de usuario
         body_parts = []
