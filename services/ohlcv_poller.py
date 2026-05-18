@@ -13,11 +13,17 @@ Consumo estimado por target (sesión 06-22 UTC = 16h):
   - GC=F 5m  cada  60s → 960 calls/día  (precio cambia cada minuto)
   - GC=F 4h  cada 1800s →  32 calls/día  (vela dura 4h, no necesita más)
 """
+import os
 import time
+import threading
+import requests
 from datetime import datetime, timezone
 
 import logging
 logger = logging.getLogger('bottrading')
+
+# ── Price ticker TD: intervalo de polling en segundos ──────────────────────
+_PRICE_TICKER_SECS = 5   # actualiza precio XAUUSD cada 5s via TD /price
 
 # ── Activos y configuración ──────────────────────────────────────────────────
 # poll_secs: frecuencia de polling por target (respetar cuota API)
@@ -77,6 +83,10 @@ def _publicar_precio_sse(ticker_yf: str, interval: str) -> None:
 def main():
     from adapters.data_provider import poll_ohlcv
     from adapters.database import DatabaseManager
+
+    # Arrancar thread de precio tiempo real (TD /price cada 5s)
+    t_price = threading.Thread(target=_price_ticker_loop, daemon=True, name='price_ticker')
+    t_price.start()
 
     logger.info("🔄 [ohlcv_poller] Iniciando servicio de polling OHLCV...")
 
@@ -139,3 +149,36 @@ def main():
                 logger.info(f"  ⏸️ [ohlcv_poller] Fuera de sesión ({hora}h UTC)")
 
         time.sleep(CHECK_INTERVAL)
+
+
+def _price_ticker_loop() -> None:
+    """
+    Thread dedicado: llama TD /price cada _PRICE_TICKER_SECS segundos y publica
+    el precio XAUUSD en el SSE broker para actualización casi-tiempo-real.
+    Consume solo 1 req/llamada (~12 req/min). Falla silenciosamente.
+    """
+    api_key = os.environ.get('TWELVE_DATA_API_KEY')
+    if not api_key:
+        logger.warning("⚠️ [price_ticker] Sin TWELVE_DATA_API_KEY — ticker de precio desactivado")
+        return
+
+    url = f"https://api.twelvedata.com/price?symbol=XAU/USD&apikey={api_key}"
+    logger.info(f"🕐 [price_ticker] Iniciado — actualizando XAUUSD cada {_PRICE_TICKER_SECS}s")
+
+    while True:
+        try:
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                precio_str = data.get('price')
+                if precio_str:
+                    precio = float(precio_str)
+                    try:
+                        from bridge.sse_broker import broker
+                        if broker.num_clientes > 0:
+                            broker.publicar_precio(symbol='XAUUSD', precio=precio)
+                    except Exception:
+                        pass
+        except Exception:
+            pass  # nunca interrumpir por error de red
+        time.sleep(_PRICE_TICKER_SECS)
