@@ -246,6 +246,26 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     except (TypeError, ValueError):
         logger.info(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
         return
+
+    # ── Guard: señal inoperable (SL ≈ entrada) ──────────────────────────────
+    _SL_MIN_DIST = 0.5
+    if abs(sl - precio_entrada) < _SL_MIN_DIST:
+        logger.warning(
+            f"⛔ [monitor] Señal #{senal_id} CANCELADA — SL ({sl}) ≈ entrada ({precio_entrada}): "
+            f"señal inoperable (diferencia {abs(sl - precio_entrada):.4f} < {_SL_MIN_DIST})"
+        )
+        db.cerrar_senal(senal_id, 'CANCELADA')
+        enviar_notificacion_telegram(
+            f"⛔ <b>Señal #{senal_id} cancelada automáticamente</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 {simbolo_a_nombre(simbolo.split('_')[0])} | COMPRA\n"
+            f"💰 Entrada: ${precio_entrada:.2f}\n"
+            f"🛑 SL detectado igual a entrada (${sl:.2f}) — señal inoperable\n"
+            f"🔖 <code>#{senal_id}</code>",
+            simbolo, reply_to_message_id=reply_msg_id
+        )
+        return
+
     # tp2/tp3 pueden ser None en señales contra tendencia (solo TP1 activo)
     tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
     tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
@@ -419,6 +439,26 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     except (TypeError, ValueError):
         logger.warning(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
         return
+
+    # ── Guard: señal inoperable (SL ≈ entrada) ──────────────────────────────
+    _SL_MIN_DIST = 0.5
+    if abs(sl - precio_entrada) < _SL_MIN_DIST:
+        logger.warning(
+            f"⛔ [monitor] Señal #{senal_id} CANCELADA — SL ({sl}) ≈ entrada ({precio_entrada}): "
+            f"señal inoperable (diferencia {abs(sl - precio_entrada):.4f} < {_SL_MIN_DIST})"
+        )
+        db.cerrar_senal(senal_id, 'CANCELADA')
+        enviar_notificacion_telegram(
+            f"⛔ <b>Señal #{senal_id} cancelada automáticamente</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 {simbolo_a_nombre(simbolo.split('_')[0])} | VENTA\n"
+            f"💰 Entrada: ${precio_entrada:.2f}\n"
+            f"🛑 SL detectado igual a entrada (${sl:.2f}) — señal inoperable\n"
+            f"🔖 <code>#{senal_id}</code>",
+            simbolo, reply_to_message_id=reply_msg_id
+        )
+        return
+
     # tp2/tp3 pueden ser None en señales contra tendencia (solo TP1 activo)
     tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
     tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
