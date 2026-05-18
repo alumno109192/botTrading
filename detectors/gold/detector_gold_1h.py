@@ -114,6 +114,19 @@ def analizar(simbolo, params):
 
 
 class GoldDetector1H(BaseDetector):
+    def enviar(self, mensaje: str) -> bool:
+        """MODO ESTUDIO: señales 1H se guardan en BD para análisis pero NO generan alerta Telegram.
+        Solo el 15M genera alertas (WR 60%). El 1H tiene WR bajo y está en período de validación.
+        """
+        senal_id = self._last_senal_id
+        self._last_senal_id = None
+        self._last_senal_esperando = False
+        if senal_id:
+            logger.info(f"  📋 [1H ESTUDIO] Señal #{senal_id} registrada en BD — sin alerta Telegram (modo estudio)")
+        else:
+            logger.info(f"  📋 [1H ESTUDIO] Mensaje suprimido — sin alerta Telegram (modo estudio)")
+        return True
+
     def analizar(self, simbolo, params):
         simbolo_db = f"{simbolo}_1H"
 
