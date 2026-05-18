@@ -363,6 +363,25 @@ class GoldDetector15M(BaseDetector):
                 senal_sell_fuerte = False
                 senal_buy_fuerte  = False
 
+            # ── Filtro RSI extremo: análisis histórico → RSI>62 BUY y RSI<38 SELL tienen WR<30% ──
+            _RSI_MAX_BUY  = 62   # BUY con RSI>62 → comprando sobrecomprado → WR 27%
+            _RSI_MIN_SELL = 38   # SELL con RSI<38 → vendiendo sobrevendido → WR 33%
+            if senal_buy_fuerte and rsi > _RSI_MAX_BUY:
+                logger.info(f"  🚫 [15M] BUY bloqueada: RSI={round(rsi,1)} > {_RSI_MAX_BUY} (zona sobrecomprada, WR histórico <30%)")
+                senal_buy_fuerte = False
+            if senal_sell_fuerte and rsi < _RSI_MIN_SELL:
+                logger.info(f"  🚫 [15M] SELL bloqueada: RSI={round(rsi,1)} < {_RSI_MIN_SELL} (zona sobrevendida, WR histórico <33%)")
+                senal_sell_fuerte = False
+
+            # ── Filtro ATR volatilidad: zona peligrosa 1.0–1.5× media → WR 18-25% ──
+            # ATR < 1.0× = mercado comprimido (94% WR) | ATR > 1.5× = impulso limpio (88% WR)
+            # ATR 1.0–1.5× = expansión caótica → trampa frecuente → bloquear
+            _atr_ratio = atr / atr_media if atr_media > 0 else 1.0
+            if (senal_buy_fuerte or senal_sell_fuerte) and 1.0 <= _atr_ratio < 1.5:
+                logger.info(f"  🚫 [15M] Señal bloqueada: ATR/media={round(_atr_ratio,2)} en zona 1.0-1.5 (expansión caótica, WR histórico 18-25%)")
+                senal_sell_fuerte = False
+                senal_buy_fuerte  = False
+
             # ── Filtro zona estricta (score bajo): precio debe estar DENTRO de zona, no solo aproximándose ──
             # Score alto (≥9) ya tiene suficientes confirmaciones → no necesita este filtro
             # Score bajo (5-8) puede disparar solo por "aproximando" → exigir que esté dentro
