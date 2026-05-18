@@ -98,6 +98,12 @@ function dashboardApp() {
                 `✅ ${tipo.toUpperCase()} alcanzado`,
                 `${d.simbolo} ${d.timeframe}`
               );
+              // Marcar inmediatamente en memoria sin esperar al reload completo
+              if (d.senal_id != null) {
+                this.senalesActivas = this.senalesActivas.map(s =>
+                  s.id === d.senal_id ? { ...s, [`${tipo}_alcanzado`]: true } : s
+                );
+              }
             } else if (tipo === 'sl') {
               this.toast('sl',
                 `🛑 Stop Loss activado`,
@@ -542,6 +548,10 @@ function dashboardApp() {
    UTILIDADES PRIVADAS
 ══════════════════════════════════════════════════════ */
 function _tpAlcanzado(s, campo) {
+  // Prioridad: flag de BD (persiste aunque el precio retroceda tras el spike)
+  const flag = s[`${campo}_alcanzado`];
+  if (flag === true || flag === 1 || flag === '1') return true;
+  // Fallback: precio actual vs nivel (captura picos en tiempo real aún no guardados)
   const tp = s[campo], actual = s.precio_actual, entrada = s.precio_entrada;
   if (!tp || !actual || !entrada) return false;
   return s.direccion === 'COMPRA' ? actual >= tp : actual <= tp;

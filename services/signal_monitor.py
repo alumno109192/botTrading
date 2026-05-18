@@ -173,12 +173,15 @@ def _publicar_sse_senal(mensaje: str, simbolo: str) -> None:
         import re
         dir_match = re.search(r'\b(COMPRA|VENTA)\b', mensaje, re.IGNORECASE)
         ent_match = re.search(r'Entrada[:\s$€£]+([0-9]+(?:[.,][0-9]+)?)', mensaje, re.IGNORECASE)
+        id_match  = re.search(r'#(\d+)', mensaje)
+        senal_id  = int(id_match.group(1)) if id_match else None
         broker.publicar_senal(
             tipo=_sse_tipo_desde_mensaje(mensaje),
             simbolo=simbolo_base,
             timeframe=timeframe,
             direccion=(dir_match.group(1).upper() if dir_match else ''),
             precio_entrada=float(ent_match.group(1).replace(',', '.')) if ent_match else 0.0,
+            senal_id=senal_id,
         )
     except Exception:
         pass
