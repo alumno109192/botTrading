@@ -577,21 +577,24 @@ class DatabaseManager:
             return result.rows[0]
         return None
 
-    def existe_senal_activa_tf(self, simbolo: str) -> bool:
+    def existe_senal_activa_tf(self, simbolo: str, horas: int = 4) -> bool:
         """
-        Bloquea nueva señal si ya existe UNA ACTIVA para este símbolo,
-        independientemente de la dirección (COMPRA o VENTA).
+        Bloquea nueva señal si ya existe UNA ACTIVA/PENDIENTE/ESPERANDO para este símbolo
+        creada en las últimas N horas, independientemente de la dirección (COMPRA o VENTA).
         Usa el mismo formato de simbolo que guardar_senal: XAUUSD_1D, XAUUSD_4H, etc.
         """
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()
         query = """
         SELECT COUNT(*) as count
         FROM senales
         WHERE simbolo = ?
-        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
+        AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM', 'ESPERANDO')
+        AND timestamp > ?
         """
-        result = self.ejecutar_query(query, (simbolo,))
+        result = self.ejecutar_query(query, (simbolo, cutoff))
         if result.rows and int(result.rows[0]['count']) > 0:
-            logger.warning(f"⚠️ Ya existe señal ACTIVA/PENDIENTE en {simbolo} (cualquier dirección) — bloqueado")
+            logger.warning(f"⚠️ Ya existe señal ACTIVA/PENDIENTE/ESPERANDO en {simbolo} ({horas}h) — bloqueado")
             return True
         return False
 
