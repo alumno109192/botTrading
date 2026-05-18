@@ -156,6 +156,19 @@ def en_sesion_activa():
 
 
 class GoldDetector15M(BaseDetector):
+    def en_sesion_optima(self) -> bool:
+        """Override específico GOLD 15M basado en WR histórico por hora UTC:
+        - 12-17h UTC (NY open): 0 TP / 9 SL = 0% WR  → BLOQUEADO
+        - 22-23h UTC (Asian):   18 TP / 0 SL = 100% WR → PERMITIDO
+        Regla: bloquear sólo 12:00-17:59 UTC.
+        """
+        import os
+        if os.getenv('SKIP_SESSION_FILTER', '0') == '1':
+            return True
+        from datetime import datetime, timezone
+        hora = datetime.now(timezone.utc).hour
+        return not (12 <= hora < 18)  # bloquear NY-open caótico; permitir Asian/London/NY-pm
+
     def analizar(self, simbolo, params):
         global perdidas_consecutivas, ultima_senal_timestamp
 
@@ -364,8 +377,8 @@ class GoldDetector15M(BaseDetector):
                 senal_buy_fuerte  = False
 
             # ── Filtro RSI extremo: niveles clásicos sobrecomprado/sobrevendido ──
-            _RSI_MAX_BUY  = 70   # BUY bloqueada si RSI>70 (sobrecomprado clásico)
-            _RSI_MIN_SELL = 30   # SELL bloqueada si RSI<30 (sobrevendido clásico)
+            _RSI_MAX_BUY  = 65   # BUY bloqueada si RSI>65 (RSI 65-70: WR 27% histórico)
+            _RSI_MIN_SELL = 40   # SELL bloqueada si RSI<40 (RSI 30-40: WR 33%, vender en oversold)
             if senal_buy_fuerte and rsi > _RSI_MAX_BUY:
                 logger.info(f"  🚫 [15M] BUY bloqueada: RSI={round(rsi,1)} > {_RSI_MAX_BUY} (zona sobrecomprada, WR histórico <30%)")
                 senal_buy_fuerte = False
