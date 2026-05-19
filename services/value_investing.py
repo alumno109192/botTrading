@@ -194,9 +194,7 @@ def _build_historial_earnings(df):
         if real is None and est is None:
             continue
 
-        sorpresa = _safe_float(row.get(surprise_col)) if surprise_col else None
-        if sorpresa is None and est not in (None, 0) and real is not None:
-            sorpresa = ((real - est) / abs(est)) * 100
+        sorpresa = _calc_sorpresa_pct(est, real, row.get(surprise_col) if surprise_col else None)
 
         periodo_dt = _normalizar_fecha(idx)
         periodo = periodo_dt.strftime('%b %Y') if periodo_dt else str(idx)
@@ -213,6 +211,15 @@ def _build_historial_earnings(df):
             break
 
     return historico
+
+
+def _calc_sorpresa_pct(eps_estimado, eps_real, sorpresa_raw=None):
+    sorpresa = _safe_float(sorpresa_raw)
+    if sorpresa is not None:
+        return sorpresa
+    if eps_estimado in (None, 0) or eps_real is None:
+        return None
+    return ((eps_real - eps_estimado) / abs(eps_estimado)) * 100
 
 
 def get_earnings_info(ticker: str) -> dict:
@@ -305,9 +312,11 @@ def get_earnings_info(ticker: str) -> dict:
 
             eps_est = _safe_float(target_row.get(est_col)) if est_col else None
             eps_real = _safe_float(target_row.get(real_col)) if real_col else None
-            eps_surprise = _safe_float(target_row.get(surprise_col)) if surprise_col else None
-            if eps_surprise is None and eps_est not in (None, 0) and eps_real is not None:
-                eps_surprise = ((eps_real - eps_est) / abs(eps_est)) * 100
+            eps_surprise = _calc_sorpresa_pct(
+                eps_est,
+                eps_real,
+                target_row.get(surprise_col) if surprise_col else None,
+            )
 
         result['earnings_date'] = fecha_earnings.isoformat() if fecha_earnings else None
         result['earnings_date_str'] = _format_earnings_date(fecha_earnings)

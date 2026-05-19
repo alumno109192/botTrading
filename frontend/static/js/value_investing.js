@@ -47,7 +47,7 @@ function viApp() {
         this.categorias = data.categorias || [];
         this.stats = data.stats || { total: 0, esta_semana: 0, proxima_semana: 0 };
         this._buildCategoriasData();
-        this.ultimaActualizacion = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        this._stampActualizacion();
       } catch (err) {
         this.error = err?.message || 'Error cargando calendario';
       } finally {
@@ -107,7 +107,7 @@ function viApp() {
         const r = await fetch(`/api/v1/vi/empresa/${this.tickerActual}`);
         if (!r.ok) throw new Error('No se pudo cargar el detalle de empresa');
         this.empresaDetalle = await r.json();
-        this.ultimaActualizacion = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        this._stampActualizacion();
 
         if (pushState) {
           window.history.replaceState({}, '', `/value-investing/empresa/${this.tickerActual}`);
@@ -177,6 +177,10 @@ function viApp() {
       const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       return Math.round((target - today) / 86400000);
+    },
+
+    _stampActualizacion() {
+      this.ultimaActualizacion = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     },
   };
 }
