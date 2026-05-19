@@ -622,6 +622,19 @@ class BaseDetector(ABC):
                 )
         # ── Fin hook FIX ───────────────────────────────────────────────────────
 
+        # Si Telegram falló y hay señal en BD → eliminarla para no bloquear ciclos futuros
+        if not message_id and senal_id and self.db:
+            try:
+                self.db.ejecutar_query("DELETE FROM senales WHERE id = ?", (senal_id,))
+                _logger.error(
+                    f"  ❌ Telegram falló para señal #{senal_id} — señal eliminada de BD "
+                    f"para no bloquear ciclos futuros"
+                )
+            except Exception as _del_e:
+                _logger.error(
+                    f"  ❌ Telegram falló y no se pudo eliminar señal #{senal_id}: {_del_e}"
+                )
+
         # Guardar message_id en BD para poder hacer reply en alertas TP/SL
         if message_id and senal_id and self.db:
             try:
