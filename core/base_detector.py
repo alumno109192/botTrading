@@ -530,6 +530,38 @@ class BaseDetector(ABC):
             mensaje = (mensaje.rstrip()
                        + f"\n━━━━━━━━━━━━━━━━━━━━"
                        + f"\n🔖 <b>#{senal_id}</b>  |  {_caduca_info}")
+
+        # ── SSE — web recibe la señal EN PARALELO con Telegram ────────────────
+        # Se publica ANTES de llamar a enviar_telegram() para que el dashboard
+        # se actualice al mismo tiempo, sin esperar la respuesta de la API de
+        # Telegram (que puede tardar hasta ~10 s con reintentos).
+        # La señal ya está en BD en este punto, así que la web puede servirla.
+        if senal_id and self.db:
+            try:
+                from bridge.sse_broker import broker
+                if broker.num_clientes > 0:
+                    _sse_r = self.db.ejecutar_query(
+                        "SELECT direccion, precio_entrada, timeframe, simbolo, estado "
+                        "FROM senales WHERE id = ?",
+                        (senal_id,)
+                    )
+                    if _sse_r and _sse_r.rows:
+                        _sse_s = dict(_sse_r.rows[0])
+                        _sym_base = str(_sse_s.get('simbolo', '')).split('_')[0]
+                        broker.publicar_senal(
+                            tipo='nueva',
+                            simbolo=_sym_base,
+                            timeframe=str(_sse_s.get('timeframe', '')),
+                            direccion=str(_sse_s.get('direccion', '')),
+                            precio_entrada=float(_sse_s.get('precio_entrada') or 0),
+                            senal_id=senal_id,
+                            estado=str(_sse_s.get('estado', 'ESPERANDO')),
+                        )
+                        _logger.debug(f"[SSE] señal #{senal_id} publicada al dashboard")
+            except Exception as _sse_e:
+                _logger.debug(f"SSE señal: error no crítico — {_sse_e}")
+        # ── Fin SSE ───────────────────────────────────────────────────────────
+
         sufijo = (f"\n⚠️ <b>Evento macro próximo:</b> {self.aviso_macro}"
                   if self.aviso_macro else "")
         sufijo_pb = (f"\n{self.contexto_pullback}"

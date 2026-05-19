@@ -510,9 +510,10 @@ class EURUSDDetector5M(BaseDetector):
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
                     if _warn_consenso_sell:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_sell}"
+                    _senal_guardada = not self.db
                     if self.db:
                         try:
-                            self._guardar_senal({
+                            _sid = self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc),
                                 'timestamp_entry': df.index[-1].isoformat(),
                                 'simbolo': simbolo_db, 'asset': 'EURUSD', 'timeframe': '5M',
@@ -522,9 +523,13 @@ class EURUSDDetector5M(BaseDetector):
                                 'indicadores': json.dumps(_condiciones_bd),
                                 'version_detector': 'EURUSD-5M-v1.0',
                             })
+                            if _sid is None:
+                                logger.warning(f"  🔴 SELL bloqueada por guard interno — Telegram no enviado")
+                            _senal_guardada = _sid is not None
                         except Exception as e:
                             logger.error(f"  ⚠️ Error guardando señal EURUSD 5M SELL: {e}")
-                    self.enviar(msg)
+                    if _senal_guardada:
+                        self.enviar(msg)
 
             # ── SEÑAL BUY ─────────────────────────────────────────────────────
             if senal_buy_fuerte and not cancelar_buy:
@@ -554,9 +559,10 @@ class EURUSDDetector5M(BaseDetector):
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
                     if _warn_consenso_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n⚠️ <b>ALERTA TRAMPA:</b> {_warn_consenso_buy}"
+                    _senal_guardada = not self.db
                     if self.db:
                         try:
-                            self._guardar_senal({
+                            _sid = self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc),
                                 'timestamp_entry': df.index[-1].isoformat(),
                                 'simbolo': simbolo_db, 'asset': 'EURUSD', 'timeframe': '5M',
@@ -566,9 +572,13 @@ class EURUSDDetector5M(BaseDetector):
                                 'indicadores': json.dumps(_condiciones_bd),
                                 'version_detector': 'EURUSD-5M-v1.0',
                             })
+                            if _sid is None:
+                                logger.warning(f"  🔴 BUY bloqueada por guard interno — Telegram no enviado")
+                            _senal_guardada = _sid is not None
                         except Exception as e:
                             logger.error(f"  ⚠️ Error guardando señal EURUSD 5M BUY: {e}")
-                    self.enviar(msg)
+                    if _senal_guardada:
+                        self.enviar(msg)
 
         except Exception as e:
             logger.error(f"❌ Error analizando {simbolo} [EURUSD 5M]: {e}", exc_info=True)

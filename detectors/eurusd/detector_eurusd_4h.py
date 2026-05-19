@@ -392,9 +392,10 @@ class EURUSDDetector4H(BaseDetector):
                     )
                     if _conf_sell:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_sell}"
+                    _senal_guardada = not self.db
                     if self.db:
                         try:
-                            self._guardar_senal({
+                            _sid = self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc),
                                 'timestamp_entry': df.index[-1].isoformat(),
                                 'simbolo': simbolo_db, 'asset': 'EURUSD', 'timeframe': '4H',
@@ -404,9 +405,13 @@ class EURUSDDetector4H(BaseDetector):
                                 'indicadores': json.dumps(_condiciones_bd),
                                 'version_detector': 'EURUSD-4H-v1.0',
                             })
+                            if _sid is None:
+                                logger.warning(f"  🔴 SELL bloqueada por guard interno — Telegram no enviado")
+                            _senal_guardada = _sid is not None
                         except Exception as e:
                             logger.error(f"  ⚠️ Error guardando señal EURUSD 4H SELL: {e}")
-                    self.enviar(msg)
+                    if _senal_guardada:
+                        self.enviar(msg)
 
             if senal_buy_fuerte and not cancelar_buy:
                 if self.db and self.db.existe_senal_activa_tf(simbolo_db):
@@ -433,9 +438,10 @@ class EURUSDDetector4H(BaseDetector):
                     )
                     if _conf_buy:
                         msg += f"\n━━━━━━━━━━━━━━━━━━━━\n{_conf_buy}"
+                    _senal_guardada = not self.db
                     if self.db:
                         try:
-                            self._guardar_senal({
+                            _sid = self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc),
                                 'timestamp_entry': df.index[-1].isoformat(),
                                 'simbolo': simbolo_db, 'asset': 'EURUSD', 'timeframe': '4H',
@@ -445,9 +451,13 @@ class EURUSDDetector4H(BaseDetector):
                                 'indicadores': json.dumps(_condiciones_bd),
                                 'version_detector': 'EURUSD-4H-v1.0',
                             })
+                            if _sid is None:
+                                logger.warning(f"  🔴 BUY bloqueada por guard interno — Telegram no enviado")
+                            _senal_guardada = _sid is not None
                         except Exception as e:
                             logger.error(f"  ⚠️ Error guardando señal EURUSD 4H BUY: {e}")
-                    self.enviar(msg)
+                    if _senal_guardada:
+                        self.enviar(msg)
 
         except Exception as e:
             logger.error(f"❌ Error analizando {simbolo} [EURUSD 4H]: {e}", exc_info=True)

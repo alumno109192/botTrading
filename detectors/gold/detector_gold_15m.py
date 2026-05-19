@@ -808,9 +808,10 @@ class GoldDetector15M(BaseDetector):
                     if _ctx_htf:
                         msg += _ctx_htf
                     msg += _sfx_sell
+                    _senal_guardada = not self.db  # sin BD siempre enviar
                     if self.db:
                         try:
-                            self._guardar_senal({
+                            _sid = self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc), 
                                 'timestamp_entry': timestamp_vela.isoformat(),  # Hora de la vela
                                 'simbolo': simbolo_db,
@@ -826,9 +827,13 @@ class GoldDetector15M(BaseDetector):
                                 'patron_velas': f"Envolvente:{patron_envolvente_bajista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_baj_activo}",
                                 'version_detector': '15M-SCALP-v2.1'
                             })
+                            if _sid is None:
+                                logger.warning(f"  🔴 SELL bloqueada por guard interno — Telegram no enviado")
+                            _senal_guardada = _sid is not None
                         except Exception as e:
-                            logger.error(f"  ⚠️ Error guardando señal: {e}")
-                    self.enviar(msg)
+                            logger.error(f"  ⚠️ Error guardando señal SELL: {e}")
+                    if _senal_guardada:
+                        self.enviar(msg)
 
             # ── SEÑALES COMPRA — solo FUERTE ──
             if senal_buy_fuerte and not cancelar_buy:
@@ -866,9 +871,10 @@ class GoldDetector15M(BaseDetector):
                     if _ctx_htf:
                         msg += _ctx_htf
                     msg += _sfx_buy
+                    _senal_guardada = not self.db  # sin BD siempre enviar
                     if self.db:
                         try:
-                            self._guardar_senal({
+                            _sid = self._guardar_senal({
                                 'timestamp': datetime.now(timezone.utc), 
                                 'timestamp_entry': timestamp_vela.isoformat(),  # Hora de la vela
                                 'simbolo': simbolo_db,
@@ -884,9 +890,13 @@ class GoldDetector15M(BaseDetector):
                                 'patron_velas': f"Envolvente:{patron_envolvente_alcista(df)}, Doji:{patron_doji(df)}, StopHunt:{_sh_alc_activo}",
                                 'version_detector': '15M-SCALP-v2.1'
                             })
+                            if _sid is None:
+                                logger.warning(f"  🔴 BUY bloqueada por guard interno — Telegram no enviado")
+                            _senal_guardada = _sid is not None
                         except Exception as e:
-                            logger.error(f"  ⚠️ Error guardando señal: {e}")
-                    self.enviar(msg)
+                            logger.error(f"  ⚠️ Error guardando señal BUY: {e}")
+                    if _senal_guardada:
+                        self.enviar(msg)
     
         except Exception as e:
             logger.error(f"❌ Error analizando {simbolo}: {e}")

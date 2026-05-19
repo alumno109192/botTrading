@@ -88,10 +88,13 @@ function dashboardApp() {
 
             if (tipo === 'nueva') {
               const dir = d.direccion === 'COMPRA' ? '▲ BUY' : '▼ SELL';
+              const destino = d.estado === 'ESPERANDO'
+                ? '/dashboard/pendientes'
+                : '/dashboard/activas';
               this.toast('nueva',
                 `🔔 Nueva señal ${dir}`,
                 `${d.simbolo} ${d.timeframe} @ ${this.formatPrecio(d.precio_entrada)}`,
-                '/dashboard/activas'
+                destino
               );
             } else if (['tp1','tp2','tp3'].includes(tipo)) {
               this.toast('tp',
