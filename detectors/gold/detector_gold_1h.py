@@ -327,23 +327,21 @@ class GoldDetector1H(BaseDetector):
         def _tp_desde_sr(niveles, n, fallback):
             return round(niveles[n-1], 2) if len(niveles) >= n else round(fallback, 2)
 
-        def _tp1_viable_sell(soportes, entry, sl, min_rr, fallback):
-            """Primer soporte que dé R:R >= min_rr; si ninguno califica, usa fallback ATR."""
-            dist_sl = abs(sl - entry)
-            if dist_sl > 0:
-                for nivel in soportes:   # ya ordenados nearest-first (sorted reverse=True)
-                    if abs(nivel - entry) / dist_sl >= min_rr:
-                        return round(nivel, 2)
+        def _tp1_viable_sell(soportes, entry, atr, fallback):
+            """Primer soporte más cercano al precio (≥ 0.3×ATR) — máxima probabilidad."""
+            min_dist = atr * 0.3
+            for nivel in soportes:   # nearest-first (sorted reverse=True)
+                if entry - nivel >= min_dist:
+                    return round(nivel, 2)
             return round(fallback, 2)
 
-        def _tp1_viable_buy(resistencias, entry, sl, min_rr, fallback):
-            """Primera resistencia que dé R:R >= min_rr; si ninguna califica, usa fallback ATR."""
-            dist_sl = abs(sl - entry)
+        def _tp1_viable_buy(resistencias, entry, atr, fallback):
+            """Primera resistencia más cercana al precio (≥ 0.3×ATR) — máxima probabilidad."""
+            min_dist = atr * 0.3
             resis_sobre = sorted([v for v in resistencias if v > entry])
-            if dist_sl > 0:
-                for nivel in resis_sobre:  # ascendentes = nearest-first
-                    if abs(nivel - entry) / dist_sl >= min_rr:
-                        return round(nivel, 2)
+            for nivel in resis_sobre:  # ascendentes = nearest-first
+                if nivel - entry >= min_dist:
+                    return round(nivel, 2)
             return round(fallback, 2)
 
         def _recortar_tp_venta(tp_objetivo, tp_anterior, soportes, atr):
@@ -396,7 +394,7 @@ class GoldDetector1H(BaseDetector):
         _vol_last   = float(df['Volume'].iloc[-1])
         _vol_factor = min(max(_vol_last / _vol_avg20, 0.75), 1.50) if _vol_avg20 > 0 else 1.0
 
-        tp1_v = _tp1_viable_sell(soportes_sr, sell_entry, sl_venta, 1.2,
+        tp1_v = _tp1_viable_sell(soportes_sr, sell_entry, atr,
                                  sell_entry - atr * params['atr_tp1_mult'] * _vol_factor)
         tp2_v = _recortar_tp_venta(
                     _tp_desde_sr(soportes_sr, 2, sell_entry - atr * params['atr_tp2_mult'] * _vol_factor),
@@ -404,7 +402,7 @@ class GoldDetector1H(BaseDetector):
         tp3_v = _recortar_tp_venta(
                     _tp_desde_sr(soportes_sr, 3, sell_entry - atr * params['atr_tp3_mult'] * _vol_factor),
                     tp2_v, soportes_sr, atr)
-        tp1_c = _tp1_viable_buy(resistencias_sr, buy_entry, sl_compra, 1.2,
+        tp1_c = _tp1_viable_buy(resistencias_sr, buy_entry, atr,
                                 buy_entry + atr * params['atr_tp1_mult'] * _vol_factor)
         _resis_sobre = sorted([v for v in resistencias_sr if v > buy_entry])
         tp2_c = _recortar_tp_compra(

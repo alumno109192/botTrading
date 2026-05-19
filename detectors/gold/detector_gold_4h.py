@@ -885,11 +885,29 @@ class GoldDetector4H(BaseDetector):
         _vol_last   = float(df['Volume'].iloc[-1])
         _vol_factor = min(max(_vol_last / _vol_avg20, 0.75), 1.50) if _vol_avg20 > 0 else 1.0
 
-        # TPs dinámicos basados en ATR ajustado por volumen (VATR) — ajustados por spread de cierre
-        tp1_v = round(sell_entry - atr * params['atr_tp1_mult'] * _vol_factor - cost, 2)
+        def _tp1_sr_sell(soportes, entry, atr, fallback):
+            """Primer soporte más cercano al precio (≥ 0.3×ATR) — máxima probabilidad."""
+            min_dist = atr * 0.3
+            for nivel in sorted(soportes, reverse=True):  # nearest-first
+                if entry - nivel >= min_dist:
+                    return round(nivel - cost, 2)
+            return round(fallback, 2)
+
+        def _tp1_sr_buy(resistencias, entry, atr, fallback):
+            """Primera resistencia más cercana al precio (≥ 0.3×ATR) — máxima probabilidad."""
+            min_dist = atr * 0.3
+            for nivel in sorted([v for v in resistencias if v > entry]):  # nearest-first
+                if nivel - entry >= min_dist:
+                    return round(nivel + cost, 2)
+            return round(fallback, 2)
+
+        # TPs: TP1 en S/R real más cercana; TP2/TP3 basados en VATR
+        tp1_v = _tp1_sr_sell(soportes_sr_4h, sell_entry, atr,
+                             sell_entry - atr * params['atr_tp1_mult'] * _vol_factor - cost)
         tp2_v = round(sell_entry - atr * params['atr_tp2_mult'] * _vol_factor - cost, 2)
         tp3_v = round(sell_entry - atr * params['atr_tp3_mult'] * _vol_factor - cost, 2)
-        tp1_c = round(buy_entry  + atr * params['atr_tp1_mult'] * _vol_factor + cost, 2)
+        tp1_c = _tp1_sr_buy(resistencias_sr_4h, buy_entry, atr,
+                            buy_entry + atr * params['atr_tp1_mult'] * _vol_factor + cost)
         tp2_c = round(buy_entry  + atr * params['atr_tp2_mult'] * _vol_factor + cost, 2)
         tp3_c = round(buy_entry  + atr * params['atr_tp3_mult'] * _vol_factor + cost, 2)
 
