@@ -800,6 +800,41 @@ class GoldDetector4H(BaseDetector):
         # cap final por precaución (macro adjusters pueden exceder el max)
         score_sell = min(score_sell, 12)
         score_buy  = min(score_buy,  12)
+
+        # ── Desglose del score para mensajes Telegram ────────────────────────
+        _core_s = (f"{'✅' if en_zona_resist else '❌'} S/R  "
+                   f"{'✅' if emas_bajistas else '❌'} EMA  "
+                   f"{'✅' if bajo_ema200 else '❌'} EMA200  "
+                   f"{'✅' if vol_alto_rechazo else '❌'} Vol  "
+                   f"{'✅' if vela_rechazo else '❌'} Vela")
+        _core_b = (f"{'✅' if en_zona_soporte else '❌'} S/R  "
+                   f"{'✅' if emas_alcistas else '❌'} EMA  "
+                   f"{'✅' if sobre_ema200 else '❌'} EMA200  "
+                   f"{'✅' if vol_alto_rebote else '❌'} Vol  "
+                   f"{'✅' if vela_rebote else '❌'} Vela")
+        _bsel = "  ·  ".join(filter(None, [
+            "RSI" if rsi_alto_girando else None,
+            "MACD" if macd_cruce_bajista else None,
+            "ADX" if adx_bajista else None,
+            "Div" if divergencia_bajista else None,
+            "Evening★" if evening_star else None,
+            "Canal" if canal_alcista_roto_4h else None,
+            "DT" if dt_detectado else None,
+            "Rotura" if rotura_bajista else None,
+        ]))
+        _bbuy = "  ·  ".join(filter(None, [
+            "RSI" if rsi_bajo_girando else None,
+            "MACD" if macd_cruce_alcista else None,
+            "ADX" if adx_alcista else None,
+            "Div" if divergencia_alcista else None,
+            "Morning★" if morning_star else None,
+            "Canal" if canal_bajista_roto_4h else None,
+            "DS" if ds_detectado else None,
+            "Rotura" if rotura_alcista else None,
+        ]))
+        _desglose_sell = _core_s + (f"  |  {_bsel}" if _bsel else "")
+        _desglose_buy  = _core_b + (f"  |  {_bbuy}" if _bbuy else "")
+
         _condiciones_bd['score_sell'] = score_sell
         _condiciones_bd['score_buy'] = score_buy
         _condiciones_bd['ml_prob_buy'] = round(float(_prob_buy), 4)
@@ -1123,7 +1158,8 @@ class GoldDetector4H(BaseDetector):
                    f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1  (+${round(sell_entry - tp2_v, 2)})\n"
                    f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1  (+${round(sell_entry - tp3_v, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                   f"� <b>Por qué:</b> {_desglose_sell}\n"
+                   f"�📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING"
                    + _ctx_htf + _sfx_sell)
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
@@ -1161,7 +1197,8 @@ class GoldDetector4H(BaseDetector):
                    f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1  (+${round(tp2_c - buy_entry, 2)})\n"
                    f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_entry, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                   f"� <b>Por qué:</b> {_desglose_buy}\n"
+                   f"�📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING"
                    + _ctx_htf + _sfx_buy)
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
@@ -1220,7 +1257,8 @@ class GoldDetector4H(BaseDetector):
                                f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
                                f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                               f"� <b>Por qué:</b> {_desglose_sell}\n"
+                               f"�📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
                         if _ctx_htf:
                             msg += _ctx_htf
@@ -1280,7 +1318,8 @@ class GoldDetector4H(BaseDetector):
                                f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
                                f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                               f"� <b>Por qué:</b> {_desglose_buy}\n"
+                               f"�📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
                         if _ctx_htf:
                             msg += _ctx_htf

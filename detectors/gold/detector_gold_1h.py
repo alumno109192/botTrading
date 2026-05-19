@@ -573,6 +573,24 @@ class GoldDetector1H(BaseDetector):
         score_sell += min(_bonus_sell, 3)
         score_buy  += min(_bonus_buy,  3)
 
+        # ── Desglose del score para mensajes Telegram ────────────────────────
+        _core_s = (f"{'✅' if en_zona_resist_any else '❌'} S/R  "
+                   f"{'✅' if emas_bajistas else '❌'} EMA  "
+                   f"{'✅' if bajo_ema200 else '❌'} EMA200")
+        _core_b = (f"{'✅' if en_zona_soporte_any else '❌'} S/R  "
+                   f"{'✅' if emas_alcistas else '❌'} EMA  "
+                   f"{'✅' if sobre_ema200 else '❌'} EMA200")
+        _extras_s = "  ·  ".join(filter(None, [
+            "Ruptura" if _rup_sop_1h else None,
+            "S/R interm." if (_en_resist_sr_1h and not en_zona_resist) else None,
+        ]))
+        _extras_b = "  ·  ".join(filter(None, [
+            "Ruptura" if _rup_res_1h else None,
+            "S/R interm." if (_en_sop_sr_1h and not en_zona_soporte) else None,
+        ]))
+        _desglose_sell = _core_s + (f"  |  {_extras_s}" if _extras_s else "")
+        _desglose_buy  = _core_b + (f"  |  {_extras_b}" if _extras_b else "")
+
         logger.info(f"  📊 [1H] Score SELL={score_sell} BUY={score_buy} | "
                     f"EMA {'SELL' if emas_bajistas else 'BUY'} | "
                     f"Zona {'RESIST' if en_zona_resist_any else '-'}/{'SOPO' if en_zona_soporte_any else '-'}")
@@ -1083,7 +1101,8 @@ class GoldDetector1H(BaseDetector):
                    + 
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    + (f"🔻 <b>Canal alcista ROTO</b> — nivel canal ${linea_soporte_canal:.2f}\n" if canal_alcista_roto else "")
-                   + f"📊 <b>Score:</b> {score_sell}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+                   + f"� <b>Por qué:</b> {_desglose_sell}\n"
+                   f"�📊 <b>Score:</b> {score_sell}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                    f"📰 <b>Noticias:</b> {_sesgo_etiq} ({_sesgo_score:+.1f})  ➜  {_sesgo_news.replace('_', ' ')}\n"
                    f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
             _bloquear_prep_sell = self.db and (
@@ -1138,7 +1157,8 @@ class GoldDetector1H(BaseDetector):
                    + 
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    + (f"🔺 <b>Canal bajista ROTO</b> — nivel canal ${linea_resist_canal:.2f}\n" if canal_bajista_roto else "")
-                   + f"📊 <b>Score:</b> {score_buy}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+                   + f"� <b>Por qué:</b> {_desglose_buy}\n"
+                   f"�📊 <b>Score:</b> {score_buy}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                    f"📰 <b>Noticias:</b> {_sesgo_etiq} ({_sesgo_score:+.1f})  ➜  {_sesgo_news.replace('_', ' ')}\n"
                    f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
             _bloquear_prep_buy = self.db and (
@@ -1219,7 +1239,8 @@ class GoldDetector1H(BaseDetector):
                                   f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n")
                                + 
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"📊 <b>Score:</b> {score_sell}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                               f"� <b>Por qué:</b> {_desglose_sell}\n"
+                               f"�📊 <b>Score:</b> {score_sell}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"📐 <b>ATR:</b> ${atr:.2f}\n"
                                f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
                                f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
@@ -1296,7 +1317,8 @@ class GoldDetector1H(BaseDetector):
                                   f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n")
                                + 
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"📊 <b>Score:</b> {score_buy}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                               f"� <b>Por qué:</b> {_desglose_buy}\n"
+                               f"�📊 <b>Score:</b> {score_buy}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"📐 <b>ATR:</b> ${atr:.2f}\n"
                                f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
                                f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
