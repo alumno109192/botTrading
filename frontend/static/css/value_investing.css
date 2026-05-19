@@ -1,0 +1,165 @@
+.vi-hero {
+  background: linear-gradient(180deg, rgba(41, 182, 246, 0.08), rgba(41, 182, 246, 0.02));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  margin-bottom: 10px;
+}
+
+.vi-hero-title { display: flex; align-items: center; gap: 12px; }
+.vi-hero-icon { font-size: 1.6rem; }
+.vi-hero-name,
+.vi-hero-title {
+  font-weight: 700;
+}
+.vi-hero-name,
+.vi-hero-title .vi-hero-name {
+  background: linear-gradient(90deg, var(--accent) 0%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.vi-hero-sub { color: var(--muted-2); font-size: 0.74rem; margin-top: 4px; }
+.vi-hero-stats { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.vi-stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-width: 120px; }
+.vi-stat-val { color: #cdd9e5; font-size: 0.92rem; font-weight: 700; }
+.vi-stat-lbl { color: var(--muted); font-size: 0.67rem; }
+
+.vi-filter-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.vi-filter-btn {
+  padding: 4px 10px;
+  min-height: 28px;
+  min-width: 99px;
+  border-radius: 8px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--muted-2);
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.vi-filter-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+.vi-filter-btn.active { color: #080b10; background: var(--accent); border-color: var(--accent); }
+
+.vi-semana-group { margin-bottom: 14px; }
+.vi-semana-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-left: 3px solid var(--accent);
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.015);
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 8px;
+}
+.vi-semana-label { color: #cdd9e5; font-size: 0.76rem; font-weight: 700; }
+.vi-semana-count { color: var(--muted-2); font-size: 0.66rem; }
+
+.vi-cards-grid { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+.vi-card {
+  flex: 1 1 260px;
+  max-width: 360px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 10px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.vi-card:hover { transform: translateY(-1px); border-color: var(--border-2); }
+.vi-card--up { border-left: 3px solid var(--buy); }
+.vi-card--down { border-left: 3px solid var(--sell); }
+
+.vi-card-header { display: flex; justify-content: space-between; gap: 8px; }
+.vi-card-ticker-block { min-width: 0; }
+.vi-card-ticker { color: #cdd9e5; font-size: 1rem; font-weight: 700; }
+.vi-card-nombre { color: var(--muted-2); font-size: 0.66rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vi-card-price-block { text-align: right; }
+.vi-card-price { color: #cdd9e5; font-weight: 700; font-size: 0.8rem; }
+.vi-card-change { font-size: 0.68rem; font-weight: 700; }
+.vi-card-change.pos { color: var(--buy); }
+.vi-card-change.neg { color: var(--sell); }
+
+.vi-card-cat { margin-top: 8px; color: var(--muted-2); font-size: 0.68rem; display: flex; justify-content: space-between; gap: 8px; }
+.vi-cat-peso { color: var(--gold); font-size: 0.7rem; }
+
+.vi-card-footer { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vi-earnings-date { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-2); font-size: 0.68rem; }
+.vi-ed-icon { font-size: 0.75rem; }
+.vi-ed-text { color: #cdd9e5; }
+.vi-ed-countdown { color: var(--muted); font-weight: 700; margin-left: 2px; }
+.vi-ed-countdown.soon { color: var(--warn); }
+.vi-ed-countdown.urgent { color: var(--sell); animation: statusPulse 2s ease infinite; }
+
+.vi-eps-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.66rem; }
+.vi-eps-badge .beat { color: var(--buy); border: 1px solid rgba(0, 230, 118, 0.3); border-radius: 4px; padding: 1px 6px; }
+.vi-eps-badge .miss { color: var(--sell); border: 1px solid rgba(255, 23, 68, 0.3); border-radius: 4px; padding: 1px 6px; }
+.vi-eps-pct.pos { color: var(--buy); }
+.vi-eps-pct.neg { color: var(--sell); }
+
+.vi-back-btn {
+  margin-bottom: 8px;
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--muted-2);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.7rem;
+}
+.vi-back-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+.vi-empresa-wrap { margin-top: 4px; }
+.vi-empresa-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-top: 2px solid var(--accent);
+  border: 1px solid var(--border);
+  border-top-width: 2px;
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  padding: 12px;
+}
+.vi-empresa-title-block { min-width: 220px; }
+.vi-empresa-ticker { color: #cdd9e5; font-size: 1.4rem; font-weight: 700; }
+.vi-empresa-nombre { color: var(--muted-2); font-size: 0.75rem; margin-top: 3px; }
+.vi-empresa-cat { color: var(--muted); font-size: 0.67rem; margin-top: 5px; }
+.vi-empresa-price-block { text-align: right; }
+.vi-empresa-price { color: #cdd9e5; font-size: 1.1rem; font-weight: 700; }
+.vi-empresa-change { font-size: 0.78rem; font-weight: 700; }
+.vi-empresa-change.pos { color: var(--buy); }
+.vi-empresa-change.neg { color: var(--sell); }
+.vi-empresa-mcap { color: var(--muted-2); font-size: 0.68rem; margin-top: 4px; }
+
+.vi-next-earnings {
+  margin-top: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.vi-ne-label { color: var(--muted); font-size: 0.68rem; }
+.vi-ne-date { color: #cdd9e5; font-size: 0.78rem; font-weight: 700; }
+.vi-ne-countdown { margin-left: auto; color: var(--muted); font-size: 0.7rem; font-weight: 700; }
+.vi-ne-countdown.soon { color: var(--warn); }
+.vi-ne-countdown.urgent { color: var(--sell); animation: statusPulse 2s ease infinite; }
+
+.vi-hist-panel {
+  margin-top: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 10px;
+}
+
+@media (max-width: 640px) {
+  .vi-card { flex: 1 1 100%; max-width: 100%; }
+}

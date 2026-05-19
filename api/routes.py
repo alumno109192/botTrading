@@ -20,6 +20,8 @@ def create_app(estado_sistema, threads_detectores):
         static_folder=str(_FRONTEND_DIR / 'static'),
         static_url_path='/static',
     )
+    from api.value_investing_routes import vi_bp
+    app.register_blueprint(vi_bp)
     CRON_TOKEN = os.environ.get('CRON_TOKEN', '')
 
     @app.route('/')
