@@ -1,7 +1,7 @@
 """Servicios de datos para la sección Value Investing."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import threading
 import re
 
@@ -219,7 +219,7 @@ def get_earnings_info(ticker: str) -> dict:
 
     with _cache_lock:
         cache_hit = _cache_empresas.get(ticker)
-        if cache_hit and (datetime.utcnow() - cache_hit['timestamp']) < _EMPRESA_TTL:
+        if cache_hit and (datetime.now(timezone.utc) - cache_hit['timestamp']) < _EMPRESA_TTL:
             return cache_hit['data']
 
     categoria = TICKER_TO_CAT.get(ticker)
@@ -313,7 +313,7 @@ def get_earnings_info(ticker: str) -> dict:
         result['error'] = str(exc)
 
     with _cache_lock:
-        _cache_empresas[ticker] = {'timestamp': datetime.utcnow(), 'data': result}
+        _cache_empresas[ticker] = {'timestamp': datetime.now(timezone.utc), 'data': result}
 
     return result
 
@@ -335,7 +335,7 @@ def get_calendario_semanal() -> list[dict]:
     with _cache_lock:
         ts = _cache_calendario.get('timestamp')
         data = _cache_calendario.get('data')
-        if ts and data and (datetime.utcnow() - ts) < _CALENDARIO_TTL:
+        if ts and data and (datetime.now(timezone.utc) - ts) < _CALENDARIO_TTL:
             return data
 
     empresas = []
@@ -352,7 +352,7 @@ def get_calendario_semanal() -> list[dict]:
     empresas.sort(key=lambda x: (_orden_semana(x.get('semana_label')), x.get('dias_para_earnings') if x.get('dias_para_earnings') is not None else 99999, x.get('ticker', '')))
 
     with _cache_lock:
-        _cache_calendario['timestamp'] = datetime.utcnow()
+        _cache_calendario['timestamp'] = datetime.now(timezone.utc)
         _cache_calendario['data'] = empresas
 
     return empresas
