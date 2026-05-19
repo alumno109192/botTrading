@@ -70,6 +70,7 @@ TICKER_TO_CAT = {
 
 _EMPRESA_TTL = timedelta(hours=1)
 _CALENDARIO_TTL = timedelta(minutes=30)
+_SORT_FALLBACK_DAYS = 99_999
 
 _cache_empresas: dict[str, dict] = {}
 _cache_calendario: dict[str, object] = {"timestamp": None, "data": None}
@@ -288,7 +289,14 @@ def get_earnings_info(ticker: str) -> dict:
             real_col = cols.get('reported eps')
             surprise_col = cols.get('surprise(%)')
 
-            future_rows = [idx for idx in df_sorted.index if _normalizar_fecha(idx) and _dias_para(_normalizar_fecha(idx)) is not None and _dias_para(_normalizar_fecha(idx)) >= 0]
+            future_rows = []
+            for idx in df_sorted.index:
+                normalized = _normalizar_fecha(idx)
+                if not normalized:
+                    continue
+                dias = _dias_para(normalized)
+                if dias is not None and dias >= 0:
+                    future_rows.append(idx)
             idx_target = future_rows[0] if future_rows else df_sorted.index[-1]
             target_row = df_sorted.loc[idx_target]
 
@@ -349,7 +357,13 @@ def get_calendario_semanal() -> list[dict]:
             info['semana_label'] = _semana_label(info.get('dias_para_earnings'))
             empresas.append(info)
 
-    empresas.sort(key=lambda x: (_orden_semana(x.get('semana_label')), x.get('dias_para_earnings') if x.get('dias_para_earnings') is not None else 99999, x.get('ticker', '')))
+    empresas.sort(
+        key=lambda x: (
+            _orden_semana(x.get('semana_label')),
+            x.get('dias_para_earnings') if x.get('dias_para_earnings') is not None else _SORT_FALLBACK_DAYS,
+            x.get('ticker', ''),
+        )
+    )
 
     with _cache_lock:
         _cache_calendario['timestamp'] = datetime.now(timezone.utc)
