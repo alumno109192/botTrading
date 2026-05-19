@@ -463,35 +463,29 @@ class GoldDetector4H(BaseDetector):
             logger.info(f"  📐 [4H] PRECIO EN DIRECTRIZ ALCISTA — soporte ${linea_soporte_canal_precio_4h:.2f}")
 
 
-        score_sell = 0
+        # ── SCORING VENTA — CORE (7 pts máx) ──────────────────────────────────────
+        score_sell = (
+            (2 if en_zona_resist    else 0) +   # precio en nivel S/R de resistencia
+            (2 if emas_bajistas     else 0) +   # EMA rápida por debajo de EMA lenta
+            (1 if bajo_ema200       else 0) +   # precio bajo EMA 200 (tendencia bajista)
+            (1 if vol_alto_rechazo  else 0) +   # volumen confirma el rechazo
+            (1 if vela_rechazo      else 0)     # patrón de vela de reversión
+        )
+        # BONUS SELL — confirmaciones adicionales, cada una vale +1, cap duro en 5
+        _bonus_sell = (
+            (1 if rsi_alto_girando            else 0) +
+            (1 if divergencia_bajista         else 0) +   # sin doble conteo
+            (1 if macd_cruce_bajista          else 0) +
+            (1 if adx_bajista                 else 0) +
+            (1 if evening_star                else 0) +
+            (1 if canal_alcista_roto_4h       else 0) +
+            (1 if fallo_continuacion_bajista  else 0) +
+            (1 if rotura_bajista              else 0) +
+            (1 if dt_detectado                else 0) +
+            (1 if en_resist_canal_bajista     else 0)
+        )
         score_buy  = 0  # inicializar aquí para que cuña/ruptura BUY no se pierdan
-        score_sell += 2 if en_zona_resist          else 0
-        score_sell += 2 if vela_rechazo            else 0
-        score_sell += 2 if vol_alto_rechazo        else 0
-        score_sell += 1 if rsi_alto_girando        else 0
-        score_sell += 1 if rsi_acelerando_bajada    else 0   # RSI bajando 3 velas consecutivas
-        score_sell += 1 if rsi_sobrecompra         else 0
-        score_sell += 1 if divergencia_bajista     else 0
-        score_sell += 1 if emas_bajistas           else 0
-        score_sell += 1 if estructura_bajista      else 0
-        score_sell += 1 if intento_rotura_fallido  else 0
-        score_sell += 1 if vol_decreciente         else 0
-        score_sell += 1 if (shooting_star and vol_alto_rechazo)       else 0
-        score_sell += 1 if (divergencia_bajista and rsi_sobrecompra)  else 0
-        score_sell += 1 if bajo_ema200             else 0
-        score_sell += 2 if bb_toca_superior        else 0
-        score_sell += 2 if evening_star            else 0
-        score_sell += 2 if macd_cruce_bajista      else 0
-        score_sell += 2 if adx_bajista             else 0
-        score_sell += 1 if macd_divergencia_bajista else 0
-        score_sell += 1 if obv_divergencia_bajista else 0
-        score_sell += 1 if obv_decreciente         else 0
-        score_sell += 1 if macd_negativo           else 0
-        score_sell += 3 if fallo_continuacion_bajista else 0
-        score_sell += 4 if rotura_bajista          else 0  # rotura con impulso+volumen
-        score_sell += 3 if dt_detectado            else 0  # doble techo confirmado
-        score_sell += 2 if canal_alcista_roto_4h   else 0  # canal alcista roto → sesgo bajista
-        score_sell += 3 if en_resist_canal_bajista  else 0  # precio tocando directriz bajista
+        _bonus_buy = 0
 
         # ── Ruptura horizontal directa (sin retest) 4H ─────────────────────
         _rup_sop_4h, _niv_sop_4h = detectar_ruptura_soporte_horizontal(
@@ -499,11 +493,11 @@ class GoldDetector4H(BaseDetector):
         _rup_res_4h, _niv_res_4h = detectar_ruptura_resistencia_horizontal(
             df, atr, lookback=params.get('sr_lookback', 60), wing=3)
         if _rup_sop_4h:
-            score_sell += 4
-            logger.info(f"  💥 [4H] RUPTURA SOPORTE ${_niv_sop_4h:.2f} — +4 pts SELL")
+            _bonus_sell += 1
+            logger.info(f"  💥 [4H] RUPTURA SOPORTE ${_niv_sop_4h:.2f} — +1 pt SELL")
         if _rup_res_4h:
-            score_buy += 4
-            logger.info(f"  💥 [4H] RUPTURA RESISTENCIA ${_niv_res_4h:.2f} — +4 pts BUY")
+            _bonus_buy += 1
+            logger.info(f"  💥 [4H] RUPTURA RESISTENCIA ${_niv_res_4h:.2f} — +1 pt BUY")
 
         # ── Cuña descendente / ascendente (4H) ──────────────────────────────
         _lkb_cuña_4h = min(params.get('sr_lookback', 60), 60)
@@ -512,20 +506,14 @@ class GoldDetector4H(BaseDetector):
         _cuña_asc_4h, _t_asc_4h, _s_asc_4h = detectar_cuña_ascendente(
             df, atr, lookback=_lkb_cuña_4h, wing=3, max_amplitud_pct=0.025)
         if _cuña_desc_4h == 'ruptura_alcista':
-            score_buy += 6
-            logger.info(f"  📐 [4H] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_4h:.2f}) — +6 pts BUY")
+            _bonus_buy += 1
+            logger.info(f"  📐 [4H] CUÑA DESC ROTA AL ALZA (techo ${_t_desc_4h:.2f}) — +1 pt BUY")
         elif _cuña_desc_4h == 'ruptura_bajista':
-            score_sell += 6
-            logger.info(f"  📐 [4H] CUÑA DESC ROTA A LA BAJA (suelo ${_s_desc_4h:.2f}) — +6 pts SELL")
-        elif _cuña_desc_4h == 'compresion':
-            score_buy += 2
-            logger.info(f"  📐 [4H] CUÑA DESC en compresión ${_s_desc_4h:.2f}-${_t_desc_4h:.2f} — +2 pts BUY")
+            _bonus_sell += 1
+            logger.info(f"  📐 [4H] CUÑA DESC ROTA A LA BAJA (suelo ${_s_desc_4h:.2f}) — +1 pt SELL")
         if _cuña_asc_4h == 'ruptura_bajista':
-            score_sell += 6
-            logger.info(f"  📐 [4H] CUÑA ASC ROTA A LA BAJA (suelo ${_s_asc_4h:.2f}) — +6 pts SELL")
-        elif _cuña_asc_4h == 'compresion':
-            score_sell += 2
-            logger.info(f"  📐 [4H] CUÑA ASC en compresión ${_s_asc_4h:.2f}-${_t_asc_4h:.2f} — +2 pts SELL")
+            _bonus_sell += 1
+            logger.info(f"  📐 [4H] CUÑA ASC ROTA A LA BAJA (suelo ${_s_asc_4h:.2f}) — +1 pt SELL")
 
         # ── Niveles S/R intermedios wing=2 (captura pivotes en tendencias fuertes) ──
         _sop_interm_4h, _res_interm_4h = calcular_sr_multiples(
@@ -534,12 +522,12 @@ class GoldDetector4H(BaseDetector):
         _en_sop_sr_mult    = any(abs(low  - s) <= tol for s in _sop_interm_4h)
         if _en_resist_sr_mult and not en_zona_resist:
             _nivel_sr = min(_res_interm_4h, key=lambda r: abs(high - r))
-            score_sell += 2
-            logger.info(f"  📌 [4H] Precio cerca resistencia S/R intermedia ${_nivel_sr:.2f} — +2 pts SELL")
+            _bonus_sell += 1
+            logger.info(f"  📌 [4H] Precio cerca resistencia S/R intermedia ${_nivel_sr:.2f} — +1 pt SELL")
         if _en_sop_sr_mult and not en_zona_soporte:
             _nivel_sr2 = min(_sop_interm_4h, key=lambda s: abs(low - s))
-            score_buy += 2
-            logger.info(f"  📌 [4H] Precio cerca soporte S/R intermedio ${_nivel_sr2:.2f} — +2 pts BUY")
+            _bonus_buy += 1
+            logger.info(f"  📌 [4H] Precio cerca soporte S/R intermedio ${_nivel_sr2:.2f} — +1 pt BUY")
 
         # ADX lateral: penalizar señales genéricas, pero NO en zona S/R
         # (consolidación en soporte/resistencia = agotamiento, no debilidad)
@@ -599,53 +587,39 @@ class GoldDetector4H(BaseDetector):
         if fallo_continuacion_alcista:
             logger.warning(f"  ⚠️ [4H] FALLO DE CONTINUACIÓN ALCISTA detectado (ATL={_atl_reciente:.1f})")
 
+        # ── SCORING COMPRA — CORE (7 pts máx) ──────────────────────────────────────
         # score_buy ya inicializado antes del bloque de ruptura/cuña
-        score_buy += 2 if en_zona_soporte          else 0
-        score_buy += 2 if vela_rebote              else 0
-        score_buy += 2 if vol_alto_rebote          else 0
-        score_buy += 1 if rsi_bajo_girando         else 0
-        score_buy += 1 if rsi_acelerando_subida     else 0   # RSI subiendo 3 velas consecutivas
-        score_buy += 1 if rsi_sobreventa           else 0
-        score_buy += 1 if divergencia_alcista      else 0
-        score_buy += 1 if emas_alcistas            else 0
-        score_buy += 1 if estructura_alcista       else 0
-        score_buy += 1 if intento_caida_fallido    else 0
-        score_buy += 1 if vol_decreciente_sell     else 0
-        score_buy += 1 if (hammer and vol_alto_rebote)             else 0
-        score_buy += 1 if (divergencia_alcista and rsi_sobreventa) else 0
-        score_buy += 1 if sobre_ema200             else 0
-        score_buy += 2 if bb_toca_inferior        else 0
-        score_buy += 2 if morning_star            else 0
-        score_buy += 2 if macd_cruce_alcista      else 0
-        score_buy += 2 if adx_alcista             else 0
-        score_buy += 1 if macd_divergencia_alcista else 0
-        score_buy += 1 if obv_divergencia_alcista else 0
-        score_buy += 1 if obv_creciente           else 0
-        score_buy += 1 if macd_positivo           else 0
-        score_buy  += 3 if fallo_continuacion_alcista else 0
-        score_buy  += 4 if rotura_alcista          else 0  # rotura con impulso+volumen
-        score_buy  += 3 if ds_detectado            else 0  # doble suelo confirmado
-        score_buy  += 2 if canal_bajista_roto_4h   else 0  # canal bajista roto → sesgo alcista
-        score_buy  += 3 if en_soporte_canal_alcista else 0  # precio tocando directriz alcista
-
-        # ADX lateral en zona soporte: no penalizar (consolidación = agotamiento bajista)
-        if adx_lateral and not (_en_sop_sr_mult or en_zona_soporte):
-            score_buy = max(0, score_buy - 3)
+        score_buy += (
+            (2 if en_zona_soporte   else 0) +   # precio en nivel S/R de soporte
+            (2 if emas_alcistas     else 0) +   # EMA rápida por encima de EMA lenta
+            (1 if sobre_ema200      else 0) +   # precio sobre EMA 200 (tendencia alcista)
+            (1 if vol_alto_rebote   else 0) +   # volumen confirma el rebote
+            (1 if vela_rebote       else 0)     # patrón de vela de reversión
+        )
+        # BONUS BUY — confirmaciones adicionales, cada una vale +1
+        _bonus_buy += (
+            (1 if rsi_bajo_girando             else 0) +
+            (1 if divergencia_alcista          else 0) +   # sin doble conteo
+            (1 if macd_cruce_alcista           else 0) +
+            (1 if adx_alcista                  else 0) +
+            (1 if morning_star                 else 0) +
+            (1 if canal_bajista_roto_4h        else 0) +
+            (1 if fallo_continuacion_alcista   else 0) +
+            (1 if rotura_alcista               else 0) +
+            (1 if ds_detectado                 else 0) +
+            (1 if en_soporte_canal_alcista     else 0)
+        )
 
         # ── FIBONACCI RETRACEMENT DINÁMICO (4H) ─────────────────────────────────
         _fib_nivel, _fib_precio, _fib_tendencia = detectar_precio_en_fibonacci(
             df, atr, lookback=params.get('sr_lookback', 80), tol_mult=0.5)
         if _fib_nivel is not None:
-            # En tendencia bajista: niveles 0.382/0.5 son resistencia → +SELL
-            # En tendencia alcista: niveles 0.5/0.618/0.786 son soporte → +BUY
             if _fib_tendencia == 'bajista':
-                _pts_fib = 5 if _fib_nivel in (0.382, 0.5) else 3
-                score_sell += _pts_fib
-                logger.info(f"  🔢 [4H] Fib {_fib_nivel} BAJISTA en ${_fib_precio:.2f} — +{_pts_fib} pts SELL")
+                _bonus_sell += 1
+                logger.info(f"  🔢 [4H] Fib {_fib_nivel} BAJISTA en ${_fib_precio:.2f} — +1 pt SELL")
             else:
-                _pts_fib = 5 if _fib_nivel in (0.5, 0.618) else 3
-                score_buy += _pts_fib
-                logger.info(f"  🔢 [4H] Fib {_fib_nivel} ALCISTA en ${_fib_precio:.2f} — +{_pts_fib} pts BUY")
+                _bonus_buy += 1
+                logger.info(f"  🔢 [4H] Fib {_fib_nivel} ALCISTA en ${_fib_precio:.2f} — +1 pt BUY")
 
         # Mostrar todos los niveles Fib para contexto en logs
         _fib_data = calcular_fibonacci(df, lookback=params.get('sr_lookback', 80))
@@ -669,11 +643,11 @@ class GoldDetector4H(BaseDetector):
             df, atr, _rsi_serie_4h, _todos_soportes, tol_mult=0.6)
 
         if _rebote_baj:
-            score_sell += 4
-            logger.info(f"  🔄 [4H] REBOTE BAJISTA detectado ({_desc_rebote_baj}) — +4 pts SELL")
+            _bonus_sell += 1
+            logger.info(f"  🔄 [4H] REBOTE BAJISTA detectado ({_desc_rebote_baj}) — +1 pt SELL")
         if _rebote_alc:
-            score_buy += 4
-            logger.info(f"  🔄 [4H] REBOTE ALCISTA detectado ({_desc_rebote_alc}) — +4 pts BUY")
+            _bonus_buy += 1
+            logger.info(f"  🔄 [4H] REBOTE ALCISTA detectado ({_desc_rebote_alc}) — +1 pt BUY")
 
         # ── PULLBACK ACTIVO (4H) ──────────────────────────────────────────────────
         _pb, _pb_tend, _pb_fib, _pb_precio, _pb_prof = detectar_pullback_activo(
@@ -688,8 +662,8 @@ class GoldDetector4H(BaseDetector):
                 # Bonus BUY si precio está cerca del nivel Fib (oportunidad de entrada)
                 _en_fib_pb = _pb_precio is not None and abs(close - _pb_precio) <= atr * 0.6
                 if _en_fib_pb:
-                    score_buy += 4
-                    logger.info(f"  📉↗️ [4H] PULLBACK ALCISTA {_pb_pct}% en {_fib_str} (${_pb_precio:.0f}) — +4 pts BUY")
+                    _bonus_buy += 1
+                    logger.info(f"  📉↗️ [4H] PULLBACK ALCISTA {_pb_pct}% en {_fib_str} (${_pb_precio:.0f}) — +1 pt BUY")
                 else:
                     logger.info(f"  📉↗️ [4H] PULLBACK ALCISTA {_pb_pct}% — precio alejado de Fib ({_fib_str} ${_pb_precio:.0f})")
                 _pb_contexto = f"📉↗️ <b>Pullback</b> en uptrend 4H — {_pb_pct}% retroceso ({_fib_str} ${_pb_precio:.0f})"
@@ -697,8 +671,8 @@ class GoldDetector4H(BaseDetector):
                 # Pullback dentro de downtrend: precio subiendo desde el low
                 _en_fib_pb = _pb_precio is not None and abs(close - _pb_precio) <= atr * 0.6
                 if _en_fib_pb:
-                    score_sell += 4
-                    logger.info(f"  📈↘️ [4H] PULLBACK BAJISTA {_pb_pct}% en {_fib_str} (${_pb_precio:.0f}) — +4 pts SELL")
+                    _bonus_sell += 1
+                    logger.info(f"  📈↘️ [4H] PULLBACK BAJISTA {_pb_pct}% en {_fib_str} (${_pb_precio:.0f}) — +1 pt SELL")
                 else:
                     logger.info(f"  📈↘️ [4H] PULLBACK BAJISTA {_pb_pct}% — precio alejado de Fib ({_fib_str} ${_pb_precio:.0f})")
                 _pb_contexto = f"📈↘️ <b>Pullback</b> en downtrend 4H — {_pb_pct}% retroceso ({_fib_str} ${_pb_precio:.0f})"
@@ -707,6 +681,10 @@ class GoldDetector4H(BaseDetector):
 
         # Exponer contexto pullback para que se appendee en todos los mensajes 4H
         self.contexto_pullback = _pb_contexto
+
+        # ── Aplicar cap duro de bonus (máx 5 pts) ──────────────────────────────
+        score_sell += min(_bonus_sell, 5)
+        score_buy  += min(_bonus_buy,  5)
 
         # ── Ajuste por sesgo DXY (correlación inversa Gold/USD) ──
         dxy_bias = get_dxy_bias()
@@ -796,35 +774,32 @@ class GoldDetector4H(BaseDetector):
         # ── Micro-volatilidad y momentum reciente ─────────────────────────────
         if _micro_vol > 1.5:
             if score_sell > score_buy:
-                score_sell = min(score_sell + 1, 23)
+                score_sell = min(score_sell + 1, 12)
                 logger.info(f"  📈 [4H] Micro-vol {_micro_vol:.2f} (expansión) — +1 SELL")
             elif score_buy > score_sell:
-                score_buy = min(score_buy + 1, 23)
+                score_buy = min(score_buy + 1, 12)
                 logger.info(f"  📈 [4H] Micro-vol {_micro_vol:.2f} (expansión) — +1 BUY")
         elif _micro_vol < 0.8:
             score_sell = max(0, score_sell - 1)
             score_buy  = max(0, score_buy  - 1)
             logger.info(f"  😴 [4H] Micro-vol {_micro_vol:.2f} (dormido) — -1 ambos scores")
         if _momentum_rec == -1 and en_zona_resist:
-            score_sell = min(score_sell + 1, 23)
+            score_sell = min(score_sell + 1, 12)
             logger.info(f"  🔻 [4H] Momentum bajista en resistencia — +1 SELL")
         elif _momentum_rec == 1 and en_zona_soporte:
-            score_buy = min(score_buy + 1, 23)
+            score_buy = min(score_buy + 1, 12)
             logger.info(f"  🔺 [4H] Momentum alcista en soporte — +1 BUY")
 
-        # ── Ajuste de score por predicción anticipada ML ───────────────────────
-        if _prob_buy > 0.80:
-            score_buy = min(score_buy + 3, 25)
-            logger.info(f"  🤖 [ML 4H] Alta probabilidad BUY ({_prob_buy:.1%}) — +3 pts BUY")
-        elif _prob_buy > 0.65:
-            score_buy = min(score_buy + 2, 25)
-            logger.info(f"  🤖 [ML 4H] Probabilidad BUY ({_prob_buy:.1%}) — +2 pts BUY")
-        if _prob_sell > 0.80:
-            score_sell = min(score_sell + 3, 25)
-            logger.info(f"  🤖 [ML 4H] Alta probabilidad SELL ({_prob_sell:.1%}) — +3 pts SELL")
-        elif _prob_sell > 0.65:
-            score_sell = min(score_sell + 2, 25)
-            logger.info(f"  🤖 [ML 4H] Probabilidad SELL ({_prob_sell:.1%}) — +2 pts SELL")
+        # ── Ajuste de score por predicción anticipada ML — cap global /12 ──
+        if _prob_buy > 0.65:
+            score_buy = min(score_buy + 1, 12)
+            logger.info(f"  🤖 [ML 4H] Probabilidad BUY ({_prob_buy:.1%}) — +1 pt BUY")
+        if _prob_sell > 0.65:
+            score_sell = min(score_sell + 1, 12)
+            logger.info(f"  🤖 [ML 4H] Probabilidad SELL ({_prob_sell:.1%}) — +1 pt SELL")
+        # cap final por precaución (macro adjusters pueden exceder el max)
+        score_sell = min(score_sell, 12)
+        score_buy  = min(score_buy,  12)
         _condiciones_bd['score_sell'] = score_sell
         _condiciones_bd['score_buy'] = score_buy
         _condiciones_bd['ml_prob_buy'] = round(float(_prob_buy), 4)
@@ -834,10 +809,10 @@ class GoldDetector4H(BaseDetector):
         for _k, _v in (_pred_features or {}).items():
             _condiciones_bd[_k] = float(_v) if isinstance(_v, (int, float, np.floating)) else _v
 
-        _umbral_max = self.umbral_adaptativo(16, atr, atr_media)   # antes: 14
-        _umbral_fue = self.umbral_adaptativo(14, atr, atr_media)   # antes: 12
-        _umbral_med = self.umbral_adaptativo(11, atr, atr_media)   # antes: 9
-        _umbral_ale = self.umbral_adaptativo(7,  atr, atr_media)   # antes: 5
+        _umbral_max = self.umbral_adaptativo(11, atr, atr_media)   # core 7 + bonus cap 5 = máx 12
+        _umbral_fue = self.umbral_adaptativo(9, atr, atr_media)
+        _umbral_med = self.umbral_adaptativo(7, atr, atr_media)
+        _umbral_ale = self.umbral_adaptativo(5, atr, atr_media)
 
         # NIVELES DE SEÑAL 4H (MÁS ESTRICTOS)
         senal_sell_maxima = score_sell >= _umbral_max
@@ -919,7 +894,7 @@ class GoldDetector4H(BaseDetector):
     
         logger.info(f"  📅 Vela:  {fecha}")
         logger.info(f"  💰 Close: {round(close, 2)}")
-        logger.info(f"  📊 Score SELL: {score_sell}/15 | Score BUY: {score_buy}/15")
+        logger.info(f"  📊 Score SELL: {score_sell}/12 | Score BUY: {score_buy}/12")
         logger.info(f"  🔴 SELL → Alerta:{senal_sell_alerta} Media:{senal_sell_media} Fuerte:{senal_sell_fuerte} Máxima:{senal_sell_maxima}")
         logger.info(f"  🟢 BUY  → Alerta:{senal_buy_alerta}  Media:{senal_buy_media}  Fuerte:{senal_buy_fuerte}  Máxima:{senal_buy_maxima}")
 
@@ -1079,7 +1054,7 @@ class GoldDetector4H(BaseDetector):
                 f"🚨 <b>REVISIÓN — CIERRE SUGERIDO (ORO 4H)</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⚠️ Tienes una <b>COMPRA 4H ACTIVA</b>, pero el análisis detecta:\n"
-                f"  {nivel_cs} (score {score_sell}/21)\n"
+                f"  {nivel_cs} (score {score_sell}/12)\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"💰 Precio actual: ${round(close, 2)}\n"
                 f"📐 Zona de resistencia: ${round(zrl, 2)}–${round(zrh, 2)}\n"
@@ -1101,7 +1076,7 @@ class GoldDetector4H(BaseDetector):
                 f"🚨 <b>REVISIÓN — CIERRE SUGERIDO (ORO 4H)</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"⚠️ Tienes una <b>VENTA 4H ACTIVA</b>, pero el análisis detecta:\n"
-                f"  {nivel_cb} (score {score_buy}/21)\n"
+                f"  {nivel_cb} (score {score_buy}/12)\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"💰 Precio actual: ${round(close, 2)}\n"
                 f"📐 Zona de soporte: ${round(zsl, 2)}–${round(zsh, 2)}\n"
@@ -1148,7 +1123,7 @@ class GoldDetector4H(BaseDetector):
                    f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1  (+${round(sell_entry - tp2_v, 2)})\n"
                    f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1  (+${round(sell_entry - tp3_v, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                   f"📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING"
                    + _ctx_htf + _sfx_sell)
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
@@ -1186,7 +1161,7 @@ class GoldDetector4H(BaseDetector):
                    f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1  (+${round(tp2_c - buy_entry, 2)})\n"
                    f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1  (+${round(tp3_c - buy_entry, 2)})\n"
                    f"━━━━━━━━━━━━━━━━━━━━\n"
-                   f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                   f"📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                    f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING"
                    + _ctx_htf + _sfx_buy)
             if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
@@ -1226,7 +1201,7 @@ class GoldDetector4H(BaseDetector):
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"{nivel} — precio ahora en zona\n"
                                f"💰 <b>Precio:</b> ${round(close, 2)}\n"
-                               f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                               f"📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
                         _nivel_z_sell_4h = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
                         if not self._debe_suprimir_por_evento(_nivel_z_sell_4h):
@@ -1245,7 +1220,7 @@ class GoldDetector4H(BaseDetector):
                                f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_v}  R:R {rr(sell_entry, sl_venta, tp2_v)}:1\n"
                                f"🎯 <b>TP3:</b> ${tp3_v}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                               f"📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
                         if _ctx_htf:
                             msg += _ctx_htf
@@ -1286,7 +1261,7 @@ class GoldDetector4H(BaseDetector):
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"{nivel} — precio ahora en zona\n"
                                f"💰 <b>Precio:</b> ${round(close, 2)}\n"
-                               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                               f"📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
                         _nivel_z_buy_4h = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
                         if not self._debe_suprimir_por_evento(_nivel_z_buy_4h):
@@ -1305,7 +1280,7 @@ class GoldDetector4H(BaseDetector):
                                f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_c}  R:R {rr(buy_entry, sl_compra, tp2_c)}:1\n"
                                f"🎯 <b>TP3:</b> ${tp3_c}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n"
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                               f"📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"⏱️ <b>TF:</b> 4H  📅 {fecha}")
                         if _ctx_htf:
                             msg += _ctx_htf
@@ -1392,7 +1367,7 @@ class GoldDetector4H(BaseDetector):
                        f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_break_buy}  R:R {rr(close, sl_break_buy, tp2_break_buy)}:1\n"
                        f"🎯 <b>TP3:</b> ${tp3_break_buy}  R:R {rr(close, sl_break_buy, tp3_break_buy)}:1\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                       f"📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
                 if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                     try:
@@ -1432,7 +1407,7 @@ class GoldDetector4H(BaseDetector):
                        f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_break_sell}  R:R {rr(close, sl_break_sell, tp2_break_sell)}:1\n"
                        f"🎯 <b>TP3:</b> ${tp3_break_sell}  R:R {rr(close, sl_break_sell, tp3_break_sell)}:1\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                       f"📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
                 if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                     try:
@@ -1477,7 +1452,7 @@ class GoldDetector4H(BaseDetector):
                        f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_dt}  R:R {rr(entrada_dt, sl_dt, tp2_dt)}:1  (100% medida)\n"
                        f"🎯 <b>TP3:</b> ${tp3_dt}  R:R {rr(entrada_dt, sl_dt, tp3_dt)}:1  (150% ext)\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                       f"📊 <b>Score:</b> {score_sell}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
                 if self.db and not self.db.existe_senal_reciente(simbolo_db, "VENTA", horas=4):
                     try:
@@ -1517,7 +1492,7 @@ class GoldDetector4H(BaseDetector):
                        f"💎 <b>TP RECOMENDADO → TP2:</b> ${tp2_ds}  R:R {rr(entrada_ds, sl_ds, tp2_ds)}:1  (100% medida)\n"
                        f"🎯 <b>TP3:</b> ${tp3_ds}  R:R {rr(entrada_ds, sl_ds, tp3_ds)}:1  (150% ext)\n"
                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                       f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                       f"📊 <b>Score:</b> {score_buy}/12  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                        f"⏱️ <b>TF:</b> 4H  📅 {fecha}  🔒 SWING")
                 if self.db and not self.db.existe_senal_reciente(simbolo_db, "COMPRA", horas=4):
                     try:

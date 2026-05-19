@@ -519,6 +519,8 @@ class GoldDetector1H(BaseDetector):
             (1 if bajo_ema200        else 0)      # precio bajo EMA 200 (tendencia bajista)
         )
         score_buy = 0
+        _bonus_sell = 0   # confirmaciones adicionales — cap duro en 3
+        _bonus_buy  = 0
         # ── Ruptura horizontal directa (sin retest) 1H ─────────────────────
         _lkb_1h = params.get('sr_lookback', 100)
         _rup_sop_1h, _niv_sop_1h = detectar_ruptura_soporte_horizontal(
@@ -526,20 +528,20 @@ class GoldDetector1H(BaseDetector):
         _rup_res_1h, _niv_res_1h = detectar_ruptura_resistencia_horizontal(
             df, atr, lookback=_lkb_1h, wing=3)
         if _rup_sop_1h:
-            score_sell += 4
-            logger.info(f"  💥 [1H] RUPTURA SOPORTE ${_niv_sop_1h:.2f} — +4 pts SELL")
+            _bonus_sell += 1
+            logger.info(f"  💥 [1H] RUPTURA SOPORTE ${_niv_sop_1h:.2f} — +1 pt SELL")
         if _rup_res_1h:
-            score_buy += 4
-            logger.info(f"  💥 [1H] RUPTURA RESISTENCIA ${_niv_res_1h:.2f} — +4 pts BUY")
+            _bonus_buy += 1
+            logger.info(f"  💥 [1H] RUPTURA RESISTENCIA ${_niv_res_1h:.2f} — +1 pt BUY")
         # S/R intermedia: proximidad a nivel no detectado por wing=3
         if _en_resist_sr_1h and not en_zona_resist:
             _nsr = min(_res_interm_1h, key=lambda r: abs(high - r))
-            score_sell += 2
-            logger.info(f"  📌 [1H] Precio en resistencia S/R intermedia ${_nsr:.2f} — +2 pts SELL")
+            _bonus_sell += 1
+            logger.info(f"  📌 [1H] Precio en resistencia S/R intermedia ${_nsr:.2f} — +1 pt SELL")
         if _en_sop_sr_1h and not en_zona_soporte:
             _nsr2 = min(_sop_interm_1h, key=lambda s: abs(low - s))
-            score_buy += 2
-            logger.info(f"  📌 [1H] Precio en soporte S/R intermedio ${_nsr2:.2f} — +2 pts BUY")
+            _bonus_buy += 1
+            logger.info(f"  📌 [1H] Precio en soporte S/R intermedio ${_nsr2:.2f} — +1 pt BUY")
 
         # ── Cuña descendente / ascendente (1H) — solo detección para snapshot ──
         _lkb_cuña_1h = min(params.get('sr_lookback', 100), 80)
@@ -567,6 +569,9 @@ class GoldDetector1H(BaseDetector):
             (2 if emas_alcistas       else 0) +   # EMA rápida por encima de EMA lenta
             (1 if sobre_ema200        else 0)      # precio sobre EMA 200 (tendencia alcista)
         )
+        # ── Aplicar bonus con cap duro (max 3 pts) ────────────────────────────
+        score_sell += min(_bonus_sell, 3)
+        score_buy  += min(_bonus_buy,  3)
 
         logger.info(f"  📊 [1H] Score SELL={score_sell} BUY={score_buy} | "
                     f"EMA {'SELL' if emas_bajistas else 'BUY'} | "
@@ -622,19 +627,13 @@ class GoldDetector1H(BaseDetector):
         _micro_vol = 1.0
         _momentum_rec = 0
 
-        # ── Ajuste de score por predicción anticipada ML ───────────────────────
-        if _prob_buy > 0.80:
-            score_buy = min(score_buy + 4, 25)
-            logger.info(f"  🤖 [ML 1H] Alta probabilidad BUY ({_prob_buy:.1%}) — +4 pts BUY")
-        elif _prob_buy > 0.65:
-            score_buy = min(score_buy + 2, 25)
-            logger.info(f"  🤖 [ML 1H] Probabilidad BUY ({_prob_buy:.1%}) — +2 pts BUY")
-        if _prob_sell > 0.80:
-            score_sell = min(score_sell + 4, 25)
-            logger.info(f"  🤖 [ML 1H] Alta probabilidad SELL ({_prob_sell:.1%}) — +4 pts SELL")
-        elif _prob_sell > 0.65:
-            score_sell = min(score_sell + 2, 25)
-            logger.info(f"  🤖 [ML 1H] Probabilidad SELL ({_prob_sell:.1%}) — +2 pts SELL")
+        # ── Ajuste de score por predicción anticipada ML — cap global /8 ────
+        if _prob_buy > 0.65:
+            score_buy = min(score_buy + 1, 8)
+            logger.info(f"  🤖 [ML 1H] Probabilidad BUY ({_prob_buy:.1%}) — +1 pt BUY")
+        if _prob_sell > 0.65:
+            score_sell = min(score_sell + 1, 8)
+            logger.info(f"  🤖 [ML 1H] Probabilidad SELL ({_prob_sell:.1%}) — +1 pt SELL")
 
         # ── Snapshot de condiciones para backtesting/estudio ─────────
         _condiciones_bd = {
@@ -852,7 +851,7 @@ class GoldDetector1H(BaseDetector):
                 return
 
         self.ultimo_analisis[clave_simbolo] = {'fecha': fecha, 'score_sell': score_sell, 'score_buy': score_buy}
-        logger.info(f"  📅 {fecha} | Close: ${close:.2f} | ATR: ${atr:.2f} | SELL: {score_sell}/21 | BUY: {score_buy}/21")
+        logger.info(f"  📅 {fecha} | Close: ${close:.2f} | ATR: ${atr:.2f} | SELL: {score_sell}/8 | BUY: {score_buy}/8")
 
         clave_vela = f"{simbolo}_1H_{fecha}"
 
@@ -1084,7 +1083,7 @@ class GoldDetector1H(BaseDetector):
                    + 
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    + (f"🔻 <b>Canal alcista ROTO</b> — nivel canal ${linea_soporte_canal:.2f}\n" if canal_alcista_roto else "")
-                   + f"📊 <b>Score:</b> {score_sell}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+                   + f"📊 <b>Score:</b> {score_sell}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                    f"📰 <b>Noticias:</b> {_sesgo_etiq} ({_sesgo_score:+.1f})  ➜  {_sesgo_news.replace('_', ' ')}\n"
                    f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
             _bloquear_prep_sell = self.db and (
@@ -1139,7 +1138,7 @@ class GoldDetector1H(BaseDetector):
                    + 
                    f"━━━━━━━━━━━━━━━━━━━━\n"
                    + (f"🔺 <b>Canal bajista ROTO</b> — nivel canal ${linea_resist_canal:.2f}\n" if canal_bajista_roto else "")
-                   + f"📊 <b>Score:</b> {score_buy}/23  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
+                   + f"📊 <b>Score:</b> {score_buy}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ATR:</b> ${atr:.2f}\n"
                    f"📰 <b>Noticias:</b> {_sesgo_etiq} ({_sesgo_score:+.1f})  ➜  {_sesgo_news.replace('_', ' ')}\n"
                    f"⏱️ <b>TF:</b> 1H  📅 {fecha}  🔒 Aguardando alineación 15M/5M...")
             _bloquear_prep_buy = self.db and (
@@ -1195,7 +1194,7 @@ class GoldDetector1H(BaseDetector):
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"{nivel} — precio ahora en zona\n"
                                f"💰 <b>Precio:</b> ${close:.2f}\n"
-                               f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                               f"📊 <b>Score:</b> {score_sell}/8  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                                f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
                         _nivel_z_sell = ("MAXIMA" if senal_sell_maxima else "FUERTE" if senal_sell_fuerte else "MEDIA" if senal_sell_media else "ALERTA")
                         if not self._debe_suprimir_por_evento(_nivel_z_sell):
@@ -1220,7 +1219,7 @@ class GoldDetector1H(BaseDetector):
                                   f"🎯 <b>TP3:</b> ${tp3_v:.2f}  R:R {rr(sell_entry, sl_venta, tp3_v)}:1\n")
                                + 
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"📊 <b>Score:</b> {score_sell}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                               f"📊 <b>Score:</b> {score_sell}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"📐 <b>ATR:</b> ${atr:.2f}\n"
                                f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
                                f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
@@ -1272,7 +1271,7 @@ class GoldDetector1H(BaseDetector):
                                f"━━━━━━━━━━━━━━━━━━━━\n"
                                f"{nivel} — precio ahora en zona\n"
                                f"💰 <b>Precio:</b> ${close:.2f}\n"
-                               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}\n"
+                               f"📊 <b>Score:</b> {score_buy}/8  📉 <b>RSI:</b> {round(rsi, 1)}\n"
                                f"⏱️ <b>TF:</b> 1H  📅 {fecha}")
                         _nivel_z_buy = ("MAXIMA" if senal_buy_maxima else "FUERTE" if senal_buy_fuerte else "MEDIA" if senal_buy_media else "ALERTA")
                         if not self._debe_suprimir_por_evento(_nivel_z_buy):
@@ -1297,7 +1296,7 @@ class GoldDetector1H(BaseDetector):
                                   f"🎯 <b>TP3:</b> ${tp3_c:.2f}  R:R {rr(buy_entry, sl_compra, tp3_c)}:1\n")
                                + 
                                f"━━━━━━━━━━━━━━━━━━━━\n"
-                               f"📊 <b>Score:</b> {score_buy}/21  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
+                               f"📊 <b>Score:</b> {score_buy}/8  📉 <b>RSI:</b> {round(rsi, 1)}  📐 <b>ADX:</b> {round(adx, 1)}\n"
                                f"📐 <b>ATR:</b> ${atr:.2f}\n"
                                f"⏱️ <b>TF:</b> 1H  📅 {fecha}\n"
                                f"🔒 <b>INTRADÍA — Cerrar antes del cierre de sesión</b>")
@@ -1399,7 +1398,7 @@ class GoldDetector1H(BaseDetector):
                         f"🎯 <b>TP3:</b> ${tp3_rt_sell:.2f}  R:R {rr3}:1  (zona S/R)\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"📐 <b>Línea canal:</b> ${linea_soporte_canal:.2f}  📉 <b>RSI:</b> {round(rsi, 1)}\n"
-                        f"📐 <b>ATR:</b> ${atr:.2f}  📊 <b>Score:</b> {score_sell}/23\n"
+                        f"📐 <b>ATR:</b> ${atr:.2f}  📊 <b>Score:</b> {score_sell}/8\n"
                         f"⏱️ 1H  📅 {fecha}  🏆 Setup retest canal"
                     )
                     if self.db:
@@ -1475,7 +1474,7 @@ class GoldDetector1H(BaseDetector):
                         f"🎯 <b>TP3:</b> ${tp3_rt_buy:.2f}  R:R {rr3}:1  (zona S/R)\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"📐 <b>Línea canal:</b> ${linea_resist_canal:.2f}  📉 <b>RSI:</b> {round(rsi, 1)}\n"
-                        f"📐 <b>ATR:</b> ${atr:.2f}  📊 <b>Score:</b> {score_buy}/23\n"
+                        f"📐 <b>ATR:</b> ${atr:.2f}  📊 <b>Score:</b> {score_buy}/8\n"
                         f"⏱️ 1H  📅 {fecha}  🏆 Setup retest canal"
                     )
                     if self.db:
