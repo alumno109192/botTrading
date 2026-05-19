@@ -33,7 +33,7 @@ def _push_disponible() -> bool:
 
 def enviar_push_senal(senal_id: int, titulo: str, cuerpo: str,
                       simbolo: str = '', timeframe: str = '',
-                      direccion: str = '') -> int:
+                      direccion: str = '', url: str = '') -> int:
     """
     Envía una notificación push a todos los suscriptores registrados.
 
@@ -75,7 +75,7 @@ def enviar_push_senal(senal_id: int, titulo: str, cuerpo: str,
         return 0
 
     # URL de detalle al hacer clic
-    url_detalle = f"/dashboard/activas"
+    url_detalle = url if url else "/dashboard/activas"
 
     payload = json.dumps({
         'title':     titulo,

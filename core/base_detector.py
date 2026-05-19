@@ -503,8 +503,9 @@ class BaseDetector(ABC):
         no aparecerá en el dashboard web hasta que el precio llegue a la entrada
         y el signal_monitor la transite a ACTIVA.
         """
-        senal_id = self._last_senal_id
-        self._last_senal_id = None          # consumir siempre
+        senal_id    = self._last_senal_id
+        es_esperando = self._last_senal_esperando
+        self._last_senal_id        = None   # consumir siempre
         self._last_senal_esperando = False  # consumir siempre
 
         # ── Guard mercado cerrado ─────────────────────────────────────────────
@@ -649,10 +650,12 @@ class BaseDetector(ABC):
                 _lineas = mensaje.strip().split('\n')
                 _titulo = _lineas[0][:60] if _lineas else '📊 Nueva señal'
                 _cuerpo = _lineas[1][:80] if len(_lineas) > 1 else ''
+                _push_url = '/dashboard/pendientes' if es_esperando else '/dashboard/activas'
                 enviar_push_senal(
                     senal_id=senal_id,
                     titulo=_titulo,
                     cuerpo=_cuerpo,
+                    url=_push_url,
                 )
             except Exception as _ep:
                 _logger.debug(f"Push: error no crítico — {_ep}")
