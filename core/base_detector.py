@@ -692,6 +692,36 @@ class BaseDetector(ABC):
     # Score mínimo adaptativo
     # ─────────────────────────────────────────────────────────────────────────
 
+    def spread_por_sesion(self) -> float:
+        """
+        Devuelve el spread estimado de XAUUSD según la sesión de mercado UTC.
+
+        Los spreads varían significativamente con la liquidez disponible:
+          - Asiática profunda  (22:00-06:00 UTC): $0.80  — mínima liquidez
+          - Pre-Londres        (06:00-08:00 UTC): $0.45  — liquidez construyendo
+          - Londres            (08:00-13:00 UTC): $0.25  — alta liquidez
+          - Solapamiento L+NY  (13:00-17:00 UTC): $0.20  — máxima liquidez
+          - Nueva York         (17:00-21:00 UTC): $0.30  — buena liquidez
+          - Post-NY / cierre   (21:00-22:00 UTC): $0.65  — liquidez cayendo
+
+        Ajustar los valores según el broker real usado.
+        """
+        from datetime import datetime, timezone
+        hora = datetime.now(timezone.utc).hour
+
+        if 13 <= hora < 17:   # Solapamiento Londres + Nueva York
+            return 0.20
+        if 8 <= hora < 13:    # Sesión Londres
+            return 0.25
+        if 17 <= hora < 21:   # Sesión Nueva York
+            return 0.30
+        if 6 <= hora < 8:     # Pre-Londres / transición Asia-Londres
+            return 0.45
+        if 21 <= hora < 22:   # Post-NY / cierre
+            return 0.65
+        # 22:00-06:00 UTC: sesión asiática profunda
+        return 0.80
+
     def en_sesion_optima(self) -> bool:
         """
         Devuelve True si la hora UTC actual está dentro de la sesión óptima

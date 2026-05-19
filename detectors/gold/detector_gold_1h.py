@@ -297,7 +297,7 @@ class GoldDetector1H(BaseDetector):
                 swing_l_vals.append(l)
 
         # Ajuste de spread + comisión del broker: coste total por lado
-        spread     = params.get('spread', 0.35)
+        spread     = self.spread_por_sesion()  # spread dinámico según sesión de mercado
         commission = params.get('commission', 0.30)
         cost = spread + commission
         sell_entry = round(sell_limit - cost, 2)

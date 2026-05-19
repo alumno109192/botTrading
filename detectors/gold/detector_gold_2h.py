@@ -282,7 +282,7 @@ class GoldDetector2H(BaseDetector):
                 swing_l_vals.append(l)
 
         # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
-        spread = params.get('spread', 0.35)
+        spread = self.spread_por_sesion()  # spread dinámico según sesión de mercado
         sell_entry = round(sell_limit - spread, 2)
         buy_entry  = round(buy_limit  + spread, 2)
 

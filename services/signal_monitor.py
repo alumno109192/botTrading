@@ -1238,7 +1238,7 @@ def _verificar_pendientes_confirm(db: DatabaseManager):
 
 # Tiempo máximo (horas) que una orden LIMIT puede estar pendiente sin ejecutarse
 _EXPIRY_PENDIENTE_H = {
-    'scalping': 1,    # 5M / 15M → 1 hora
+    'scalping': 2,    # 5M / 15M → 2 horas
     'intraday': 12,   # 1H      → 12 horas
     'swing':    48,   # 4H / 1D → 2 días
 }
@@ -1617,12 +1617,10 @@ def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
 
         precio_actual, precio_max, precio_min = precios
 
-        # ── Cancelar si SL fue cruzado antes de ejecutarse ───────────────
-        categoria = _categoria_senal(simbolo)
-        if _cancelar_orden_pendiente(senal, precio_actual, sl, categoria, ahora, db):
-            continue  # ya cancelada
-
         # ── Verificar si la orden fue ejecutada ──────────────────────────
+        # IMPORTANTE: se verifica ANTES del chequeo de SL para evitar que
+        # una spike que cruza entry+SL en el mismo ciclo cancele la orden
+        # en lugar de activarla (el fill en entry ocurre antes que el SL).
         ejecutada = False
         if direccion == 'COMPRA':
             # BUY LIMIT: el precio baja hasta la entrada
@@ -1631,7 +1629,13 @@ def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
             # SELL LIMIT: el precio sube hasta la entrada
             ejecutada = precio_max >= precio_entrada
 
-        if not ejecutada:
+        if ejecutada:
+            pass  # continúa abajo para activar
+        else:
+            # ── Cancelar si SL fue cruzado sin que la orden se ejecutara ─
+            categoria = _categoria_senal(simbolo)
+            if _cancelar_orden_pendiente(senal, precio_actual, sl, categoria, ahora, db):
+                continue  # ya cancelada
             logger.info(
                 f"  ⏳ [#{senal_id}] {simbolo} {direccion} — "
                 f"esperando entrada ${precio_entrada:.2f} "

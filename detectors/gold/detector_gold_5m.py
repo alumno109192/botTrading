@@ -548,7 +548,7 @@ class GoldDetector5M(BaseDetector):
                 logger.warning(f"  ⚠️ [5M] ATR bajo ({atr:.2f} < {params.get('atr_min', 5.0)}) — usando ATR mínimo {atr_efectivo:.2f}")
 
             asm = params['atr_sl_mult']
-            spread     = params.get('spread', 0.35)
+            spread     = self.spread_por_sesion()  # spread dinámico según sesión de mercado
             commission = params.get('commission', 0.30)
             cost = spread + commission  # coste total por lado (spread + comisión)
             sl_venta  = close + (atr_efectivo * asm) + cost

@@ -871,7 +871,7 @@ class GoldDetector4H(BaseDetector):
                 self.umbral_activo_por_sesion(senal_buy_alerta, senal_buy_media, senal_buy_fuerte, senal_buy_maxima, tf_corto=False)
 
         # Ajuste de spread + comisión del broker: coste total por lado
-        spread     = params.get('spread', 0.35)
+        spread     = self.spread_por_sesion()  # spread dinámico según sesión de mercado
         commission = params.get('commission', 0.30)
         cost = spread + commission
         sell_entry = round(sell_limit - cost, 2)

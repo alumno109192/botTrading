@@ -465,7 +465,7 @@ class GoldDetector15M(BaseDetector):
         
             # ── SL y TP para SCALPING ──
             asm = params['atr_sl_mult']
-            spread = params.get('spread', 0.35)  # leído aquí: usado en SL y TPs
+            spread = self.spread_por_sesion()  # spread dinámico según sesión de mercado
             sl_venta  = close + (atr * asm) + spread
             sl_compra = close - (atr * asm) - spread
         
