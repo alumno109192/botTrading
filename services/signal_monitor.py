@@ -290,17 +290,17 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         db.registrar_tp3_hit(senal_id, simbolo, 'COMPRA', tp3, precio_actual, beneficio)
 
         mensaje = f"""
-🎯🎯🎯 <b>TP3 ALCANZADO!</b>
+� <b>TP3 ALCANZADO — CIERRA TODO AHORA</b>
 
 📊 {simbolo} | COMPRA
 💰 Entrada: ${precio_entrada:.2f}
 ✅ TP3: ${tp3:.2f}
 📈 Actual: ${precio_actual:.2f}
-💵 Beneficio: +{beneficio:.2f}%
+💵 Beneficio total: +{beneficio:.2f}%
 
-📋 <b>ACCIÓN RECOMENDADA:</b>
-🔴 Cerrar el 100% restante de la posición
-🏆 ¡Operación completada con éxito!
+📋 <b>ACCIÓN — HACER AHORA:</b>
+🔴 Cerrar el 100% restante a mercado
+🏆 Operación completada
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
@@ -314,7 +314,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         db.registrar_tp2_hit(senal_id, simbolo, 'COMPRA', tp2, precio_actual, beneficio)
 
         mensaje = f"""
-🎯🎯 <b>TP2 ALCANZADO</b>
+⚠️ <b>TP2 ALCANZADO — CIERRA PARCIAL AHORA</b>
 
 📊 {simbolo} | COMPRA
 💰 Entrada: ${precio_entrada:.2f}
@@ -322,10 +322,10 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 📈 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
 
-📋 <b>ACCIÓN RECOMENDADA:</b>
-🔴 Cerrar 33% de la posición
+📋 <b>ACCIÓN — HACER AHORA:</b>
+🔴 Cerrar 33% de la posición a mercado
 🔒 Mover SL a TP1 (${tp1:.2f})
-⏳ Dejar correr hacia TP3 (${tp3:.2f})
+{f"⏳ Dejar correr el resto hacia TP3 (${tp3:.2f})" if tp3 else "⏳ Dejar correr el resto hacia cierre manual"}
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
@@ -344,7 +344,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
             else f"🔴 Cerrar el 100% — objetivo único (señal contra tendencia)\n🔒 No dejar correr más allá de TP1"
         )
         mensaje = f"""
-🎯 <b>TP1 ALCANZADO</b>
+⚠️ <b>TP1 ALCANZADO — CIERRA PARCIAL AHORA</b>
 
 📊 {simbolo} | COMPRA
 💰 Entrada: ${precio_entrada:.2f}
@@ -352,7 +352,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 📈 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
 
-📋 <b>ACCIÓN RECOMENDADA:</b>
+📋 <b>ACCIÓN — HACER AHORA:</b>
 {_accion_tp1_buy}
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
@@ -483,17 +483,17 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         db.registrar_tp3_hit(senal_id, simbolo, 'VENTA', tp3, precio_actual, beneficio)
 
         mensaje = f"""
-🎯🎯🎯 <b>TP3 ALCANZADO!</b>
+� <b>TP3 ALCANZADO — CIERRA TODO AHORA</b>
 
 📊 {simbolo} | VENTA
 💰 Entrada: ${precio_entrada:.2f}
 ✅ TP3: ${tp3:.2f}
 📉 Actual: ${precio_actual:.2f}
-💵 Beneficio: +{beneficio:.2f}%
+💵 Beneficio total: +{beneficio:.2f}%
 
-📋 <b>ACCIÓN RECOMENDADA:</b>
-🔴 Cerrar el 100% restante de la posición
-🏆 ¡Operación completada con éxito!
+📋 <b>ACCIÓN — HACER AHORA:</b>
+🔴 Cerrar el 100% restante a mercado
+🏆 Operación completada
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
@@ -507,7 +507,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         db.registrar_tp2_hit(senal_id, simbolo, 'VENTA', tp2, precio_actual, beneficio)
 
         mensaje = f"""
-🎯🎯 <b>TP2 ALCANZADO</b>
+⚠️ <b>TP2 ALCANZADO — CIERRA PARCIAL AHORA</b>
 
 📊 {simbolo} | VENTA
 💰 Entrada: ${precio_entrada:.2f}
@@ -515,10 +515,10 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 📉 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
 
-📋 <b>ACCIÓN RECOMENDADA:</b>
-🔴 Cerrar 33% de la posición
+📋 <b>ACCIÓN — HACER AHORA:</b>
+🔴 Cerrar 33% de la posición a mercado
 🔒 Mover SL a TP1 (${tp1:.2f})
-⏳ Dejar correr hacia TP3 (${tp3:.2f})
+{f"⏳ Dejar correr el resto hacia TP3 (${tp3:.2f})" if tp3 else "⏳ Dejar correr el resto hacia cierre manual"}
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
         """
@@ -537,7 +537,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
             else f"🔴 Cerrar el 100% — objetivo único (señal contra tendencia)\n🔒 No dejar correr más allá de TP1"
         )
         mensaje = f"""
-🎯 <b>TP1 ALCANZADO</b>
+⚠️ <b>TP1 ALCANZADO — CIERRA PARCIAL AHORA</b>
 
 📊 {simbolo} | VENTA
 💰 Entrada: ${precio_entrada:.2f}
@@ -545,7 +545,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 📉 Actual: ${precio_actual:.2f}
 💵 Beneficio: +{beneficio:.2f}%
 
-📋 <b>ACCIÓN RECOMENDADA:</b>
+📋 <b>ACCIÓN — HACER AHORA:</b>
 {_accion_tp1_sell}
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
@@ -1621,13 +1621,16 @@ def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
         # IMPORTANTE: se verifica ANTES del chequeo de SL para evitar que
         # una spike que cruza entry+SL en el mismo ciclo cancele la orden
         # en lugar de activarla (el fill en entry ocurre antes que el SL).
+        # Tolerancia de $0.10 para absorber discrepancias mínimas del proveedor
+        # de datos (e.g. bid/ask, redondeo de vela 1m vs precio real del broker).
+        _TOL = 0.10
         ejecutada = False
         if direccion == 'COMPRA':
             # BUY LIMIT: el precio baja hasta la entrada
-            ejecutada = precio_min <= precio_entrada
+            ejecutada = precio_min <= precio_entrada + _TOL
         else:
             # SELL LIMIT: el precio sube hasta la entrada
-            ejecutada = precio_max >= precio_entrada
+            ejecutada = precio_max >= precio_entrada - _TOL
 
         if ejecutada:
             pass  # continúa abajo para activar
