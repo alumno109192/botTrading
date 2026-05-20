@@ -96,26 +96,34 @@ def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
     """Obtiene (precio_actual, precio_max_5velas, precio_min_5velas) para un ticker.
 
     Estrategia:
-      1. Lee datos 1m de BD (ohlcv_poller — precisión minuto, captura mechas intra-vela).
+      1. Lee datos 1m de BD secundaria (ohlcv_poller — precisión minuto).
          Si la vela más reciente tiene <= 10 min → devuelve directamente.
-      2. Fallback a datos 5m de BD si no hay 1m frescos.
+      2. Fallback a datos 5m de BD secundaria si no hay 1m frescos.
       3. Fallback a Twelve Data (get_ohlcv 1m) si la BD no tiene datos recientes.
+
+    Nota: los datos OHLCV los escribe el poller SIEMPRE en la BD secundaria
+    (_SecondaryDB). El parámetro `db` puede ser la BD primaria (que no tiene
+    tabla ohlcv), por eso se consulta get_secondary_db() directamente.
     """
-    # ── Paso 1: BD 1m (rápido, precisión al minuto) ───────────────────────────
-    if db is not None:
-        try:
-            res = db.obtener_precio_reciente_bd(ticker, '1m', max_minutos=10)
+    from adapters.database import get_secondary_db as _get_sec_db
+    # ── Paso 1: BD secundaria 1m ─────────────────────────────────────────────
+    try:
+        _db_sec = _get_sec_db()
+        if _db_sec is not None:
+            res = _db_sec.obtener_precio_reciente_bd(ticker, '1m', max_minutos=10)
             if res is not None:
                 return res
-        except Exception as e:
-            logger.error(f"⚠️ [{ticker}] Error leyendo precio 1m de BD: {e}")
-        # ── Paso 2: BD 5m (fallback si no hay 1m) ────────────────────────────
-        try:
-            res = db.obtener_precio_reciente_bd(ticker, '5m', max_minutos=10)
+    except Exception as e:
+        logger.error(f"⚠️ [{ticker}] Error leyendo precio 1m de BD secundaria: {e}")
+    # ── Paso 2: BD secundaria 5m (fallback si no hay 1m) ─────────────────────
+    try:
+        _db_sec = _get_sec_db()
+        if _db_sec is not None:
+            res = _db_sec.obtener_precio_reciente_bd(ticker, '5m', max_minutos=10)
             if res is not None:
                 return res
-        except Exception as e:
-            logger.error(f"⚠️ [{ticker}] Error leyendo precio 5m de BD: {e}")
+    except Exception as e:
+        logger.error(f"⚠️ [{ticker}] Error leyendo precio 5m de BD secundaria: {e}")
 
     # ── Paso 3: Twelve Data vía get_ohlcv 1m (fallback cuando BD > 10 min) ───
     try:
