@@ -579,10 +579,17 @@ function _calcBar(s) {
 
   if (!sl || !ent || !tpEdge) return null;
 
-  // Normalizar a [0,100] donde 0=SL y 100=tpEdge
+  // Cuando SL = entrada (breakeven post-TP1), reconstruir anclaje visual
+  // usando la distancia entrada→TP1 reflejada para preservar proporciones
+  let slEff = sl;
+  if (tp1 && Math.abs(sl - ent) < 0.5) {
+    slEff = isBuy ? ent - (tp1 - ent) : ent + (ent - tp1);
+  }
+
+  // Normalizar a [0,100] donde 0=SL efectivo y 100=tpEdge
   const pct = v => isBuy
-    ? Math.max(0, Math.min(100, (v - sl) / (tpEdge - sl) * 100))
-    : Math.max(0, Math.min(100, (sl - v) / (sl - tpEdge) * 100));
+    ? Math.max(0, Math.min(100, (v - slEff) / (tpEdge - slEff) * 100))
+    : Math.max(0, Math.min(100, (slEff - v) / (slEff - tpEdge) * 100));
 
   const pctEntry  = pct(ent);
   const pctActual = pct(act);
