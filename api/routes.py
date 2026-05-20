@@ -620,8 +620,10 @@ def create_app(estado_sistema, threads_detectores):
             stream_with_context(_generar()),
             mimetype='text/event-stream',
             headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no',   # Nginx: deshabilitar buffer
+                'Cache-Control':      'no-cache',
+                'X-Accel-Buffering':  'no',     # Nginx: deshabilitar buffer
+                'Content-Encoding':   'identity', # fuerza no-compresión → flush inmediato
+                'Transfer-Encoding':  'chunked',  # cada yield → chunk inmediato al browser
             },
         )
 
