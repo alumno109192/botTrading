@@ -259,9 +259,20 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
         logger.info(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
         return
 
+    # Leer flags de TPs antes del guard para evitar falsa cancelación de breakeven
+    tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
+    tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
+    tp3_alcanzado = bool(int(senal.get('tp3_alcanzado') or 0))
+    sl_alcanzado  = bool(int(senal.get('sl_alcanzado')  or 0))
+
+    # tp2/tp3 pueden ser None en señales contra tendencia (solo TP1 activo)
+    tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
+    tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
+
     # ── Guard: señal inoperable (SL ≈ entrada) ──────────────────────────────
+    # Excepción: si TP1 ya fue alcanzado, SL=entry es breakeven legítimo → no cancelar
     _SL_MIN_DIST = 0.5
-    if abs(sl - precio_entrada) < _SL_MIN_DIST:
+    if abs(sl - precio_entrada) < _SL_MIN_DIST and not tp1_alcanzado:
         logger.warning(
             f"⛔ [monitor] Señal #{senal_id} CANCELADA — SL ({sl}) ≈ entrada ({precio_entrada}): "
             f"señal inoperable (diferencia {abs(sl - precio_entrada):.4f} < {_SL_MIN_DIST})"
@@ -277,15 +288,6 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
             simbolo, reply_to_message_id=reply_msg_id
         )
         return
-
-    # tp2/tp3 pueden ser None en señales contra tendencia (solo TP1 activo)
-    tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
-    tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
-    # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
-    tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
-    tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
-    tp3_alcanzado = bool(int(senal.get('tp3_alcanzado') or 0))
-    sl_alcanzado  = bool(int(senal.get('sl_alcanzado')  or 0))
 
     # Verificar TP3 (mayor prioridad) — usa High reciente para capturar picos entre polls
     if tp3 is not None and precio_max >= tp3 and not tp3_alcanzado:
@@ -469,9 +471,20 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
         logger.warning(f"⚠️ [monitor] Señal {senal_id} tiene precios nulos/inválidos — saltando")
         return
 
+    # Leer flags de TPs antes del guard para evitar falsa cancelación de breakeven
+    tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
+    tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
+    tp3_alcanzado = bool(int(senal.get('tp3_alcanzado') or 0))
+    sl_alcanzado  = bool(int(senal.get('sl_alcanzado')  or 0))
+
+    # tp2/tp3 pueden ser None en señales contra tendencia (solo TP1 activo)
+    tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
+    tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
+
     # ── Guard: señal inoperable (SL ≈ entrada) ──────────────────────────────
+    # Excepción: si TP1 ya fue alcanzado, SL=entry es breakeven legítimo → no cancelar
     _SL_MIN_DIST = 0.5
-    if abs(sl - precio_entrada) < _SL_MIN_DIST:
+    if abs(sl - precio_entrada) < _SL_MIN_DIST and not tp1_alcanzado:
         logger.warning(
             f"⛔ [monitor] Señal #{senal_id} CANCELADA — SL ({sl}) ≈ entrada ({precio_entrada}): "
             f"señal inoperable (diferencia {abs(sl - precio_entrada):.4f} < {_SL_MIN_DIST})"
@@ -487,15 +500,6 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
             simbolo, reply_to_message_id=reply_msg_id
         )
         return
-
-    # tp2/tp3 pueden ser None en señales contra tendencia (solo TP1 activo)
-    tp2 = float(senal['tp2']) if senal.get('tp2') is not None else None
-    tp3 = float(senal['tp3']) if senal.get('tp3') is not None else None
-    # Asegurar flags booleanos como int (Turso puede retornar string "0"/"1")
-    tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
-    tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
-    tp3_alcanzado = bool(int(senal.get('tp3_alcanzado') or 0))
-    sl_alcanzado  = bool(int(senal.get('sl_alcanzado')  or 0))
 
     # Verificar TP3 (menor precio) — usa Low reciente para capturar picos entre polls
     if tp3 is not None and precio_min <= tp3 and not tp3_alcanzado:
