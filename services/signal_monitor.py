@@ -1258,6 +1258,25 @@ def _cancelar_orden_pendiente(senal: dict, precio_actual: float, sl: float,
     precio_entrada = float(senal['precio_entrada'])
     reply_msg_id   = senal.get('telegram_message_id')
 
+    # ── 0. Guard anti-race-condition ──────────────────────────────────────────
+    # Re-lee el estado actual de BD antes de cancelar. Si la señal ya no está
+    # ESPERANDO (fue activada/cerrada externamente entre el fetch del loop y
+    # este punto), aborta la cancelación para no sobreescribir ese estado.
+    try:
+        res_estado = db.ejecutar_query(
+            "SELECT estado FROM senales WHERE id = ?", (senal_id,)
+        )
+        if res_estado.rows:
+            estado_actual = res_estado.rows[0]['estado'] if isinstance(res_estado.rows[0], dict) else res_estado.rows[0][0]
+            if estado_actual != 'ESPERANDO':
+                logger.warning(
+                    f"  ⚠️ [#{senal_id}] Cancelación abortada — "
+                    f"señal ya está '{estado_actual}' en BD (no ESPERANDO)."
+                )
+                return False
+    except Exception as _e:
+        logger.warning(f"  ⚠️ [#{senal_id}] No se pudo re-verificar estado: {_e}")
+
     # ── 1. SL superado sin que la orden fuera ejecutada ──────────────────────
     sl_superado = (
         (direccion == 'VENTA'  and precio_actual >= sl) or
