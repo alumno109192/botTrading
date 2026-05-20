@@ -214,7 +214,7 @@ class BaseDetector(ABC):
         if _simbolo_cd and _direccion_cd and self.db:
             _dir_opuesta = 'COMPRA' if _direccion_cd == 'VENTA' else 'VENTA'
             _r_conf = self.db.ejecutar_query(
-                "SELECT id, score FROM senales "
+                "SELECT id, score, telegram_thread_id, telegram_message_id, precio_entrada FROM senales "
                 "WHERE simbolo = ? AND direccion = ? AND estado = 'ESPERANDO' "
                 "ORDER BY timestamp DESC LIMIT 1",
                 (_simbolo_cd, _dir_opuesta)
@@ -223,6 +223,9 @@ class BaseDetector(ABC):
                 _opuesta_row   = _r_conf.rows[0]
                 _id_opuesta    = _opuesta_row['id'] if isinstance(_opuesta_row, dict) else _opuesta_row[0]
                 _score_opuesta = int((_opuesta_row['score'] if isinstance(_opuesta_row, dict) else _opuesta_row[1]) or 0)
+                _tg_tid_op  = _opuesta_row.get('telegram_thread_id')  if isinstance(_opuesta_row, dict) else None
+                _tg_mid_op  = _opuesta_row.get('telegram_message_id') if isinstance(_opuesta_row, dict) else None
+                _precio_op  = _opuesta_row.get('precio_entrada')       if isinstance(_opuesta_row, dict) else None
 
                 # Determinar TF actual y los superiores
                 _tf_actual = next((_tf for _tf in _TF_ORDEN if _simbolo_cd.endswith(_tf)), None)
@@ -270,6 +273,24 @@ class BaseDetector(ABC):
                         f"#{_id_opuesta} ({_dir_opuesta}) CANCELADA — "
                         f"{_direccion_cd} toma el control."
                     )
+                    try:
+                        _dir_emoji_op = '📉' if _dir_opuesta == 'VENTA' else '📈'
+                        _sym_base_op  = _simbolo_cd.rsplit('_', 1)[0]
+                        _msg_c = (
+                            f"⚡ <b>SEÑAL CANCELADA</b> — #{_id_opuesta}\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"{_dir_emoji_op} {_sym_base_op} | {_dir_opuesta}\n"
+                        )
+                        if _precio_op:
+                            _msg_c += f"💰 Entrada: <code>{float(_precio_op):.2f}</code>\n"
+                        _msg_c += f"⚠️ Conflicto: señal {_direccion_cd} toma el control [{_razon}]"
+                        _telegram_mod.enviar_telegram(
+                            _msg_c,
+                            thread_id=_tg_tid_op,
+                            reply_to_message_id=_tg_mid_op,
+                        )
+                    except Exception as _e:
+                        _logger.debug(f"Notif conflicto Telegram: {_e}")
                 else:
                     _logger.warning(
                         f"[{_simbolo_cd}] 🔴 {_direccion_cd} BLOQUEADA [{_razon}] — "

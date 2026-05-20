@@ -896,7 +896,7 @@ class DatabaseManager:
         """
         # Obtener las señales afectadas antes de cancelarlas (para poder loguearlas)
         select_query = """
-        SELECT id, precio_entrada FROM senales
+        SELECT id, precio_entrada, telegram_thread_id, telegram_message_id FROM senales
         WHERE simbolo = ?
           AND direccion = ?
           AND estado IN ('ACTIVA', 'PENDIENTE_CONFIRM')
@@ -919,6 +919,24 @@ class DatabaseManager:
                     f"❌ Señal #{s['id']} {direccion} {simbolo} cancelada "
                     f"(precio invalidó entrada en ${s['precio_entrada']})"
                 )
+                try:
+                    from adapters.telegram import enviar_telegram as _tg_send
+                    _dir_emoji = '📉' if direccion == 'VENTA' else '📈'
+                    _sym_base = simbolo.rsplit('_', 1)[0]
+                    _msg = (
+                        f"❌ <b>SEÑAL CANCELADA</b> — #{s['id']}\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"{_dir_emoji} {_sym_base} | {direccion}\n"
+                        f"💰 Entrada: <code>{s['precio_entrada']:.2f}</code>\n"
+                        f"⚠️ Precio invalidó la zona de entrada"
+                    )
+                    _tg_send(
+                        _msg,
+                        thread_id=s.get('telegram_thread_id'),
+                        reply_to_message_id=s.get('telegram_message_id'),
+                    )
+                except Exception as _tg_e:
+                    logger.debug(f"Notif cancelación Telegram: {_tg_e}")
 
         return afectadas
 
