@@ -8,7 +8,7 @@
 /* ══════════════════════════════════════════════════════
    CONSTANTES
 ══════════════════════════════════════════════════════ */
-const POLL_INTERVAL_MS   = 30_000;
+const POLL_INTERVAL_MS   = 10_000;  // 10s — fallback si se pierde el SSE
 const PRECIO_INTERVAL_MS = 5_000;
 const TIMEFRAMES_ORDEN   = ['1W', '1D', '4H', '1H', '15M', '5M'];
 const TOAST_DURACION_MS  = 6_000;
