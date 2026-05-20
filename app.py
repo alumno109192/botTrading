@@ -241,6 +241,13 @@ if __name__ == '__main__':
     try:
         iniciar_detectores(estado_sistema, threads_detectores)
 
+        # WebSocket price feed — precios en tiempo real desde Twelve Data
+        try:
+            from services.ws_price_feed import iniciar_feed as _iniciar_ws_feed
+            _iniciar_ws_feed()
+        except Exception as _ws_e:
+            logger.warning(f'⚠️ WebSocket price feed no arrancó: {_ws_e}')
+
         # Keep-alive thread
         hilo_keepalive = threading.Thread(target=keep_alive, name="KeepAlive", daemon=True)
         hilo_keepalive.start()

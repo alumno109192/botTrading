@@ -432,13 +432,28 @@ def create_app(estado_sistema, threads_detectores):
 
     @app.route('/api/v1/precio/<symbol>')
     def v1_precio(symbol: str):
-        """Precio actual de un símbolo — TwelveData /price (tiempo real, TTL 4s) con
-        fallback a la tabla ohlcv cuando la API no está disponible."""
+        """Precio actual de un símbolo.
+
+        Prioridades:
+          1. Cache WebSocket (tiempo real, latencia ~0)
+          2. TwelveData /price REST (cache 4s)
+          3. Última vela OHLCV en BD (fallback)
+        """
         try:
             sym_upper = symbol.upper()
             ohlcv_sym = _SYMBOL_TO_OHLCV.get(sym_upper, sym_upper)
 
-            # ── Prioridad 1: TwelveData /price (tick actual, cache 4s) ─────────
+            # ── Prioridad 1: cache WebSocket (precio recibido en tiempo real) ──
+            try:
+                from services.ws_price_feed import get_precio_ws
+                precio_ws = get_precio_ws(sym_upper)
+                if precio_ws is not None:
+                    return jsonify({'symbol': sym_upper, 'precio': precio_ws,
+                                    'timestamp': None, 'fuente': 'websocket'})
+            except Exception:
+                pass
+
+            # ── Prioridad 2: TwelveData /price REST (cache 4s) ────────────────
             try:
                 from adapters.data_provider import get_precio_tiempo_real
                 precio_rt = get_precio_tiempo_real(ohlcv_sym)
@@ -448,7 +463,7 @@ def create_app(estado_sistema, threads_detectores):
             except Exception:
                 pass
 
-            # ── Fallback: última vela de ohlcv en BD ────────────────────────────
+            # ── Prioridad 3: última vela de ohlcv en BD ───────────────────────
             from adapters.database import get_db
             db = get_db()
             if db is None:

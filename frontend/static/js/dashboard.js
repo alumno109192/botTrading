@@ -61,6 +61,7 @@ function dashboardApp() {
 
     /* ── SSE ── */
     _sse:                null,           // EventSource activo
+    _precioSseTs:        0,              // timestamp último precio recibido por SSE/WS
     init(vistaInicial = 'activas') {
       this.vistaActual = vistaInicial;
       _solicitarNotifPermiso();
@@ -137,12 +138,13 @@ function dashboardApp() {
           } catch (_) {}
         });
 
-        // Evento de precio: actualización en tiempo real
+        // Evento de precio: actualización en tiempo real (WebSocket → SSE)
         es.addEventListener('precio', (e) => {
           try {
             const d = JSON.parse(e.data);
             if (d.precio != null) {
               if (d.symbol === 'XAUUSD') this.precioActual = d.precio;
+              this._precioSseTs = Date.now();   // marca de frescura para suprimir polling
               // Guardar precio live y recompute _bar al instante para señales del mismo símbolo
               this.precios[d.symbol] = d.precio;
               this.senalesActivas = this.senalesActivas.map(s => {
@@ -270,6 +272,8 @@ function dashboardApp() {
     },
 
     async cargarPrecio(symbol) {
+      // Si SSE/WS envió un precio hace menos de 15s, no sobreescribir con polling
+      if (Date.now() - this._precioSseTs < 15_000) return;
       try {
         const r = await fetch(`/api/v1/precio/${symbol}`);
         if (r.ok) { const d = await r.json(); this.precioActual = d.precio; }
