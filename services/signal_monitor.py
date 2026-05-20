@@ -1967,6 +1967,12 @@ def monitor_senales():
                         if result is not None:
                             cache_precios[ticker] = result
                             logger.info(f"  📡 {base} ({ticker}): ${result[0]:.2f}  H:{result[1]:.2f}  L:{result[2]:.2f}")
+                            # Publicar precio vía SSE al frontend (una vez por símbolo por ciclo)
+                            try:
+                                from bridge.sse_broker import broker as _sse_broker
+                                _sse_broker.publicar_precio(symbol=base, precio=result[0])
+                            except Exception:
+                                pass
                         else:
                             logger.warning(f"  ⚠️ Sin datos para {base} ({ticker})")
                             try:
@@ -1990,6 +1996,12 @@ def monitor_senales():
                         continue
 
                     precio_actual, precio_max, precio_min = precios
+
+                    # Actualizar precio_actual en la señal (para REST /api/v1/senales/activas)
+                    try:
+                        db.actualizar_precio_actual(senal_id, precio_actual)
+                    except Exception:
+                        pass
 
                     try:
                         db.registrar_precio(senal_id, precio_actual, senal_data=senal)
