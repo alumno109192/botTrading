@@ -163,3 +163,117 @@
 @media (max-width: 640px) {
   .vi-card { flex: 1 1 100%; max-width: 100%; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   TWO-COLUMN PAGE LAYOUT
+══════════════════════════════════════════════════════════ */
+.vi-page-layout {
+  display: grid;
+  grid-template-columns: 1fr 270px;
+  gap: 16px;
+  align-items: start;
+}
+
+.vi-page-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ── Bot stats sidebar ────────────────────────────────── */
+.vi-sidebar {
+  position: sticky;
+  top: calc(52px + 14px); /* header height + main-content padding-top */
+}
+
+.vi-bot-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.vi-bot-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.vi-bot-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.vi-bot-status-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.vi-bot-stats {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vi-bot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.vi-bot-row:last-child { border-bottom: none; }
+
+.vi-bot-lbl {
+  color: var(--muted);
+  font-size: 0.67rem;
+}
+
+.vi-bot-val {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.vi-bot-val.neutral { color: #cdd9e5; }
+.vi-bot-val.pos     { color: var(--buy); }
+.vi-bot-val.neg     { color: var(--sell); }
+
+.vi-acceder-btn {
+  display: block;
+  margin: 12px 14px 14px;
+  padding: 10px;
+  text-align: center;
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #080b10;
+  background: var(--accent);
+  border-radius: var(--radius);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.vi-acceder-btn:hover {
+  background: #4fc3f7;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 960px) {
+  .vi-page-layout { grid-template-columns: 1fr; }
+  .vi-sidebar { display: none; }
+}

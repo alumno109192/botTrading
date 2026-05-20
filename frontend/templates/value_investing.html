@@ -48,175 +48,228 @@
   </nav>
 
   <main class="main-content">
-    <section class="vi-hero">
-      <div class="vi-hero-title">
-        <span class="vi-hero-icon">📈</span>
-        <div>
-          <div class="vi-hero-name">El Ladrón de los Mercados</div>
-          <div class="vi-hero-sub">Calendario y seguimiento de earnings del watchlist Value Investing</div>
-        </div>
-      </div>
-      <div class="vi-hero-stats">
-        <div class="vi-stat"><div class="vi-stat-val" x-text="stats.total">0</div><div class="vi-stat-lbl">Total empresas</div></div>
-        <div class="vi-stat"><div class="vi-stat-val" x-text="stats.esta_semana">0</div><div class="vi-stat-lbl">Esta semana</div></div>
-        <div class="vi-stat"><div class="vi-stat-val" x-text="stats.proxima_semana">0</div><div class="vi-stat-lbl">Próxima semana</div></div>
-      </div>
-    </section>
+    <div class="vi-page-layout">
 
-    <section class="vi-filter-bar">
-      <button class="vi-filter-btn" :class="catFiltro === 'todas' ? 'active' : ''" @click="catFiltro = 'todas'">Todas</button>
-      <template x-for="cat in categorias" :key="cat.nombre">
-        <button class="vi-filter-btn" :class="catFiltro === cat.nombre ? 'active' : ''" @click="catFiltro = cat.nombre" x-text="`${cat.emoji} ${cat.nombre}`"></button>
-      </template>
-    </section>
-
-    <section x-show="error" class="empty-state">
-      <span class="empty-icon">⚠️</span>
-      <p class="empty-text" x-text="error"></p>
-    </section>
-
-    <section x-show="vistaActual === 'calendario'">
-      <template x-if="semanasFiltradas.length === 0">
-        <div class="empty-state"><span class="empty-icon">📭</span><p class="empty-text">Sin empresas para el filtro seleccionado</p></div>
-      </template>
-
-      <template x-for="sem in semanasFiltradas" :key="sem.label">
-        <article class="vi-semana-group">
-          <header class="vi-semana-header">
-            <span class="vi-semana-label" x-text="sem.label"></span>
-            <span class="vi-semana-count" x-text="sem.empresas.length + ' empresas'"></span>
-          </header>
-          <div class="vi-cards-grid">
-            <template x-for="emp in sem.empresas" :key="emp.ticker">
-              <div class="vi-card" :class="(emp.variacion_dia_pct || 0) >= 0 ? 'vi-card--up' : 'vi-card--down'" @click="abrirEmpresa(emp.ticker)">
-                <div class="vi-card-header">
-                  <div class="vi-card-ticker-block">
-                    <div class="vi-card-ticker" x-text="emp.ticker"></div>
-                    <div class="vi-card-nombre" x-text="emp.nombre"></div>
-                  </div>
-                  <div class="vi-card-price-block">
-                    <div class="vi-card-price" x-text="emp.precio_actual != null ? '$' + Number(emp.precio_actual).toFixed(2) : '—'"></div>
-                    <div class="vi-card-change" :class="(emp.variacion_dia_pct || 0) >= 0 ? 'pos' : 'neg'" x-text="emp.variacion_dia_pct != null ? (emp.variacion_dia_pct >= 0 ? '+' : '') + Number(emp.variacion_dia_pct).toFixed(2) + '%' : '—'"></div>
-                  </div>
-                </div>
-
-                <div class="vi-card-cat">
-                  <span x-text="`${emp.categoria_emoji} ${emp.categoria}`"></span>
-                  <span class="vi-cat-peso" x-text="'★'.repeat(emp.categoria_peso || 0)"></span>
-                </div>
-
-                <div class="vi-card-footer">
-                  <div class="vi-earnings-date">
-                    <span class="vi-ed-icon">🗓️</span>
-                    <span class="vi-ed-text" x-text="emp.earnings_date_str || 'Sin fecha confirmada'"></span>
-                    <span class="vi-ed-countdown" :class="_diasPara(emp.earnings_date) <= 3 ? 'urgent' : _diasPara(emp.earnings_date) <= 7 ? 'soon' : ''" x-text="_diasPara(emp.earnings_date) != null ? _diasPara(emp.earnings_date) + 'd' : 'TBD'"></span>
-                  </div>
-                  <div class="vi-eps-badge" x-show="emp.historico_earnings && emp.historico_earnings.length > 0">
-                    <template x-if="emp.historico_earnings[0]?.beat"><span class="beat">BEAT</span></template>
-                    <template x-if="!emp.historico_earnings[0]?.beat"><span class="miss">MISS</span></template>
-                    <span class="vi-eps-pct" :class="(emp.historico_earnings[0]?.sorpresa_pct || 0) >= 0 ? 'pos' : 'neg'" x-text="emp.historico_earnings[0]?.sorpresa_pct != null ? (emp.historico_earnings[0].sorpresa_pct >= 0 ? '+' : '') + emp.historico_earnings[0].sorpresa_pct + '%' : ''"></span>
-                  </div>
-                </div>
-              </div>
-            </template>
+      <!-- ── Contenido principal ──────────────────────────── -->
+      <div class="vi-page-main">
+        <section class="vi-hero">
+          <div class="vi-hero-title">
+            <span class="vi-hero-icon">📈</span>
+            <div>
+              <div class="vi-hero-name">El Ladrón de los Mercados</div>
+              <div class="vi-hero-sub">Calendario y seguimiento de earnings del watchlist Value Investing</div>
+            </div>
           </div>
-        </article>
-      </template>
-    </section>
-
-    <section x-show="vistaActual === 'categorias'">
-      <template x-if="categoriasFiltradas.length === 0">
-        <div class="empty-state"><span class="empty-icon">📭</span><p class="empty-text">Sin empresas para el filtro seleccionado</p></div>
-      </template>
-
-      <template x-for="cat in categoriasFiltradas" :key="cat.nombre">
-        <article class="vi-semana-group">
-          <header class="vi-semana-header">
-            <span class="vi-semana-label" x-text="`${cat.emoji} ${cat.nombre}`"></span>
-            <span class="vi-semana-count" x-text="'★'.repeat(cat.peso || 0)"></span>
-          </header>
-          <div class="vi-cards-grid">
-            <template x-for="emp in cat.empresas" :key="emp.ticker">
-              <div class="vi-card" :class="(emp.variacion_dia_pct || 0) >= 0 ? 'vi-card--up' : 'vi-card--down'" @click="abrirEmpresa(emp.ticker)">
-                <div class="vi-card-header">
-                  <div class="vi-card-ticker-block">
-                    <div class="vi-card-ticker" x-text="emp.ticker"></div>
-                    <div class="vi-card-nombre" x-text="emp.nombre"></div>
-                  </div>
-                  <div class="vi-card-price-block">
-                    <div class="vi-card-price" x-text="emp.precio_actual != null ? '$' + Number(emp.precio_actual).toFixed(2) : '—'"></div>
-                    <div class="vi-card-change" :class="(emp.variacion_dia_pct || 0) >= 0 ? 'pos' : 'neg'" x-text="emp.variacion_dia_pct != null ? (emp.variacion_dia_pct >= 0 ? '+' : '') + Number(emp.variacion_dia_pct).toFixed(2) + '%' : '—'"></div>
-                  </div>
-                </div>
-                <div class="vi-card-footer">
-                  <div class="vi-earnings-date">
-                    <span class="vi-ed-icon">🗓️</span>
-                    <span class="vi-ed-text" x-text="emp.earnings_date_str || 'Sin fecha confirmada'"></span>
-                    <span class="vi-ed-countdown" :class="_diasPara(emp.earnings_date) <= 3 ? 'urgent' : _diasPara(emp.earnings_date) <= 7 ? 'soon' : ''" x-text="_diasPara(emp.earnings_date) != null ? _diasPara(emp.earnings_date) + 'd' : 'TBD'"></span>
-                  </div>
-                </div>
-              </div>
-            </template>
+          <div class="vi-hero-stats">
+            <div class="vi-stat"><div class="vi-stat-val" x-text="stats.total">0</div><div class="vi-stat-lbl">Total empresas</div></div>
+            <div class="vi-stat"><div class="vi-stat-val" x-text="stats.esta_semana">0</div><div class="vi-stat-lbl">Esta semana</div></div>
+            <div class="vi-stat"><div class="vi-stat-val" x-text="stats.proxima_semana">0</div><div class="vi-stat-lbl">Próxima semana</div></div>
           </div>
-        </article>
-      </template>
-    </section>
+        </section>
 
-    <section x-show="vistaActual === 'empresa'" class="vi-empresa-wrap">
-      <button class="vi-back-btn" @click="cambiarVista('calendario')">← Volver al calendario</button>
+        <section class="vi-filter-bar">
+          <button class="vi-filter-btn" :class="catFiltro === 'todas' ? 'active' : ''" @click="catFiltro = 'todas'">Todas</button>
+          <template x-for="cat in categorias" :key="cat.nombre">
+            <button class="vi-filter-btn" :class="catFiltro === cat.nombre ? 'active' : ''" @click="catFiltro = cat.nombre" x-text="`${cat.emoji} ${cat.nombre}`"></button>
+          </template>
+        </section>
 
-      <template x-if="empresaDetalle">
-        <div>
-          <article class="vi-empresa-hero">
-            <div class="vi-empresa-title-block">
-              <div class="vi-empresa-ticker" x-text="empresaDetalle.ticker"></div>
-              <div class="vi-empresa-nombre" x-text="empresaDetalle.nombre"></div>
-              <div class="vi-empresa-cat" x-text="`${empresaDetalle.categoria_emoji} ${empresaDetalle.categoria} | ${'★'.repeat(empresaDetalle.categoria_peso || 0)}`"></div>
+        <section x-show="error" class="empty-state">
+          <span class="empty-icon">⚠️</span>
+          <p class="empty-text" x-text="error"></p>
+        </section>
+
+        <section x-show="vistaActual === 'calendario'">
+          <template x-if="semanasFiltradas.length === 0">
+            <div class="empty-state"><span class="empty-icon">📭</span><p class="empty-text">Sin empresas para el filtro seleccionado</p></div>
+          </template>
+
+          <template x-for="sem in semanasFiltradas" :key="sem.label">
+            <article class="vi-semana-group">
+              <header class="vi-semana-header">
+                <span class="vi-semana-label" x-text="sem.label"></span>
+                <span class="vi-semana-count" x-text="sem.empresas.length + ' empresas'"></span>
+              </header>
+              <div class="vi-cards-grid">
+                <template x-for="emp in sem.empresas" :key="emp.ticker">
+                  <div class="vi-card" :class="(emp.variacion_dia_pct || 0) >= 0 ? 'vi-card--up' : 'vi-card--down'" @click="abrirEmpresa(emp.ticker)">
+                    <div class="vi-card-header">
+                      <div class="vi-card-ticker-block">
+                        <div class="vi-card-ticker" x-text="emp.ticker"></div>
+                        <div class="vi-card-nombre" x-text="emp.nombre"></div>
+                      </div>
+                      <div class="vi-card-price-block">
+                        <div class="vi-card-price" x-text="emp.precio_actual != null ? '$' + Number(emp.precio_actual).toFixed(2) : '—'"></div>
+                        <div class="vi-card-change" :class="(emp.variacion_dia_pct || 0) >= 0 ? 'pos' : 'neg'" x-text="emp.variacion_dia_pct != null ? (emp.variacion_dia_pct >= 0 ? '+' : '') + Number(emp.variacion_dia_pct).toFixed(2) + '%' : '—'"></div>
+                      </div>
+                    </div>
+
+                    <div class="vi-card-cat">
+                      <span x-text="`${emp.categoria_emoji} ${emp.categoria}`"></span>
+                      <span class="vi-cat-peso" x-text="'★'.repeat(emp.categoria_peso || 0)"></span>
+                    </div>
+
+                    <div class="vi-card-footer">
+                      <div class="vi-earnings-date">
+                        <span class="vi-ed-icon">🗓️</span>
+                        <span class="vi-ed-text" x-text="emp.earnings_date_str || 'Sin fecha confirmada'"></span>
+                        <span class="vi-ed-countdown" :class="_diasPara(emp.earnings_date) <= 3 ? 'urgent' : _diasPara(emp.earnings_date) <= 7 ? 'soon' : ''" x-text="_diasPara(emp.earnings_date) != null ? _diasPara(emp.earnings_date) + 'd' : 'TBD'"></span>
+                      </div>
+                      <div class="vi-eps-badge" x-show="emp.historico_earnings && emp.historico_earnings.length > 0">
+                        <template x-if="emp.historico_earnings[0]?.beat"><span class="beat">BEAT</span></template>
+                        <template x-if="!emp.historico_earnings[0]?.beat"><span class="miss">MISS</span></template>
+                        <span class="vi-eps-pct" :class="(emp.historico_earnings[0]?.sorpresa_pct || 0) >= 0 ? 'pos' : 'neg'" x-text="emp.historico_earnings[0]?.sorpresa_pct != null ? (emp.historico_earnings[0].sorpresa_pct >= 0 ? '+' : '') + emp.historico_earnings[0].sorpresa_pct + '%' : ''"></span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </article>
+          </template>
+        </section>
+
+        <section x-show="vistaActual === 'categorias'">
+          <template x-if="categoriasFiltradas.length === 0">
+            <div class="empty-state"><span class="empty-icon">📭</span><p class="empty-text">Sin empresas para el filtro seleccionado</p></div>
+          </template>
+
+          <template x-for="cat in categoriasFiltradas" :key="cat.nombre">
+            <article class="vi-semana-group">
+              <header class="vi-semana-header">
+                <span class="vi-semana-label" x-text="`${cat.emoji} ${cat.nombre}`"></span>
+                <span class="vi-semana-count" x-text="'★'.repeat(cat.peso || 0)"></span>
+              </header>
+              <div class="vi-cards-grid">
+                <template x-for="emp in cat.empresas" :key="emp.ticker">
+                  <div class="vi-card" :class="(emp.variacion_dia_pct || 0) >= 0 ? 'vi-card--up' : 'vi-card--down'" @click="abrirEmpresa(emp.ticker)">
+                    <div class="vi-card-header">
+                      <div class="vi-card-ticker-block">
+                        <div class="vi-card-ticker" x-text="emp.ticker"></div>
+                        <div class="vi-card-nombre" x-text="emp.nombre"></div>
+                      </div>
+                      <div class="vi-card-price-block">
+                        <div class="vi-card-price" x-text="emp.precio_actual != null ? '$' + Number(emp.precio_actual).toFixed(2) : '—'"></div>
+                        <div class="vi-card-change" :class="(emp.variacion_dia_pct || 0) >= 0 ? 'pos' : 'neg'" x-text="emp.variacion_dia_pct != null ? (emp.variacion_dia_pct >= 0 ? '+' : '') + Number(emp.variacion_dia_pct).toFixed(2) + '%' : '—'"></div>
+                      </div>
+                    </div>
+                    <div class="vi-card-footer">
+                      <div class="vi-earnings-date">
+                        <span class="vi-ed-icon">🗓️</span>
+                        <span class="vi-ed-text" x-text="emp.earnings_date_str || 'Sin fecha confirmada'"></span>
+                        <span class="vi-ed-countdown" :class="_diasPara(emp.earnings_date) <= 3 ? 'urgent' : _diasPara(emp.earnings_date) <= 7 ? 'soon' : ''" x-text="_diasPara(emp.earnings_date) != null ? _diasPara(emp.earnings_date) + 'd' : 'TBD'"></span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </article>
+          </template>
+        </section>
+
+        <section x-show="vistaActual === 'empresa'" class="vi-empresa-wrap">
+          <button class="vi-back-btn" @click="cambiarVista('calendario')">← Volver al calendario</button>
+
+          <template x-if="empresaDetalle">
+            <div>
+              <article class="vi-empresa-hero">
+                <div class="vi-empresa-title-block">
+                  <div class="vi-empresa-ticker" x-text="empresaDetalle.ticker"></div>
+                  <div class="vi-empresa-nombre" x-text="empresaDetalle.nombre"></div>
+                  <div class="vi-empresa-cat" x-text="`${empresaDetalle.categoria_emoji} ${empresaDetalle.categoria} | ${'★'.repeat(empresaDetalle.categoria_peso || 0)}`"></div>
+                </div>
+                <div class="vi-empresa-price-block">
+                  <div class="vi-empresa-price" x-text="empresaDetalle.precio_actual != null ? '$' + Number(empresaDetalle.precio_actual).toFixed(2) : '—'"></div>
+                  <div class="vi-empresa-change" :class="(empresaDetalle.variacion_dia_pct || 0) >= 0 ? 'pos' : 'neg'" x-text="empresaDetalle.variacion_dia_pct != null ? (empresaDetalle.variacion_dia_pct >= 0 ? '+' : '') + Number(empresaDetalle.variacion_dia_pct).toFixed(2) + '%' : '—'"></div>
+                  <div class="vi-empresa-mcap" x-text="empresaDetalle.market_cap_b != null ? 'MCap: ' + Number(empresaDetalle.market_cap_b).toFixed(2) + 'B' : 'MCap: —'"></div>
+                </div>
+              </article>
+
+              <article class="vi-next-earnings">
+                <div class="vi-ne-label">Próximos earnings</div>
+                <div class="vi-ne-date" x-text="empresaDetalle.earnings_date_str || 'Sin fecha confirmada'"></div>
+                <div class="vi-ne-countdown" :class="_diasPara(empresaDetalle.earnings_date) <= 3 ? 'urgent' : _diasPara(empresaDetalle.earnings_date) <= 7 ? 'soon' : ''" x-text="_diasPara(empresaDetalle.earnings_date) != null ? _diasPara(empresaDetalle.earnings_date) + ' días' : 'Sin fecha confirmada'"></div>
+              </article>
+
+              <article class="vi-hist-panel">
+                <div class="stats-panel-title" style="margin-bottom:12px"><span style="color:var(--accent)">📊</span><span>Histórico EPS</span></div>
+                <div style="height:260px"><canvas id="epsChart"></canvas></div>
+                <div style="overflow-x:auto;margin-top:10px">
+                  <table class="stats-table">
+                    <thead>
+                      <tr>
+                        <th>Trimestre</th>
+                        <th>EPS Est.</th>
+                        <th>EPS Real</th>
+                        <th>Sorpresa %</th>
+                        <th>Resultado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="row in (empresaDetalle.historico_earnings || [])" :key="row.periodo">
+                        <tr>
+                          <td x-text="row.periodo"></td>
+                          <td x-text="row.eps_estimado != null ? Number(row.eps_estimado).toFixed(2) : '—'"></td>
+                          <td x-text="row.eps_real != null ? Number(row.eps_real).toFixed(2) : '—'"></td>
+                          <td :style="(row.sorpresa_pct || 0) >= 0 ? 'color:var(--buy)' : 'color:var(--sell)'" x-text="row.sorpresa_pct != null ? (row.sorpresa_pct >= 0 ? '+' : '') + Number(row.sorpresa_pct).toFixed(2) + '%' : '—'"></td>
+                          <td><span class="res-badge" :class="row.beat ? 'tp' : 'sl'" x-text="row.beat ? 'BEAT' : 'MISS'"></span></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </article>
             </div>
-            <div class="vi-empresa-price-block">
-              <div class="vi-empresa-price" x-text="empresaDetalle.precio_actual != null ? '$' + Number(empresaDetalle.precio_actual).toFixed(2) : '—'"></div>
-              <div class="vi-empresa-change" :class="(empresaDetalle.variacion_dia_pct || 0) >= 0 ? 'pos' : 'neg'" x-text="empresaDetalle.variacion_dia_pct != null ? (empresaDetalle.variacion_dia_pct >= 0 ? '+' : '') + Number(empresaDetalle.variacion_dia_pct).toFixed(2) + '%' : '—'"></div>
-              <div class="vi-empresa-mcap" x-text="empresaDetalle.market_cap_b != null ? 'MCap: ' + Number(empresaDetalle.market_cap_b).toFixed(2) + 'B' : 'MCap: —'"></div>
-            </div>
-          </article>
+          </template>
+        </section>
+      </div><!-- /.vi-page-main -->
 
-          <article class="vi-next-earnings">
-            <div class="vi-ne-label">Próximos earnings</div>
-            <div class="vi-ne-date" x-text="empresaDetalle.earnings_date_str || 'Sin fecha confirmada'"></div>
-            <div class="vi-ne-countdown" :class="_diasPara(empresaDetalle.earnings_date) <= 3 ? 'urgent' : _diasPara(empresaDetalle.earnings_date) <= 7 ? 'soon' : ''" x-text="_diasPara(empresaDetalle.earnings_date) != null ? _diasPara(empresaDetalle.earnings_date) + ' días' : 'Sin fecha confirmada'"></div>
-          </article>
+      <!-- ── Sidebar: stats del bot ─────────────────────────── -->
+      <aside class="vi-sidebar">
+        <div class="vi-bot-panel">
+          <div class="vi-bot-panel-header">
+            <span style="font-size:1rem">📊</span>
+            <span class="logo-text">BotTrading</span>
+            <span class="vi-bot-status-dot"
+                  :style="botStats.online
+                    ? 'background:var(--buy);box-shadow:0 0 6px var(--buy-dim);animation:statusPulse 2s ease infinite'
+                    : 'background:var(--sell)'"></span>
+            <span class="vi-bot-status-label"
+                  :style="botStats.online ? 'color:var(--buy)' : 'color:var(--sell)'"
+                  x-text="botStats.online ? 'ONLINE' : '—'">—</span>
+          </div>
 
-          <article class="vi-hist-panel">
-            <div class="stats-panel-title" style="margin-bottom:12px"><span style="color:var(--accent)">📊</span><span>Histórico EPS</span></div>
-            <div style="height:260px"><canvas id="epsChart"></canvas></div>
-            <div style="overflow-x:auto;margin-top:10px">
-              <table class="stats-table">
-                <thead>
-                  <tr>
-                    <th>Trimestre</th>
-                    <th>EPS Est.</th>
-                    <th>EPS Real</th>
-                    <th>Sorpresa %</th>
-                    <th>Resultado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template x-for="row in (empresaDetalle.historico_earnings || [])" :key="row.periodo">
-                    <tr>
-                      <td x-text="row.periodo"></td>
-                      <td x-text="row.eps_estimado != null ? Number(row.eps_estimado).toFixed(2) : '—'"></td>
-                      <td x-text="row.eps_real != null ? Number(row.eps_real).toFixed(2) : '—'"></td>
-                      <td :style="(row.sorpresa_pct || 0) >= 0 ? 'color:var(--buy)' : 'color:var(--sell)'" x-text="row.sorpresa_pct != null ? (row.sorpresa_pct >= 0 ? '+' : '') + Number(row.sorpresa_pct).toFixed(2) + '%' : '—'"></td>
-                      <td><span class="res-badge" :class="row.beat ? 'tp' : 'sl'" x-text="row.beat ? 'BEAT' : 'MISS'"></span></td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
+          <div class="vi-bot-stats">
+            <div class="vi-bot-row">
+              <span class="vi-bot-lbl">Win Rate 30d</span>
+              <span class="vi-bot-val"
+                    :class="(botStats.win_rate || 0) >= 50 ? 'pos' : 'neg'"
+                    x-text="botStats.win_rate != null ? Number(botStats.win_rate).toFixed(1) + '%' : '—'">—</span>
             </div>
-          </article>
+            <div class="vi-bot-row">
+              <span class="vi-bot-lbl">Señales activas</span>
+              <span class="vi-bot-val neutral" x-text="botStats.activas != null ? botStats.activas : '—'">—</span>
+            </div>
+            <div class="vi-bot-row">
+              <span class="vi-bot-lbl">Señales hoy</span>
+              <span class="vi-bot-val neutral" x-text="botStats.senales_hoy != null ? botStats.senales_hoy : '—'">—</span>
+            </div>
+            <div class="vi-bot-row">
+              <span class="vi-bot-lbl">P&amp;L medio 30d</span>
+              <span class="vi-bot-val"
+                    :class="(botStats.avg_profit || 0) >= 0 ? 'pos' : 'neg'"
+                    x-text="botStats.avg_profit != null ? (botStats.avg_profit >= 0 ? '+' : '') + Number(botStats.avg_profit).toFixed(2) + '%' : '—'">—</span>
+            </div>
+            <div class="vi-bot-row">
+              <span class="vi-bot-lbl">Señales 30d</span>
+              <span class="vi-bot-val neutral" x-text="botStats.total_30d != null ? botStats.total_30d : '—'">—</span>
+            </div>
+          </div>
+
+          <a href="/dashboard" class="vi-acceder-btn">ACCEDER</a>
         </div>
-      </template>
-    </section>
+      </aside>
+
+    </div><!-- /.vi-page-layout -->
   </main>
 
   <script src="/static/js/value_investing.js"></script>

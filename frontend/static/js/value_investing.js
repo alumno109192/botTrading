@@ -25,14 +25,50 @@ function viApp() {
       proxima_semana: 0,
     },
 
+    botStats: {
+      online: false,
+      win_rate: null,
+      activas: null,
+      senales_hoy: null,
+      avg_profit: null,
+      total_30d: null,
+    },
+
     async init(vistaInicial = 'calendario', tickerInicial = '') {
       this.vistaActual = vistaInicial || 'calendario';
       this.tickerActual = (tickerInicial || '').toUpperCase();
 
-      await this.cargarCalendario();
+      await Promise.all([
+        this.cargarCalendario(),
+        this.cargarBotStats(),
+      ]);
 
       if (this.vistaActual === 'empresa' && this.tickerActual) {
         await this.abrirEmpresa(this.tickerActual, false);
+      }
+    },
+
+    async cargarBotStats() {
+      try {
+        const [rStats, rActivas] = await Promise.all([
+          fetch('/api/v1/stats/global'),
+          fetch('/api/v1/senales/activas'),
+        ]);
+        if (rStats.ok) {
+          const d = await rStats.json();
+          const g = d.global_30d || {};
+          this.botStats.win_rate  = g.win_rate  ?? null;
+          this.botStats.avg_profit = g.avg_profit ?? null;
+          this.botStats.total_30d  = g.total      ?? null;
+          this.botStats.senales_hoy = (d.hoy || {}).total ?? null;
+          this.botStats.online = true;
+        }
+        if (rActivas.ok) {
+          const d = await rActivas.json();
+          this.botStats.activas = d.total ?? null;
+        }
+      } catch (_) {
+        /* silent — sidebar mostrará '—' si hay error */
       }
     },
 
