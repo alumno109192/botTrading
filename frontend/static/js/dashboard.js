@@ -9,6 +9,7 @@
    CONSTANTES
 ══════════════════════════════════════════════════════ */
 const POLL_INTERVAL_MS   = 30_000;
+const PRECIO_INTERVAL_MS = 5_000;
 const TIMEFRAMES_ORDEN   = ['1W', '1D', '4H', '1H', '15M', '5M'];
 const TOAST_DURACION_MS  = 6_000;
 
@@ -56,6 +57,7 @@ function dashboardApp() {
       this.initPush();
       this.cargarTodo();
       setInterval(() => this.cargarTodo(), POLL_INTERVAL_MS);
+      setInterval(() => this.cargarPrecio('XAUUSD'), PRECIO_INTERVAL_MS);
       this.initSSE();
 
       // Re-renderizar gráfico cuando el usuario vuelve a Stats
