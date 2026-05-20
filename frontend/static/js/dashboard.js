@@ -31,6 +31,7 @@ function dashboardApp() {
     statsGlobal:         {},
     statsPorTF:          [],
     precioActual:        null,
+    precios:             {},        // mapa símbolo→precio live (ej: {XAUUSD: 4493.57})
     scores:              [],        // [{simbolo, tf, score_sell, score_buy, max_score, ts}]
 
     /* ── UI ── */
@@ -125,8 +126,17 @@ function dashboardApp() {
         es.addEventListener('precio', (e) => {
           try {
             const d = JSON.parse(e.data);
-            if (d.symbol === 'XAUUSD' && d.precio != null) {
-              this.precioActual = d.precio;
+            if (d.precio != null) {
+              if (d.symbol === 'XAUUSD') this.precioActual = d.precio;
+              // Guardar precio live y recompute _bar al instante para señales del mismo símbolo
+              this.precios[d.symbol] = d.precio;
+              this.senalesActivas = this.senalesActivas.map(s => {
+                const sym = (s.simbolo || '').split('_')[0];
+                if (sym === d.symbol) {
+                  return { ...s, _bar: _calcBar(s, d.precio) };
+                }
+                return s;
+              });
             }
           } catch (_) {}
         });
@@ -194,7 +204,8 @@ function dashboardApp() {
           tp1_alcanzado: _tpAlcanzado(s, 'tp1'),
           tp2_alcanzado: _tpAlcanzado(s, 'tp2'),
           tp3_alcanzado: _tpAlcanzado(s, 'tp3'),
-          _bar:          _calcBar(s),
+          // Usar precio live si disponible para que la barra esté siempre al día
+          _bar:          _calcBar(s, this.precios[(s.simbolo || '').split('_')[0]] ?? null),
         }));
       } catch (_) {}
     },
@@ -567,11 +578,11 @@ function _tpAlcanzado(s, campo) {
  * SL siempre en 0 % (izquierda), el TP más alejado en 100 % (derecha).
  * Funciona igual para COMPRA y VENTA.
  */
-function _calcBar(s) {
+function _calcBar(s, precioLive) {
   const isBuy  = s.direccion === 'COMPRA';
   const sl     = parseFloat(s.sl) || 0;
   const ent    = parseFloat(s.precio_entrada) || 0;
-  const act    = parseFloat(s.precio_actual) || ent;
+  const act    = precioLive != null ? precioLive : (parseFloat(s.precio_actual) || ent);
   const tp1    = parseFloat(s.tp1) || 0;
   const tp2    = parseFloat(s.tp2) || 0;
   const tp3    = parseFloat(s.tp3) || 0;
