@@ -22,6 +22,10 @@ from datetime import datetime, timezone
 import logging
 logger = logging.getLogger('bottrading')
 
+# Si PAUSE_BD_WRITES=true, el poller sigue descargando velas de TD (para el
+# monitor de señales vía fallback API) pero NO las escribe en BD.
+_PAUSE_BD_WRITES = os.environ.get('PAUSE_BD_WRITES', 'false').lower() == 'true'
+
 # ── Price ticker TD: intervalo de polling en segundos ──────────────────────
 _PRICE_TICKER_SECS = 5   # actualiza precio XAUUSD cada 5s via TD /price
 
@@ -118,6 +122,10 @@ def main():
                 if ts_ahora - ultimo < target['poll_secs']:
                     continue  # aún no toca este target
                 try:
+                    if _PAUSE_BD_WRITES:
+                        # No escribir en BD; las velas las obtiene el monitor via TD directamente
+                        _ultimo_poll[clave] = ts_ahora
+                        continue
                     ok = poll_ohlcv(target['ticker_yf'], target['interval'])
                     if ok:
                         _ultimo_poll[clave] = ts_ahora

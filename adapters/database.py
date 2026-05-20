@@ -1469,7 +1469,24 @@ class DatabaseManager:
 
     def guardar_log(self, mensaje: str, nivel: str = 'INFO',
                     modulo: str = '', simbolo: str = '') -> None:
-        """Inserta un registro en bot_logs."""
+        """Inserta un registro en bot_logs (omitido si PAUSE_BD_WRITES=true)."""
+        import os
+        if os.environ.get('PAUSE_BD_WRITES', 'false').lower() == 'true':
+            return
+        # Si existe BD secundaria configurada, escribir ahí (ahorra rows en BD principal)
+        try:
+            url2 = os.environ.get('TURSO_DATABASE_URL_2')
+            if url2:
+                secondary = get_secondary_db()
+                if secondary is not self:
+                    ts = datetime.now(timezone.utc).isoformat()
+                    secondary.ejecutar_insert(
+                        "INSERT INTO bot_logs (timestamp, nivel, modulo, simbolo, mensaje) VALUES (?, ?, ?, ?, ?)",
+                        (ts, nivel.upper(), modulo, simbolo, mensaje),
+                    )
+                    return
+        except Exception:
+            pass
         ts = datetime.now(timezone.utc).isoformat()
         self.ejecutar_insert(
             "INSERT INTO bot_logs (timestamp, nivel, modulo, simbolo, mensaje) VALUES (?, ?, ?, ?, ?)",
@@ -1796,6 +1813,81 @@ def get_db() -> Optional[DatabaseManager]:
             logger.warning(f"⚠️ Error ejecutando migraciones: {e}")
 
     return db
+
+
+# ── BD secundaria: ohlcv, logs, historial, api_key_usage ─────────────────────
+# Usada para escrituras de alto volumen para no consumir el budget de rows
+# written de la BD principal (que aloja las señales).
+# Configuración: TURSO_DATABASE_URL_2 y TURSO_AUTH_TOKEN_2 en .env / Render.
+
+class _SecondaryDB(DatabaseManager):
+    """BD Turso secundaria con singleton propio. Lee TURSO_DATABASE_URL_2 / TURSO_AUTH_TOKEN_2."""
+    _instance = None
+    _singleton_lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    inst = object.__new__(cls)
+                    inst._initialized = False
+                    cls._instance = inst
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        self.db_url   = os.environ.get('TURSO_DATABASE_URL_2')
+        self.db_token = os.environ.get('TURSO_AUTH_TOKEN_2')
+        if not self.db_url or not self.db_token:
+            raise ValueError("TURSO_DATABASE_URL_2 / TURSO_AUTH_TOKEN_2 no configuradas")
+        if self.db_url.startswith('libsql://'):
+            self.api_url = self.db_url.replace('libsql://', 'https://')
+        else:
+            self.api_url = self.db_url
+        self.api_url = self.api_url.rstrip('/')
+        self.headers = {
+            'Authorization': f'Bearer {self.db_token}',
+            'Content-Type': 'application/json',
+        }
+        self._insert_lock = threading.Lock()
+        logger.info("✅ BD secundaria (soporte) conectada")
+
+
+_secondary_db_instance: Optional['_SecondaryDB'] = None
+_secondary_db_lock = threading.Lock()
+_secondary_db_warning_printed = False
+
+
+def get_secondary_db() -> Optional[DatabaseManager]:
+    """Retorna la BD secundaria si está configurada, si no devuelve la principal.
+
+    Las escrituras de alto volumen (ohlcv, logs, historial, api_key_usage) van aquí
+    para no consumir el budget de rows-written de la BD principal con señales.
+    """
+    global _secondary_db_instance, _secondary_db_warning_printed
+    url2   = os.environ.get('TURSO_DATABASE_URL_2')
+    token2 = os.environ.get('TURSO_AUTH_TOKEN_2')
+    if not url2 or not token2:
+        # Sin BD secundaria: caer de vuelta a la principal
+        return get_db()
+    if _secondary_db_instance is None:
+        with _secondary_db_lock:
+            if _secondary_db_instance is None:
+                try:
+                    inst = _SecondaryDB()
+                    # Inicializar tablas en la BD secundaria
+                    inst.init_ohlcv_table()
+                    inst.init_historial_precios_table()
+                    inst.init_api_key_usage_table()
+                    inst.init_bot_logs_table()
+                    _secondary_db_instance = inst
+                    logger.info("✅ Tablas BD secundaria inicializadas")
+                except Exception as e:
+                    logger.warning(f"⚠️ BD secundaria no disponible: {e} — usando BD principal")
+                    _secondary_db_instance = get_db()  # fallback
+    return _secondary_db_instance
 
 
 if __name__ == '__main__':

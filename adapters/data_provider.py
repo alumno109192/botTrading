@@ -200,10 +200,11 @@ def _reserve_minute_slot(alias: str) -> bool:
 
 
 def _cargar_uso_desde_bd() -> dict:
-    """Lee uso de keys de hoy desde BD. Retorna dict alias→count o {} si falla."""
+    """Lee uso de keys de hoy desde BD secundaria. Retorna dict alias→count o {} si falla."""
     try:
-        from adapters.database import DatabaseManager
-        return DatabaseManager().obtener_uso_keys_hoy()
+        from adapters.database import get_secondary_db
+        db = get_secondary_db()
+        return db.obtener_uso_keys_hoy() if db else {}
     except Exception:
         return {}
 
@@ -281,9 +282,16 @@ def _next_td_key() -> tuple:
 
 
 def _flush_uso_a_bd() -> None:
-    """Persiste contadores de uso acumulados en memoria a la BD (best-effort)."""
+    """Persiste contadores de uso acumulados en memoria a la BD (best-effort).
+    Omitido si PAUSE_BD_WRITES=true."""
     import time as _time
+    import os
     global _uso_flush_ts
+    _uso_flush_ts = _time.time()
+    if os.environ.get('PAUSE_BD_WRITES', 'false').lower() == 'true':
+        with _uso_pendiente_lock:
+            _uso_pendiente.clear()
+        return
     with _uso_pendiente_lock:
         if not _uso_pendiente:
             _uso_flush_ts = _time.time()
@@ -292,9 +300,8 @@ def _flush_uso_a_bd() -> None:
         _uso_pendiente.clear()
     _uso_flush_ts = _time.time()
     try:
-        from adapters.database import DatabaseManager
-        db = DatabaseManager()
-        hoy   = datetime.now(timezone.utc).date().isoformat()
+        from adapters.database import get_secondary_db
+        db = get_secondary_db()
         ahora = datetime.now(timezone.utc).isoformat()
         for alias, counts in snapshot.items():
             exitosas = counts.get('exitosas', 0)
@@ -338,10 +345,10 @@ def _registrar_uso_key(alias: str, exito: bool = True):
 
 
 def _guardar_en_db(ticker_yf: str, interval: str, df: pd.DataFrame):
-    """Persiste DataFrame OHLCV en la tabla ohlcv de la BD (best-effort, no bloquea)."""
+    """Persiste DataFrame OHLCV en la BD secundaria (best-effort, no bloquea)."""
     try:
-        from adapters.database import DatabaseManager
-        db = DatabaseManager()
+        from adapters.database import get_secondary_db
+        db = get_secondary_db()
         rows = []
         for ts, row in df.iterrows():
             # Ignorar velas con precios inválidos (Low=0, etc.) para no contaminar la BD
@@ -368,8 +375,8 @@ def _get_from_db(ticker_yf: str, period: str, interval: str, force: bool = False
     Retorna (DataFrame, is_delayed) o (None, None) si los datos no existen o son insuficientes.
     """
     try:
-        from adapters.database import DatabaseManager
-        db = DatabaseManager()
+        from adapters.database import get_secondary_db
+        db = get_secondary_db()
     except Exception:
         return None, None
 
@@ -474,8 +481,8 @@ def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
     if not _td_keys or ticker_yf not in _TICKER_MAP_TWELVE:
         return False
     try:
-        from adapters.database import DatabaseManager
-        db = DatabaseManager()
+        from adapters.database import get_secondary_db
+        db = get_secondary_db()
     except Exception:
         return False
 

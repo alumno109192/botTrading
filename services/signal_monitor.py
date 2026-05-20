@@ -8,8 +8,12 @@ import threading
 import requests
 import os
 from datetime import datetime, timezone, timedelta
+
+# Si PAUSE_BD_WRITES=true se omiten las escrituras de alto volumen (historial_precios,
+# bot_logs) pero se mantienen los cambios de estado de señales (TP/SL/activacion).
+_PAUSE_BD_WRITES = os.environ.get('PAUSE_BD_WRITES', 'false').lower() == 'true'
 from dotenv import load_dotenv
-from adapters.database import DatabaseManager
+from adapters.database import DatabaseManager, get_secondary_db
 from adapters.data_provider import get_ohlcv as _get_ohlcv
 from core.base_detector import simbolo_a_nombre
 
@@ -1998,7 +2002,10 @@ def monitor_senales():
                     precio_actual, precio_max, precio_min = precios
 
                     try:
-                        db.registrar_precio(senal_id, precio_actual, senal_data=senal)
+                        if not _PAUSE_BD_WRITES:
+                            sec_db = get_secondary_db()
+                            if sec_db:
+                                sec_db.registrar_precio(senal_id, precio_actual, senal_data=senal)
                     except Exception as e_reg:
                         logger.error(f"  ❌ registrar_precio falló para señal {senal_id}: {e_reg}")
                         try:
