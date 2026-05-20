@@ -204,6 +204,78 @@ class BaseDetector(ABC):
                 f"({_direccion_cd})"
             )
             return None
+        # ── Guard conflicto de dirección — resolución por consenso TF superior ─
+        # Si ya existe una señal ESPERANDO en dirección opuesta para el mismo
+        # símbolo, preguntamos a los timeframes superiores qué dirección tienen.
+        # Más votos de TF superior → esa dirección gana.
+        # Empate en votos → fallback a comparación de score.
+        _TF_ORDEN    = ['_5M', '_15M', '_1H', '_2H', '_4H', '_1D']
+        _score_nuevo = int(senal_data.get('score', 0) or 0)
+        if _simbolo_cd and _direccion_cd and self.db:
+            _dir_opuesta = 'COMPRA' if _direccion_cd == 'VENTA' else 'VENTA'
+            _r_conf = self.db.ejecutar_query(
+                "SELECT id, score FROM senales "
+                "WHERE simbolo = ? AND direccion = ? AND estado = 'ESPERANDO' "
+                "ORDER BY timestamp DESC LIMIT 1",
+                (_simbolo_cd, _dir_opuesta)
+            )
+            if _r_conf.rows:
+                _opuesta_row   = _r_conf.rows[0]
+                _id_opuesta    = _opuesta_row['id'] if isinstance(_opuesta_row, dict) else _opuesta_row[0]
+                _score_opuesta = int((_opuesta_row['score'] if isinstance(_opuesta_row, dict) else _opuesta_row[1]) or 0)
+
+                # Determinar TF actual y los superiores
+                _tf_actual = next((_tf for _tf in _TF_ORDEN if _simbolo_cd.endswith(_tf)), None)
+                _tf_superiores = _TF_ORDEN[_TF_ORDEN.index(_tf_actual) + 1:] if _tf_actual else []
+
+                # Contar votos de TFs superiores (señales activas/esperando últimas 48h)
+                _votos_nueva = _votos_opuesta = 0
+                if _tf_superiores:
+                    _base = _simbolo_cd.rsplit('_', 1)[0]  # "XAUUSD" de "XAUUSD_15M"
+                    _in   = ','.join(f"'{_base}{_tf}'" for _tf in _tf_superiores)
+                    _r_v  = self.db.ejecutar_query(
+                        f"SELECT direccion, COUNT(*) as cnt FROM senales "
+                        f"WHERE simbolo IN ({_in}) "
+                        f"AND estado IN ('ESPERANDO','ACTIVA') "
+                        f"AND timestamp >= datetime('now','-48 hours') "
+                        f"GROUP BY direccion"
+                    )
+                    for _v in (_r_v.rows or []):
+                        _d = _v['direccion'] if isinstance(_v, dict) else _v[0]
+                        _c = int(_v['cnt']   if isinstance(_v, dict) else _v[1])
+                        if _d == _direccion_cd:
+                            _votos_nueva += _c
+                        elif _d == _dir_opuesta:
+                            _votos_opuesta += _c
+
+                # Decidir ganador
+                if _votos_nueva > _votos_opuesta:
+                    _nueva_gana = True
+                    _razon = f"consenso TF superior ({_votos_nueva}↑ vs {_votos_opuesta}↓)"
+                elif _votos_opuesta > _votos_nueva:
+                    _nueva_gana = False
+                    _razon = f"consenso TF superior ({_votos_opuesta}↑ vs {_votos_nueva}↓)"
+                else:
+                    # Empate en votos → fallback a score
+                    _nueva_gana = _score_nuevo >= _score_opuesta
+                    _razon = f"empate TF → score ({_score_nuevo} vs {_score_opuesta})"
+
+                if _nueva_gana:
+                    self.db.ejecutar_query(
+                        "UPDATE senales SET estado='CANCELADA', ciclo_vida='CANCELADA' WHERE id=?",
+                        (_id_opuesta,)
+                    )
+                    _logger.warning(
+                        f"[{_simbolo_cd}] ⚡ Conflicto [{_razon}]: "
+                        f"#{_id_opuesta} ({_dir_opuesta}) CANCELADA — "
+                        f"{_direccion_cd} toma el control."
+                    )
+                else:
+                    _logger.warning(
+                        f"[{_simbolo_cd}] 🔴 {_direccion_cd} BLOQUEADA [{_razon}] — "
+                        f"#{_id_opuesta} ({_dir_opuesta}) prevalece."
+                    )
+                    return None
         # ─────────────────────────────────────────────────────────────────────
         senal_id = self.db.guardar_senal(senal_data)
         self._last_senal_id = senal_id  # lo consumirá el próximo enviar()
