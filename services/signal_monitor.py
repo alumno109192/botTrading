@@ -324,7 +324,7 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
 
 📋 <b>ACCIÓN — HACER AHORA:</b>
 🔴 Cerrar 33% de la posición a mercado
-🔒 Mover SL a TP1 (${tp1:.2f})
+🔒 SL movido automáticamente a TP1 (${tp1:.2f})
 {f"⏳ Dejar correr el resto hacia TP3 (${tp3:.2f})" if tp3 else "⏳ Dejar correr el resto hacia cierre manual"}
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
@@ -388,7 +388,24 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
     # Usa precio_actual (Close) en lugar de precio_min (Low) para evitar falsas
     # activaciones por mechas temporales que ya se han recuperado.
     if precio_actual <= sl and not sl_alcanzado:
-        if tp1_alcanzado:
+        if tp2_alcanzado:
+            # TP2 ya se tocó → SL fue movido a TP1 (trailing stop) → cierre con ganancia
+            beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
+            db.actualizar_estado_senal(senal_id, 'SL', beneficio)
+            mensaje = (
+                f"🔒 <b>TRAILING STOP — CERRADO CON GANANCIA</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 COMPRA | TP2 alcanzado previamente\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Trailing stop en TP1: ${sl:.2f}\n"
+                f"📉 Actual: ${precio_actual:.2f}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ Trade cerrado con <b>+{beneficio:.2f}%</b>\n"
+                f"🔖 <code>#{senal_id}</code>"
+            )
+            enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
+            logger.info(f"  🔒 [{simbolo}] TRAILING STOP BUY — cerrada en TP1 ${sl:.2f} (+{beneficio:.2f}%)")
+        elif tp1_alcanzado:
             # TP1 ya se tocó → SL fue movido a breakeven automáticamente → cierre en 0
             db.actualizar_estado_senal(senal_id, 'BREAKEVEN', 0.0)
             db.registrar_breakeven_hit(senal_id, simbolo, 'COMPRA', sl, precio_actual)
@@ -517,7 +534,7 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
 
 📋 <b>ACCIÓN — HACER AHORA:</b>
 🔴 Cerrar 33% de la posición a mercado
-🔒 Mover SL a TP1 (${tp1:.2f})
+🔒 SL movido automáticamente a TP1 (${tp1:.2f})
 {f"⏳ Dejar correr el resto hacia TP3 (${tp3:.2f})" if tp3 else "⏳ Dejar correr el resto hacia cierre manual"}
 ━━━━━━━━━━━━━━━━━━━━
 🔖 <code>#{senal_id}</code>
@@ -581,7 +598,24 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
     # Usa precio_actual (Close) en lugar de precio_max (High) para evitar falsas
     # activaciones por mechas temporales que ya se han recuperado.
     if precio_actual >= sl and not sl_alcanzado:
-        if tp1_alcanzado:
+        if tp2_alcanzado:
+            # TP2 ya se tocó → SL fue movido a TP1 (trailing stop) → cierre con ganancia
+            beneficio = calcular_beneficio_pct(precio_entrada, sl, 'VENTA')
+            db.actualizar_estado_senal(senal_id, 'SL', beneficio)
+            mensaje = (
+                f"🔒 <b>TRAILING STOP — CERRADO CON GANANCIA</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"📊 VENTA | TP2 alcanzado previamente\n"
+                f"💰 Entrada: ${precio_entrada:.2f}\n"
+                f"📍 Trailing stop en TP1: ${sl:.2f}\n"
+                f"📈 Actual: ${precio_actual:.2f}\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ Trade cerrado con <b>+{beneficio:.2f}%</b>\n"
+                f"🔖 <code>#{senal_id}</code>"
+            )
+            enviar_notificacion_telegram(mensaje, simbolo, reply_to_message_id=reply_msg_id)
+            logger.info(f"  🔒 [{simbolo}] TRAILING STOP SELL — cerrada en TP1 ${sl:.2f} (+{beneficio:.2f}%)")
+        elif tp1_alcanzado:
             # TP1 ya se tocó → SL fue movido a breakeven automáticamente → cierre en 0
             db.actualizar_estado_senal(senal_id, 'BREAKEVEN', 0.0)
             db.registrar_breakeven_hit(senal_id, simbolo, 'VENTA', sl, precio_actual)

@@ -837,9 +837,11 @@ class DatabaseManager:
             self.ejecutar_query(query, (now, now, senal_id))
 
         elif nuevo_estado == 'TP2':
+            # Al alcanzar TP2 se mueve el SL automáticamente a TP1 (trailing stop)
             query = """
             UPDATE senales 
-            SET tp2_alcanzado = TRUE, fecha_tp2 = ?
+            SET tp2_alcanzado = TRUE, fecha_tp2 = ?,
+                sl = tp1
             WHERE id = ?
             """
             self.ejecutar_query(query, (now, senal_id))
