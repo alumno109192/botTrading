@@ -2062,6 +2062,19 @@ def monitor_senales():
                         _verificar_reversal_post_tp2(senal, _reversal_tp2_avisado, db)
                         _ultimo_check_trampa[senal_id] = ciclo
 
+            # Publicar precio SSE aunque no haya señales activas (header del dashboard)
+            # Usa la tabla ohlcv para no hacer fetch extra si no hubo señales
+            try:
+                from bridge.sse_broker import broker as _sse_broker_hb
+                r_p = db.ejecutar_query(
+                    "SELECT close FROM ohlcv WHERE symbol = 'GC=F' ORDER BY timestamp DESC LIMIT 1"
+                )
+                if r_p.rows:
+                    _precio_hb = r_p.rows[0]['close'] if isinstance(r_p.rows[0], dict) else r_p.rows[0][0]
+                    _sse_broker_hb.publicar_precio(symbol='XAUUSD', precio=float(_precio_hb))
+            except Exception:
+                pass
+
             # Limpiar del diccionario señales que ya no están activas
             ids_activos = {s['id'] for s in senales_activas} if senales_activas else set()
             for sid in list(ultimo_check):

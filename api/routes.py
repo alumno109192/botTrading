@@ -423,6 +423,13 @@ def create_app(estado_sistema, threads_detectores):
             logger.error(f"❌ /api/v1/status error: {e}")
             return jsonify({'error': str(e)}), 500
 
+    # Mapeo de nombre de símbolo al ticker real almacenado en ohlcv (Yahoo Finance)
+    _SYMBOL_TO_OHLCV = {
+        'XAUUSD': 'GC=F',
+        'GOLD':   'GC=F',
+        'EURUSD': 'EURUSD=X',
+    }
+
     @app.route('/api/v1/precio/<symbol>')
     def v1_precio(symbol: str):
         """Precio reciente de un símbolo desde la BD."""
@@ -432,18 +439,21 @@ def create_app(estado_sistema, threads_detectores):
             if db is None:
                 return jsonify({'error': 'BD no disponible'}), 503
 
+            sym_upper   = symbol.upper()
+            ohlcv_sym   = _SYMBOL_TO_OHLCV.get(sym_upper, sym_upper)
+
             # Obtener el precio más reciente de ohlcv
             query = """
             SELECT close, timestamp FROM ohlcv
             WHERE symbol = ?
             ORDER BY timestamp DESC LIMIT 1
             """
-            result = db.ejecutar_query(query, (symbol.upper(),))
+            result = db.ejecutar_query(query, (ohlcv_sym,))
             if result.rows:
                 row = dict(result.rows[0])
-                return jsonify({'symbol': symbol.upper(), 'precio': row['close'],
+                return jsonify({'symbol': sym_upper, 'precio': row['close'],
                                 'timestamp': row['timestamp']})
-            return jsonify({'symbol': symbol.upper(), 'precio': None, 'timestamp': None})
+            return jsonify({'symbol': sym_upper, 'precio': None, 'timestamp': None})
         except Exception as e:
             logger.error(f"❌ /api/v1/precio/{symbol} error: {e}")
             return jsonify({'error': str(e)}), 500
