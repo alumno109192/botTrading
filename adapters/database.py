@@ -1328,14 +1328,16 @@ class DatabaseManager:
 
     def guardar_velas(self, symbol: str, interval: str, rows: list):
         """
-        Inserta o reemplaza velas OHLCV en la BD.
+        Inserta velas OHLCV nuevas en la BD. Las ya existentes se ignoran (OR IGNORE)
+        para evitar el DELETE+INSERT de INSERT OR REPLACE, que multiplicaba los rows
+        written en Turso por ~960x en cada poll incremental de 1m.
         rows: lista de (ts_str, open, high, low, close, volume)
         Usa lotes de 80 statements por HTTP call para no superar límites de payload.
         """
         if not rows:
             return
         sql = (
-            "INSERT OR REPLACE INTO ohlcv "
+            "INSERT OR IGNORE INTO ohlcv "
             "(symbol, interval, ts, open, high, low, close, volume) "
             "VALUES (?,?,?,?,?,?,?,?)"
         )

@@ -1797,24 +1797,6 @@ def monitor_senales():
     # Flag para evitar enviar el resumen diario más de una vez por franja horaria
     _resumen_diario_sl_enviado: bool = False
 
-    # ── Hilo de precio tiempo real (SSE cada 5 segundos) ─────────────────────
-    def _precio_ticker():
-        """Publica el precio de XAUUSD via SSE cada 5 segundos (TwelveData /price)."""
-        from adapters.data_provider import get_precio_tiempo_real
-        from bridge.sse_broker import broker as _broker_rt
-        while True:
-            try:
-                precio = get_precio_tiempo_real('GC=F')
-                if precio is not None:
-                    _broker_rt.publicar_precio(symbol='XAUUSD', precio=precio)
-            except Exception:
-                pass
-            time.sleep(5)
-
-    _hilo_precio = threading.Thread(target=_precio_ticker, name='PrecioTicker', daemon=True)
-    _hilo_precio.start()
-    logger.info("⚡ Hilo PrecioTicker iniciado (SSE cada 5s via TwelveData /price)")
-
     while True:
         try:
             ciclo += 1
@@ -2015,12 +1997,6 @@ def monitor_senales():
 
                     precio_actual, precio_max, precio_min = precios
 
-                    # Actualizar precio_actual en la señal (para REST /api/v1/senales/activas)
-                    try:
-                        db.actualizar_precio_actual(senal_id, precio_actual)
-                    except Exception:
-                        pass
-
                     try:
                         db.registrar_precio(senal_id, precio_actual, senal_data=senal)
                     except Exception as e_reg:
@@ -2111,8 +2087,8 @@ def monitor_senales():
             if ciclo % 60 == 0:
                 _invalidar_por_alejamiento_atr(db)
 
-            # Heartbeat cada 10 ticks (~5 min) → puebla bot_logs y confirma que el monitor corre
-            if ciclo % 10 == 0:
+            # Heartbeat cada 60 ticks (~30 min) → confirma que el monitor corre
+            if ciclo % 60 == 0:
                 n_activas = len(senales_activas) if senales_activas else 0
                 try:
                     db.guardar_log(

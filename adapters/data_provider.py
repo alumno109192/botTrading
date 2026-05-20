@@ -119,6 +119,12 @@ _uso_cache_ts: float = 0.0     # timestamp de la última carga
 _uso_cache_lock = threading.Lock()
 _USO_CACHE_TTL = 60            # segundos
 
+# Batch de escrituras de uso (evita 1 write/llamada API → flush cada 5 min)
+_uso_pendiente: dict  = {}     # alias → {'exitosas': int, 'fallidas': int}
+_uso_pendiente_lock   = threading.Lock()
+_uso_flush_ts: float  = 0.0
+_USO_FLUSH_INTERVAL   = 300    # segundos entre flushes a BD (5 min)
+
 # Cooldown reactivo: cuando la API devuelve error de límite/minuto, bloquear 65s
 _key_cooldown: dict = {}       # alias → timestamp hasta el que está bloqueada
 _cooldown_lock = threading.Lock()
@@ -274,15 +280,61 @@ def _next_td_key() -> tuple:
     return None, None
 
 
-def _registrar_uso_key(alias: str, exito: bool = True):
-    """Registra cada intento de uso en BD (best-effort, no bloquea la petición)."""
+def _flush_uso_a_bd() -> None:
+    """Persiste contadores de uso acumulados en memoria a la BD (best-effort)."""
+    import time as _time
+    global _uso_flush_ts
+    with _uso_pendiente_lock:
+        if not _uso_pendiente:
+            _uso_flush_ts = _time.time()
+            return
+        snapshot = {k: dict(v) for k, v in _uso_pendiente.items()}
+        _uso_pendiente.clear()
+    _uso_flush_ts = _time.time()
     try:
         from adapters.database import DatabaseManager
-        total = DatabaseManager().incrementar_uso_key(alias, exito=exito)
-        if total % 100 == 0:
-            print(f"  📊 [quota] {alias}: {total} peticiones hoy")
+        db = DatabaseManager()
+        hoy   = datetime.now(timezone.utc).date().isoformat()
+        ahora = datetime.now(timezone.utc).isoformat()
+        for alias, counts in snapshot.items():
+            exitosas = counts.get('exitosas', 0)
+            fallidas = counts.get('fallidas', 0)
+            total    = exitosas + fallidas
+            if total == 0:
+                continue
+            db.ejecutar_query("""
+            INSERT INTO api_key_usage (fecha, key_alias, peticiones, exitosas, fallidas, actualizado)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(fecha, key_alias)
+            DO UPDATE SET
+                peticiones  = peticiones  + excluded.peticiones,
+                exitosas    = exitosas    + excluded.exitosas,
+                fallidas    = fallidas    + excluded.fallidas,
+                actualizado = excluded.actualizado
+            """, (hoy, alias, total, exitosas, fallidas, ahora))
     except Exception:
-        pass  # Nunca debe bloquear la petición de datos
+        pass
+
+
+def _registrar_uso_key(alias: str, exito: bool = True):
+    """Acumula uso en memoria; escribe a BD cada 5 min (batch) para reducir writes."""
+    import time as _time
+    global _uso_flush_ts
+
+    with _uso_pendiente_lock:
+        entry = _uso_pendiente.setdefault(alias, {'exitosas': 0, 'fallidas': 0})
+        if exito:
+            entry['exitosas'] += 1
+        else:
+            entry['fallidas'] += 1
+
+    # Actualizar también el cache de cuota diaria (para _is_daily_limit_exceeded)
+    with _uso_cache_lock:
+        _uso_cache[alias] = _uso_cache.get(alias, 0) + 1
+
+    # Flush periódico a BD (solo un thread lo ejecuta gracias al check atómico)
+    if _time.time() - _uso_flush_ts >= _USO_FLUSH_INTERVAL:
+        _flush_uso_a_bd()
 
 
 def _guardar_en_db(ticker_yf: str, interval: str, df: pd.DataFrame):
