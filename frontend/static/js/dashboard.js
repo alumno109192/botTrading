@@ -590,10 +590,15 @@ function _calcBar(s, precioLive) {
 
   if (!sl || !ent || !tpEdge) return null;
 
-  // Cuando SL = entrada (breakeven post-TP1), reconstruir anclaje visual
-  // usando la distancia entrada→TP1 reflejada para preservar proporciones
+  // Cuando SL se movió al breakeven (SL ≈ entrada) o al trailing stop (SL ≈ TP1),
+  // reconstruir el anclaje visual usando la distancia entrada→TP1 reflejada
+  // para preservar las proporciones originales de la operación.
   let slEff = sl;
   if (tp1 && Math.abs(sl - ent) < 0.5) {
+    // Breakeven: SL movido a entrada tras alcanzar TP1
+    slEff = isBuy ? ent - (tp1 - ent) : ent + (ent - tp1);
+  } else if (tp1 && Math.abs(sl - tp1) < 0.5) {
+    // Trailing stop: SL movido a TP1 tras alcanzar TP2
     slEff = isBuy ? ent - (tp1 - ent) : ent + (ent - tp1);
   }
 
