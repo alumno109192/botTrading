@@ -1797,6 +1797,24 @@ def monitor_senales():
     # Flag para evitar enviar el resumen diario más de una vez por franja horaria
     _resumen_diario_sl_enviado: bool = False
 
+    # ── Hilo de precio tiempo real (SSE cada 5 segundos) ─────────────────────
+    def _precio_ticker():
+        """Publica el precio de XAUUSD via SSE cada 5 segundos (TwelveData /price)."""
+        from adapters.data_provider import get_precio_tiempo_real
+        from bridge.sse_broker import broker as _broker_rt
+        while True:
+            try:
+                precio = get_precio_tiempo_real('GC=F')
+                if precio is not None:
+                    _broker_rt.publicar_precio(symbol='XAUUSD', precio=precio)
+            except Exception:
+                pass
+            time.sleep(5)
+
+    _hilo_precio = threading.Thread(target=_precio_ticker, name='PrecioTicker', daemon=True)
+    _hilo_precio.start()
+    logger.info("⚡ Hilo PrecioTicker iniciado (SSE cada 5s via TwelveData /price)")
+
     while True:
         try:
             ciclo += 1
@@ -2061,19 +2079,6 @@ def monitor_senales():
                         _verificar_reversal_post_tp1(senal, _reversal_tp1_avisado, db)
                         _verificar_reversal_post_tp2(senal, _reversal_tp2_avisado, db)
                         _ultimo_check_trampa[senal_id] = ciclo
-
-            # Publicar precio SSE aunque no haya señales activas (header del dashboard)
-            # Usa la tabla ohlcv para no hacer fetch extra si no hubo señales
-            try:
-                from bridge.sse_broker import broker as _sse_broker_hb
-                r_p = db.ejecutar_query(
-                    "SELECT close FROM ohlcv WHERE symbol = 'GC=F' ORDER BY timestamp DESC LIMIT 1"
-                )
-                if r_p.rows:
-                    _precio_hb = r_p.rows[0]['close'] if isinstance(r_p.rows[0], dict) else r_p.rows[0][0]
-                    _sse_broker_hb.publicar_precio(symbol='XAUUSD', precio=float(_precio_hb))
-            except Exception:
-                pass
 
             # Limpiar del diccionario señales que ya no están activas
             ids_activos = {s['id'] for s in senales_activas} if senales_activas else set()

@@ -432,17 +432,28 @@ def create_app(estado_sistema, threads_detectores):
 
     @app.route('/api/v1/precio/<symbol>')
     def v1_precio(symbol: str):
-        """Precio reciente de un símbolo desde la BD."""
+        """Precio actual de un símbolo — TwelveData /price (tiempo real, TTL 4s) con
+        fallback a la tabla ohlcv cuando la API no está disponible."""
         try:
+            sym_upper = symbol.upper()
+            ohlcv_sym = _SYMBOL_TO_OHLCV.get(sym_upper, sym_upper)
+
+            # ── Prioridad 1: TwelveData /price (tick actual, cache 4s) ─────────
+            try:
+                from adapters.data_provider import get_precio_tiempo_real
+                precio_rt = get_precio_tiempo_real(ohlcv_sym)
+                if precio_rt is not None:
+                    return jsonify({'symbol': sym_upper, 'precio': precio_rt,
+                                    'timestamp': None, 'fuente': 'realtime'})
+            except Exception:
+                pass
+
+            # ── Fallback: última vela de ohlcv en BD ────────────────────────────
             from adapters.database import get_db
             db = get_db()
             if db is None:
                 return jsonify({'error': 'BD no disponible'}), 503
 
-            sym_upper   = symbol.upper()
-            ohlcv_sym   = _SYMBOL_TO_OHLCV.get(sym_upper, sym_upper)
-
-            # Obtener el precio más reciente de ohlcv
             query = """
             SELECT close, timestamp FROM ohlcv
             WHERE symbol = ?
@@ -452,7 +463,7 @@ def create_app(estado_sistema, threads_detectores):
             if result.rows:
                 row = dict(result.rows[0])
                 return jsonify({'symbol': sym_upper, 'precio': row['close'],
-                                'timestamp': row['timestamp']})
+                                'timestamp': row['timestamp'], 'fuente': 'ohlcv'})
             return jsonify({'symbol': sym_upper, 'precio': None, 'timestamp': None})
         except Exception as e:
             logger.error(f"❌ /api/v1/precio/{symbol} error: {e}")

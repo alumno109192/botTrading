@@ -359,6 +359,60 @@ def _get_from_db(ticker_yf: str, period: str, interval: str, force: bool = False
     return df, False  # Datos de BD se originaron en Twelve Data → no delayed
 
 
+# ── Cache de precio tiempo real (TTL 4s — sirve múltiples clientes sin llamadas extra) ──
+_rt_price_cache: dict = {}       # ticker → (precio_float, timestamp_float)
+_RT_PRICE_TTL   = 4.0            # segundos antes de que el valor se considere stale
+
+
+def get_precio_tiempo_real(ticker_yf: str) -> float | None:
+    """Precio actual vía TwelveData /price (ligero, tiempo real, TTL 4s).
+
+    Diferencia con get_ohlcv: no descarga series de velas, solo el último tick.
+    Endpoint: GET https://api.twelvedata.com/price?symbol=XAU/USD&apikey=KEY
+    Respuesta: {"price": "3123.45"}
+
+    Retorna None si no hay keys disponibles, el ticker no está mapeado o falla la petición.
+    """
+    import time as _time
+
+    # Servir desde cache si sigue fresco
+    cached = _rt_price_cache.get(ticker_yf)
+    if cached and (_time.time() - cached[1]) < _RT_PRICE_TTL:
+        return cached[0]
+
+    td_symbol = _TICKER_MAP_TWELVE.get(ticker_yf)
+    if not td_symbol or not _td_keys:
+        return None
+
+    alias, key = _next_td_key()
+    if not key:
+        return None
+
+    # Reservar slot de cuota de minuto (proactivo)
+    if not _reserve_minute_slot(alias):
+        return None
+
+    try:
+        resp = requests.get(
+            'https://api.twelvedata.com/price',
+            params={'symbol': td_symbol, 'apikey': key},
+            timeout=4,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if 'price' in data:
+                precio = float(data['price'])
+                _rt_price_cache[ticker_yf] = (precio, _time.time())
+                _registrar_uso_key(alias)
+                return precio
+            # Error de API (límite, símbolo inválido, etc.)
+            if data.get('code') in (429, 400, 401):
+                _set_key_cooldown(alias, 65, reason='error /price API')
+    except Exception:
+        pass
+    return None
+
+
 def poll_ohlcv(ticker_yf: str, interval: str = '5m') -> bool:
     """
     Descarga velas de Twelve Data y las persiste en BD, saltando el cache en memoria.
