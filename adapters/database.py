@@ -923,6 +923,7 @@ class DatabaseManager:
                     from adapters.telegram import enviar_telegram as _tg_send
                     _dir_emoji = '📉' if direccion == 'VENTA' else '📈'
                     _sym_base = simbolo.rsplit('_', 1)[0]
+                    _tf_part  = simbolo.rsplit('_', 1)[1] if '_' in simbolo else ''
                     _msg = (
                         f"❌ <b>SEÑAL CANCELADA</b> — #{s['id']}\n"
                         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -935,6 +936,16 @@ class DatabaseManager:
                         thread_id=s.get('telegram_thread_id'),
                         reply_to_message_id=s.get('telegram_message_id'),
                     )
+                    from bridge.sse_broker import broker as _sse_br
+                    if _sse_br.num_clientes > 0:
+                        _sse_br.publicar_senal(
+                            tipo='cancelada',
+                            simbolo=_sym_base,
+                            timeframe=_tf_part,
+                            direccion=direccion,
+                            precio_entrada=float(s['precio_entrada'] or 0),
+                            senal_id=s['id'],
+                        )
                 except Exception as _tg_e:
                     logger.debug(f"Notif cancelación Telegram: {_tg_e}")
 

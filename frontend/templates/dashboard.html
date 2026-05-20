@@ -606,7 +606,7 @@
            x-transition:leave="transition ease-in duration-200"
            x-transition:leave-start="opacity-100"
            x-transition:leave-end="opacity-0">
-        <span class="toast-icon" x-text="toast.tipo === 'nueva' ? '🔔' : toast.tipo === 'tp' ? '✅' : '🛑'"></span>
+        <span class="toast-icon" x-text="toast.tipo === 'nueva' ? '🔔' : toast.tipo === 'tp' ? '✅' : toast.tipo === 'cancelada' ? '❌' : '🛑'"></span>
         <div class="toast-body" @click="window.location.href = toast.url || '/dashboard/activas'" style="cursor:pointer;flex:1">
           <div class="toast-title" x-text="toast.titulo"></div>
           <div class="toast-message" x-text="toast.mensaje"></div>

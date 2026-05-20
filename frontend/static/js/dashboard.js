@@ -115,6 +115,12 @@ function dashboardApp() {
                 `🛑 Stop Loss activado`,
                 `${d.simbolo} ${d.timeframe}`
               );
+            } else if (tipo === 'cancelada') {
+              this.toast('cancelada',
+                `❌ Señal cancelada`,
+                `${d.simbolo} ${d.timeframe}`,
+                '/dashboard/historial'
+              );
             }
             // Recargar señales activas para reflejar el nuevo estado
             this.cargarActivas();

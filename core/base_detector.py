@@ -289,6 +289,20 @@ class BaseDetector(ABC):
                             thread_id=_tg_tid_op,
                             reply_to_message_id=_tg_mid_op,
                         )
+                        _tf_part_op = _simbolo_cd.rsplit('_', 1)[1] if '_' in _simbolo_cd else ''
+                        try:
+                            from bridge.sse_broker import broker as _sse_br_c
+                            if _sse_br_c.num_clientes > 0:
+                                _sse_br_c.publicar_senal(
+                                    tipo='cancelada',
+                                    simbolo=_sym_base_op,
+                                    timeframe=_tf_part_op,
+                                    direccion=_dir_opuesta,
+                                    precio_entrada=float(_precio_op or 0),
+                                    senal_id=_id_opuesta,
+                                )
+                        except Exception:
+                            pass
                     except Exception as _e:
                         _logger.debug(f"Notif conflicto Telegram: {_e}")
                 else:
