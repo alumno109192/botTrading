@@ -835,9 +835,9 @@ class GoldDetector1D(BaseDetector):
         spread     = self.spread_por_sesion()  # spread dinámico según sesión de mercado
         commission = params.get('commission', 0.30)
         cost = spread + commission
-        # -1.0: offset para asegurar fill — la orden se coloca $1 por debajo del nivel calculado
+        # ±1.0: offset para asegurar fill — SELL $1 por debajo, BUY $1 por encima del nivel calculado
         sell_entry = round(sell_limit - cost - 1.0, 2)
-        buy_entry  = round(buy_limit  + cost, 2)
+        buy_entry  = round(buy_limit  + cost + 1.0, 2)
 
         sl_venta  = round(sell_entry + atr * asm + cost, 2)
         sl_compra = round(buy_entry  - atr * asm - cost, 2)

@@ -475,9 +475,9 @@ class GoldDetector15M(BaseDetector):
             buy_limit  = close * (1 - offset_pct / 100)
 
             # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
-            # -1.0: offset para asegurar fill — la orden se coloca $1 por debajo del nivel calculado
+            # ±1.0: offset para asegurar fill — SELL $1 por debajo, BUY $1 por encima del nivel calculado
             sell_entry = round(sell_limit - spread - 1.0, 2)
-            buy_entry  = round(buy_limit  + spread, 2)
+            buy_entry  = round(buy_limit  + spread + 1.0, 2)
 
             # VATR: factor de volumen — amplía TPs en mercados con impulso, los reduce en apáticos
             _vol_avg20  = float(df['Volume'].rolling(20).mean().iloc[-1])

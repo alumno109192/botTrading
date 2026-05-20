@@ -283,9 +283,9 @@ class GoldDetector2H(BaseDetector):
 
         # Ajuste de spread del broker: BUY paga ask (bid+spread), SELL cobra bid (bid-spread)
         spread = self.spread_por_sesion()  # spread dinámico según sesión de mercado
-        # -1.0: offset para asegurar fill — la orden se coloca $1 por debajo del nivel calculado
+        # ±1.0: offset para asegurar fill — SELL $1 por debajo, BUY $1 por encima del nivel calculado
         sell_entry = round(sell_limit - spread - 1.0, 2)
-        buy_entry  = round(buy_limit  + spread, 2)
+        buy_entry  = round(buy_limit  + spread + 1.0, 2)
 
         # Para SELL: SL en último swing HIGH por encima de la entrada + 0.3×ATR buffer
         # Cap: si el swing está muy lejos, usar el techo de zona + buffer (invalidación natural)
