@@ -790,6 +790,174 @@ def _verificar_trampa_patron(senal: dict, db: DatabaseManager, trampa_avisada: s
         logger.debug(f"  [trampa] Error analizando {simbolo}: {e}")
 
 
+def _verificar_agotamiento_momentum(senal: dict, _agotamiento_avisado: set, db) -> None:
+    """
+    Detecta agotamiento de momentum en señales ACTIVAS en cualquier etapa del trade.
+
+    Se evalúa una vez por etapa (pre-TP1, TP1→TP2, TP2→TP3) usando la clave
+    (senal_id, etapa) en _agotamiento_avisado para no repetir dentro de la misma etapa.
+
+    Evalúa 3 condiciones:
+      1. Precio estancado: rango de las últimas 4 velas ≤ 0.5×ATR (impulso detenido)
+      2. ≥ 2 velas contra-tendencia en las últimas 4
+      3. RSI en zona de agotamiento (>65 COMPRA / <35 VENTA) y girando en contra
+
+    Con 3/3 → alerta Telegram con acción recomendada según la etapa actual.
+    Con 2/3 → solo log, sin notificación.
+    """
+    from core.indicators import calcular_atr
+
+    senal_id  = senal['id']
+    simbolo   = senal['simbolo']
+    direccion = senal['direccion']
+
+    tp1_alcanzado = bool(int(senal.get('tp1_alcanzado') or 0))
+    tp2_alcanzado = bool(int(senal.get('tp2_alcanzado') or 0))
+    tp3_alcanzado = bool(int(senal.get('tp3_alcanzado') or 0))
+
+    # Determinar etapa actual (la señal ya está cerrada si tp3 fue alcanzado)
+    if tp3_alcanzado:
+        return
+    if tp2_alcanzado:
+        etapa = 'tp2_tp3'
+    elif tp1_alcanzado:
+        etapa = 'tp1_tp2'
+    else:
+        etapa = 'pre_tp1'
+
+    # Una alerta por etapa — se resetea automáticamente al avanzar de etapa
+    clave = (senal_id, etapa)
+    if clave in _agotamiento_avisado:
+        return
+
+    simbolo_base = simbolo.split('_')[0]
+    ticker = SIMBOLO_TO_TICKER.get(simbolo_base)
+    if not ticker:
+        return
+
+    sufijo = simbolo.split('_')[-1].upper() if '_' in simbolo else ''
+    if sufijo == '5M':
+        interval, period = '5m', '1d'
+    elif sufijo == '15M':
+        interval, period = '15m', '2d'
+    elif sufijo == '1H':
+        interval, period = '1h', '5d'
+    else:  # 4H, 1D
+        interval, period = '4h', '30d'
+
+    try:
+        df, _ = _get_ohlcv(ticker, period=period, interval=interval)
+        if df is None or len(df) < 15:
+            return
+
+        close = df['Close']
+        high  = df['High']
+        low   = df['Low']
+
+        atr = float(calcular_atr(df, 14).iloc[-1])
+        if atr <= 0:
+            return
+
+        precio_entrada = float(senal['precio_entrada'])
+        tp1  = float(senal['tp1']) if senal.get('tp1') else None
+        tp2  = float(senal['tp2']) if senal.get('tp2') else None
+        tp3  = float(senal['tp3']) if senal.get('tp3') else None
+        sl   = float(senal['sl'])
+        precio_actual = float(close.iloc[-1])
+
+        # RSI 14
+        delta = close.diff()
+        gain  = delta.clip(lower=0).rolling(14).mean()
+        loss  = (-delta.clip(upper=0)).rolling(14).mean()
+        rs    = gain / loss.replace(0, float('inf'))
+        rsi_series   = 100 - (100 / (1 + rs))
+        rsi_actual   = float(rsi_series.iloc[-1])
+        rsi_anterior = float(rsi_series.iloc[-2])
+
+        senales_agot = []
+        ultimas_4 = df.tail(4)
+
+        # 1. Precio estancado: rango total de las últimas 4 velas ≤ 0.5×ATR
+        rango_4v = float(ultimas_4['High'].max() - ultimas_4['Low'].min())
+        if rango_4v <= 0.5 * atr:
+            senales_agot.append(
+                f"Precio estancado — rango 4 velas: {rango_4v:.1f} pts ({rango_4v/atr:.2f}×ATR)"
+            )
+
+        if direccion == 'COMPRA':
+            bajistas = sum(1 for _, r in ultimas_4.iterrows() if r['Close'] < r['Open'])
+            if bajistas >= 2:
+                senales_agot.append(f"{bajistas} velas bajistas en las últimas 4 velas")
+            if rsi_actual > 65 and rsi_actual < rsi_anterior:
+                senales_agot.append(f"RSI agotado y bajando ({rsi_anterior:.0f}→{rsi_actual:.0f})")
+        else:  # VENTA
+            alcistas = sum(1 for _, r in ultimas_4.iterrows() if r['Close'] > r['Open'])
+            if alcistas >= 2:
+                senales_agot.append(f"{alcistas} velas alcistas en las últimas 4 velas")
+            if rsi_actual < 35 and rsi_actual > rsi_anterior:
+                senales_agot.append(f"RSI agotado y subiendo ({rsi_anterior:.0f}→{rsi_actual:.0f})")
+
+        if len(senales_agot) < 3:
+            if len(senales_agot) == 2:
+                logger.debug(
+                    f"  [agotamiento] #{senal_id} {simbolo} [{etapa}] bajo presión (2/3) — sin notificación"
+                )
+            return
+
+        # ── Construir contexto según etapa ───────────────────────────────────
+        beneficio_actual = calcular_beneficio_pct(precio_entrada, precio_actual, direccion)
+        icono = '🟢' if direccion == 'COMPRA' else '🔴'
+        reply_msg_id = senal.get('telegram_message_id')
+        senales_lines = "\n".join(f"  • {s}" for s in senales_agot)
+
+        if etapa == 'pre_tp1':
+            proximo_nivel = f"🎯 Próximo: TP1 ${tp1:.2f}" if tp1 else ''
+            dist_sl = abs(precio_actual - sl)
+            contexto = f"Aún sin TP alcanzado — SL en ${sl:.2f} (riesgo ${dist_sl:.2f})"
+            accion = (
+                f"  • Cerrar ahora limitando pérdida ({beneficio_actual:+.2f}%)\n"
+                f"  • O esperar al SL (${sl:.2f}) si confías en el setup"
+            )
+        elif etapa == 'tp1_tp2':
+            proximo_nivel = f"🎯 Próximo: TP2 ${tp2:.2f}" if tp2 else ''
+            contexto = f"TP1 alcanzado — SL movido a breakeven (${precio_entrada:.2f})"
+            accion = (
+                f"  • Cerrar ahora sin pérdida (SL = breakeven)\n"
+                f"  • O esperar a que el SL te saque en ${precio_entrada:.2f}"
+            )
+        else:  # tp2_tp3
+            tp1_val = tp1 or precio_entrada
+            proximo_nivel = f"🎯 Próximo: TP3 ${tp3:.2f}" if tp3 else ''
+            contexto = f"TP2 alcanzado — SL movido a TP1 (${tp1_val:.2f})"
+            accion = (
+                f"  • Cerrar asegurando beneficio TP1 (${tp1_val:.2f})\n"
+                f"  • O esperar a que el trailing stop te saque en ${tp1_val:.2f}"
+            )
+
+        msg = (
+            f"⚠️ <b>MOMENTUM AGOTADO — {simbolo}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{icono} <b>{direccion}</b> | {contexto}\n"
+            f"💰 Entrada: ${precio_entrada:.2f}\n"
+            f"📍 Actual:  ${precio_actual:.2f}  ({beneficio_actual:+.2f}%)\n"
+            f"{proximo_nivel}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📉 Señales de agotamiento (3/3):\n{senales_lines}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🤔 <b>DECISIÓN MANUAL:</b>\n{accion}\n"
+            f"🔖 <code>#{senal_id}</code>"
+        )
+        enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
+        _agotamiento_avisado.add(clave)
+        logger.info(
+            f"  ⚠️ [agotamiento] #{senal_id} {simbolo} {direccion} [{etapa}] — "
+            f"momentum agotado (3/3), alerta enviada (precio ${precio_actual:.2f})"
+        )
+
+    except Exception as e:
+        logger.debug(f"  [agotamiento] Error analizando {simbolo}: {e}")
+
+
 def _verificar_reversal_post_tp1(senal: dict, _reversal_tp1_avisado: set, db) -> None:
     """
     Gestiona reversiones cuando el trade está entre TP1 y TP2.
@@ -1790,6 +1958,8 @@ def monitor_senales():
     _reversal_tp1_avisado: set = set()
     # Set de IDs de señales para las que ya se envió la alerta de reversión post-TP2
     _reversal_tp2_avisado: set = set()
+    # Set de IDs de señales para las que ya se envió la alerta de agotamiento pre-TP1
+    _agotamiento_avisado: set = set()
     # Último tick en que se verificó la trampa por señal (evita llamadas API excesivas)
     _ultimo_check_trampa: dict = {}
     # Set de IDs de señales cuya orden LIMIT ya fue ejecutada (precio tocó la entrada)
@@ -2071,6 +2241,7 @@ def monitor_senales():
                     if (_ultimo_trampa is None or
                             ciclo - _ultimo_trampa >= _intervalo_trampa):
                         _verificar_trampa_patron(senal, db, _trampa_avisada)
+                        _verificar_agotamiento_momentum(senal, _agotamiento_avisado, db)
                         _verificar_reversal_post_tp1(senal, _reversal_tp1_avisado, db)
                         _verificar_reversal_post_tp2(senal, _reversal_tp2_avisado, db)
                         _ultimo_check_trampa[senal_id] = ciclo
@@ -2084,6 +2255,7 @@ def monitor_senales():
             _trampa_avisada.intersection_update(ids_activos)
             _reversal_tp1_avisado.intersection_update(ids_activos)
             _reversal_tp2_avisado.intersection_update(ids_activos)
+            _agotamiento_avisado.intersection_update(ids_activos)
             _ordenes_ejecutadas.intersection_update(ids_activos)
             _aviso_caducidad_enviado.intersection_update(ids_activos)
             for sid in list(_ultimo_check_trampa):
