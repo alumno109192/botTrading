@@ -610,6 +610,63 @@ def create_app(estado_sistema, threads_detectores):
             },
         )
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Cancelar señal manualmente (requiere CANCEL_KEY)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/api/v1/senales/<int:senal_id>/cancelar', methods=['POST'])
+    def cancelar_senal_manual(senal_id):
+        """Cancela manualmente una señal activa o pendiente.
+
+        Body JSON: { "clave": "<CANCEL_KEY>" }
+        Requiere que la variable de entorno CANCEL_KEY esté configurada.
+        """
+        import hmac
+        CANCEL_KEY = os.environ.get('CANCEL_KEY', '')
+        if not CANCEL_KEY:
+            return jsonify({'error': 'Función no habilitada (CANCEL_KEY no configurada)'}), 503
+
+        try:
+            body = request.get_json(force=True) or {}
+            clave = str(body.get('clave', ''))
+            # Comparación en tiempo constante para evitar timing attacks
+            if not hmac.compare_digest(clave, CANCEL_KEY):
+                logger.warning(f"⚠️ Intento de cancelación con clave incorrecta (señal #{senal_id})")
+                return jsonify({'error': 'Clave incorrecta'}), 403
+
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+
+            # Verificar que la señal existe y está en estado cancelable
+            r = db.ejecutar_query(
+                "SELECT id, simbolo, direccion, estado FROM senales WHERE id = ?",
+                (senal_id,)
+            )
+            if not r.rows:
+                return jsonify({'error': f'Señal #{senal_id} no encontrada'}), 404
+
+            senal = r.rows[0]
+            estado_actual = senal['estado']
+            ESTADOS_CANCELABLES = ('ACTIVA', 'PENDIENTE_CONFIRM', 'ESPERANDO')
+            if estado_actual not in ESTADOS_CANCELABLES:
+                return jsonify({
+                    'error': f'La señal está en estado {estado_actual} — no se puede cancelar'
+                }), 409
+
+            ahora = datetime.now(timezone.utc).isoformat()
+            db.ejecutar_query(
+                "UPDATE senales SET estado = 'CANCELADA', ciclo_vida = 'CANCELADA', fecha_cierre = ? WHERE id = ?",
+                (ahora, senal_id)
+            )
+            logger.info(f"🗑️  Señal #{senal_id} ({senal['simbolo']} {senal['direccion']}) cancelada manualmente")
+            return jsonify({'ok': True, 'senal_id': senal_id, 'estado_previo': estado_actual})
+
+        except Exception as e:
+            logger.error(f"❌ /api/v1/senales/{senal_id}/cancelar error: {e}")
+            return jsonify({'error': str(e)}), 500
+
     # Servir el Service Worker desde la raíz (requerido por la spec)
     @app.route('/sw.js')
     def service_worker():

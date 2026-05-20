@@ -237,6 +237,9 @@
 
             <!-- Chevron -->
             <span class="card-chevron" :class="s._expanded ? 'open' : ''">▼</span>
+
+            <!-- Cancelar -->
+            <button class="btn-cancelar" @click.stop="abrirCancelar(s.id)" title="Cancelar señal">✕</button>
           </div>
 
           <!-- Cuerpo desplegable -->
@@ -372,6 +375,9 @@
                     x-text="formatPnl(s.pnl_pct)">—</span>
 
               <span class="card-chevron" :class="s._expanded ? 'open' : ''">▼</span>
+
+              <!-- Cancelar -->
+              <button class="btn-cancelar" @click.stop="abrirCancelar(s.id)" title="Cancelar orden">✕</button>
             </div>
 
             <!-- Cuerpo desplegable -->
@@ -592,6 +598,44 @@
     </section>
 
   </main>
+
+  <!-- ════════════════════════════════════════
+       MODAL CANCELAR SEÑAL
+  ════════════════════════════════════════ -->
+  <div class="modal-overlay" x-show="cancelModal.visible" x-cloak
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-100"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       @click.self="cancelModal.visible = false">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-icon">🗑️</span>
+        <span>Cancelar señal <strong x-text="'#' + cancelModal.senalId"></strong></span>
+        <button class="modal-close" @click="cancelModal.visible = false">✕</button>
+      </div>
+      <p class="modal-desc">Introduce la clave de confirmación para cancelar esta señal.</p>
+      <input class="modal-input"
+             type="password"
+             placeholder="Clave de confirmación…"
+             x-model="cancelModal.clave"
+             @keydown.enter="confirmarCancelar()"
+             @keydown.escape="cancelModal.visible = false"
+             x-ref="cancelInput" />
+      <p class="modal-error" x-show="cancelModal.error" x-text="cancelModal.error"></p>
+      <div class="modal-actions">
+        <button class="btn-modal-cancel" @click="cancelModal.visible = false">Volver</button>
+        <button class="btn-modal-confirm"
+                @click="confirmarCancelar()"
+                :disabled="cancelModal.loading">
+          <span x-show="!cancelModal.loading">Cancelar señal</span>
+          <span x-show="cancelModal.loading">Cancelando…</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ════════════════════════════════════════
        TOASTS

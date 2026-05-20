@@ -1029,3 +1029,86 @@ nav {
   .stats-table th,
   .stats-table td { padding: 6px 6px; font-size: 0.63rem; }
 }
+
+
+/* ------------------------------------------------------
+   BOTÓN CANCELAR + MODAL
+------------------------------------------------------ */
+.btn-cancelar {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border: none; border-radius: 50%;
+  background: rgba(255,23,68,0.15);
+  color: var(--sell);
+  font-size: 0.7rem; font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.btn-cancelar:hover { background: rgba(255,23,68,0.35); }
+.signal-card:hover .btn-cancelar { display: flex; }
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+  padding: 16px;
+}
+.modal-box {
+  background: var(--surface, #0d1b2a);
+  border: 1px solid rgba(84,110,122,0.35);
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%; max-width: 380px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.modal-header {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.95rem; font-weight: 600; color: #cdd9e5;
+}
+.modal-icon { font-size: 1.1rem; }
+.modal-close {
+  margin-left: auto;
+  background: none; border: none;
+  color: var(--muted-2); cursor: pointer; font-size: 0.85rem;
+}
+.modal-close:hover { color: #cdd9e5; }
+.modal-desc {
+  font-size: 0.75rem; color: var(--muted-2); margin: 0;
+}
+.modal-input {
+  background: rgba(13,27,42,0.8);
+  border: 1px solid rgba(84,110,122,0.4);
+  border-radius: 6px;
+  color: #cdd9e5;
+  font-size: 0.85rem;
+  padding: 9px 12px;
+  outline: none;
+  width: 100%;
+}
+.modal-input:focus { border-color: rgba(255,23,68,0.5); }
+.modal-error {
+  font-size: 0.72rem; color: var(--sell); margin: 0;
+}
+.modal-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+.btn-modal-cancel {
+  padding: 7px 16px; border-radius: 6px;
+  background: transparent;
+  border: 1px solid rgba(84,110,122,0.35);
+  color: var(--muted-2); font-size: 0.78rem; cursor: pointer;
+}
+.btn-modal-cancel:hover { border-color: #546e7a; color: #cdd9e5; }
+.btn-modal-confirm {
+  padding: 7px 16px; border-radius: 6px;
+  background: rgba(255,23,68,0.18);
+  border: 1px solid rgba(255,23,68,0.4);
+  color: #ff1744; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+}
+.btn-modal-confirm:hover:not(:disabled) { background: rgba(255,23,68,0.30); }
+.btn-modal-confirm:disabled { opacity: 0.5; cursor: not-allowed; }

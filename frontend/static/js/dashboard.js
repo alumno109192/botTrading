@@ -50,6 +50,15 @@ function dashboardApp() {
     _idsConocidos:       new Set(),
     _estadosConocidos:   {},
 
+    /* ── Modal cancelar ── */
+    cancelModal: {
+      visible:  false,
+      senalId:  null,
+      clave:    '',
+      loading:  false,
+      error:    '',
+    },
+
     /* ── SSE ── */
     _sse:                null,           // EventSource activo
     init(vistaInicial = 'activas') {
@@ -563,7 +572,51 @@ function dashboardApp() {
         console.error('Push unsubscribe error:', e);
       }
     },
-  };
+
+    /* ═══════════════════════════════════════════
+       CANCELAR SEÑAL
+    ═══════════════════════════════════════════ */
+    abrirCancelar(id) {
+      this.cancelModal.senalId = id;
+      this.cancelModal.clave   = '';
+      this.cancelModal.error   = '';
+      this.cancelModal.loading = false;
+      this.cancelModal.visible = true;
+      this.$nextTick(() => {
+        const inp = this.$refs.cancelInput;
+        if (inp) inp.focus();
+      });
+    },
+
+    async confirmarCancelar() {
+      if (!this.cancelModal.clave) {
+        this.cancelModal.error = 'Introduce la clave de confirmación';
+        return;
+      }
+      this.cancelModal.loading = true;
+      this.cancelModal.error   = '';
+      try {
+        const r = await fetch(`/api/v1/senales/${this.cancelModal.senalId}/cancelar`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ clave: this.cancelModal.clave }),
+        });
+        const data = await r.json();
+        if (r.ok) {
+          this.cancelModal.visible = false;
+          this.toast('cancelada', '❌ Señal cancelada',
+            `#${this.cancelModal.senalId} cancelada manualmente`);
+          await this.cargarActivas();
+        } else {
+          this.cancelModal.error = data.error || 'Error desconocido';
+        }
+      } catch (e) {
+        this.cancelModal.error = 'Error de conexión';
+      } finally {
+        this.cancelModal.loading = false;
+      }
+    },
+  };  // fin return dashboardApp
 }
 
 /* ══════════════════════════════════════════════════════
