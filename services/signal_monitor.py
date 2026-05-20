@@ -2255,7 +2255,8 @@ def monitor_senales():
             _trampa_avisada.intersection_update(ids_activos)
             _reversal_tp1_avisado.intersection_update(ids_activos)
             _reversal_tp2_avisado.intersection_update(ids_activos)
-            _agotamiento_avisado.intersection_update(ids_activos)
+            # _agotamiento_avisado guarda tuplas (senal_id, etapa) → limpieza manual
+            _agotamiento_avisado = {c for c in _agotamiento_avisado if c[0] in ids_activos}
             _ordenes_ejecutadas.intersection_update(ids_activos)
             _aviso_caducidad_enviado.intersection_update(ids_activos)
             for sid in list(_ultimo_check_trampa):
