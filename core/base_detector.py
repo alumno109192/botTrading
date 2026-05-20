@@ -511,7 +511,10 @@ class BaseDetector(ABC):
         # ── Guard mercado cerrado ─────────────────────────────────────────────
         try:
             from services.market_state import is_mercado_abierto
-            if not is_mercado_abierto():
+            if not is_mercado_abierto() and not es_esperando:
+                # Las órdenes LIMIT (es_esperando=True) siempre se notifican:
+                # el trader necesita saber que se colocó la orden aunque sea
+                # en sesión asiática. Solo se bloquean señales de mercado.
                 _logger.info(
                     f"[{self.simbolo}] 🔴 enviar() bloqueado — mercado cerrado "
                     f"(msg: {mensaje[:60]}…)"
