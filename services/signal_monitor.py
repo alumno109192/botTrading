@@ -92,10 +92,21 @@ SIMBOLO_TO_TICKER = {
     '^IXIC':   '^IXIC',
 }
 
+# Mapa inverso: ticker yfinance → símbolo interno del WS feed
+_TICKER_TO_WS = {
+    'GC=F':     'XAUUSD',
+    'EURUSD=X': 'EURUSD',
+    'SI=F':     'XAGUSD',
+}
+
+
 def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
     """Obtiene (precio_actual, precio_max_5velas, precio_min_5velas) para un ticker.
 
     Estrategia:
+      0. WebSocket feed en memoria (tiempo real, 24/7 sin coste de API).
+         Solo precio actual; max/min = precio_ws (conservador).
+         Úsalo cuando BD y API fallen (off-hours, reinicio, rate-limit).
       1. Lee datos 1m de BD secundaria (ohlcv_poller — precisión minuto).
          Si la vela más reciente tiene <= 10 min → devuelve directamente.
       2. Fallback a datos 5m de BD secundaria si no hay 1m frescos.
@@ -106,6 +117,15 @@ def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
     tabla ohlcv), por eso se consulta get_secondary_db() directamente.
     """
     from adapters.database import get_secondary_db as _get_sec_db
+    # ── Paso 0: WebSocket feed (tiempo real, 24/7) ────────────────────────────
+    _ws_simbolo = _TICKER_TO_WS.get(ticker)
+    _precio_ws: float | None = None
+    if _ws_simbolo:
+        try:
+            from services.ws_price_feed import get_precio_ws as _get_precio_ws
+            _precio_ws = _get_precio_ws(_ws_simbolo)
+        except Exception:
+            pass
     # ── Paso 1: BD secundaria 1m ─────────────────────────────────────────────
     try:
         _db_sec = _get_sec_db()
@@ -128,16 +148,24 @@ def _fetch_precios_ticker(ticker: str, db=None) -> tuple | None:
     # ── Paso 3: Twelve Data vía get_ohlcv 1m (fallback cuando BD > 10 min) ───
     try:
         hist, _ = _get_ohlcv(ticker, period='1d', interval='1m')
-        if hist is None or hist.empty:
-            return None
-        precio_actual = float(hist['Close'].iloc[-1])
-        ventana       = hist.tail(5)
-        precio_max    = float(ventana['High'].max())
-        precio_min    = float(ventana['Low'].min())
-        return (precio_actual, precio_max, precio_min)
+        if hist is not None and not hist.empty:
+            precio_actual = float(hist['Close'].iloc[-1])
+            ventana       = hist.tail(5)
+            precio_max    = float(ventana['High'].max())
+            precio_min    = float(ventana['Low'].min())
+            return (precio_actual, precio_max, precio_min)
     except Exception as e:
         logger.error(f"❌ Error descargando {ticker} via get_ohlcv: {e}")
-        return None
+
+    # ── Paso 4: WebSocket feed — precio tiempo real 24/7 (último recurso) ────
+    # Sin datos OHLCV, usamos el tick WS como precio actual y como max/min
+    # (conservador: no detecta rangos intravela, pero mantiene el monitor vivo).
+    # _check_entry_historico cubre la detección de entries pasadas.
+    if _precio_ws is not None:
+        logger.debug(f"  📡 [{ticker}] Usando precio WS como fallback: {_precio_ws:.2f}")
+        return (_precio_ws, _precio_ws, _precio_ws)
+
+    return None
 
 
 def obtener_precio_actual(simbolo: str) -> tuple | None:

@@ -113,8 +113,12 @@ def main():
         ahora = datetime.now(timezone.utc)
         hora  = ahora.hour
 
-        # Solo operar durante sesión ampliada 06-22 UTC (cubre Asia pre-apertura)
-        if 6 <= hora < 22:
+        # Gold opera 23h/día en CME (cierra solo 22:00-23:00 UTC).
+        # Pausar solo durante ese cierre para no desperdiciar llamadas API
+        # en un mercado cerrado. EUR/USD también cierra 22:00-23:00 UTC.
+        mercado_cerrado = (hora == 22)
+
+        if not mercado_cerrado:
             ts_ahora = time.time()
             for target in POLL_TARGETS:
                 clave = (target['ticker_yf'], target['interval'])
@@ -153,8 +157,8 @@ def main():
                 except Exception as e:
                     logger.error(f"  ⚠️ [ohlcv_poller] Error en purge: {e}")
         else:
-            if ciclo % 30 == 0:  # Log cada 30 min en off-hours
-                logger.info(f"  ⏸️ [ohlcv_poller] Fuera de sesión ({hora}h UTC)")
+            if ciclo % 4 == 0:  # Log cada ~2 min durante el cierre CME
+                logger.info("  ⏸️ [ohlcv_poller] Cierre CME 22:00-23:00 UTC — pausado")
 
         time.sleep(CHECK_INTERVAL)
 
