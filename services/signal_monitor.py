@@ -427,9 +427,10 @@ def verificar_niveles_compra(senal: dict, precio_actual: float,
             return  # no verificar SL en el mismo ciclo
 
     # Verificar SL / Breakeven
-    # Usa precio_actual (Close) en lugar de precio_min (Low) para evitar falsas
-    # activaciones por mechas temporales que ya se han recuperado.
-    if precio_actual <= sl and not sl_alcanzado:
+    # Usa precio_min (Low) para capturar wicks bajo el SL — los brokers ejecutan el SL
+    # al primer toque, no solo en el Close. precio_actual como segundo criterio evita
+    # re-triggerear si el SL ya fue alcanzado pero el flag aún no se grabó.
+    if precio_min <= sl and not sl_alcanzado:
         if tp2_alcanzado:
             # TP2 ya se tocó → SL fue movido a TP1 (trailing stop) → cierre con ganancia
             beneficio = calcular_beneficio_pct(precio_entrada, sl, 'COMPRA')
@@ -639,9 +640,10 @@ def verificar_niveles_venta(senal: dict, precio_actual: float,
             return  # no verificar SL en el mismo ciclo
 
     # Verificar SL / Breakeven
-    # Usa precio_actual (Close) en lugar de precio_max (High) para evitar falsas
-    # activaciones por mechas temporales que ya se han recuperado.
-    if precio_actual >= sl and not sl_alcanzado:
+    # Usa precio_max (High) para capturar wicks sobre el SL — los brokers ejecutan el SL
+    # al primer toque, no solo en el Close. precio_actual como segundo criterio evita
+    # re-triggerear si el SL ya fue alcanzado pero el flag aún no se grabó.
+    if precio_max >= sl and not sl_alcanzado:
         if tp2_alcanzado:
             # TP2 ya se tocó → SL fue movido a TP1 (trailing stop) → cierre con ganancia
             beneficio = calcular_beneficio_pct(precio_entrada, sl, 'VENTA')
@@ -2000,10 +2002,20 @@ def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
             continue
 
         # ── ¡Ejecutada! → activar señal y notificar ──────────────────────
+        # Verificar si el SL fue cruzado en el mismo ciclo en que se ejecutó la entrada.
+        # Esto ocurre cuando el precio sube/baja más allá del entry Y del SL entre dos polls.
+        # En este caso: activamos, notificamos la entrada y luego disparamos el SL en el mismo tick.
+        _sl_cruzado_en_entry = (
+            (direccion == 'VENTA'  and precio_max >= sl) or
+            (direccion == 'COMPRA' and precio_min <= sl)
+        )
+
         db.activar_senal_esperando(senal_id)
         logger.info(
             f"  ✅ [#{senal_id}] {simbolo} {direccion} — "
             f"ORDEN ACTIVADA: precio tocó entrada ${precio_entrada:.2f}"
+            + (f" ⚠️ SL cruzado en el mismo ciclo (${precio_max:.2f} vs SL ${sl:.2f})"
+               if _sl_cruzado_en_entry else "")
         )
 
         _nombre     = simbolo_a_nombre(simbolo)
@@ -2033,6 +2045,29 @@ def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
             f"🔖 <code>#{senal_id}</code>"
         )
         enviar_notificacion_telegram(msg, simbolo, reply_to_message_id=reply_msg_id)
+
+        # ── SL cruzado en el mismo ciclo: disparar inmediatamente ────────────
+        if _sl_cruzado_en_entry:
+            _beneficio_sl = calcular_beneficio_pct(precio_entrada, sl, direccion)
+            db.actualizar_estado_senal(senal_id, 'SL', _beneficio_sl)
+            _sl_precio_ref = precio_max if direccion == 'VENTA' else precio_min
+            _msg_sl = (
+                f"❌ <b>STOP LOSS ACTIVADO — entrada + SL en el mismo intervalo</b>\n\n"
+                f"📊 {simbolo} | {direccion}\n"
+                f"💰 Entrada: {_fmt(precio_entrada)}\n"
+                f"🛑 SL: {_fmt(sl)}\n"
+                f"{'📈' if direccion == 'VENTA' else '📉'} "
+                f"Extremo detectado: {_fmt(_sl_precio_ref)}\n"
+                f"💸 Pérdida: {_beneficio_sl:.2f}%\n\n"
+                f"ℹ️ El precio cruzó la entrada y el SL en el mismo ciclo de monitoreo.\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔖 <code>#{senal_id}</code>"
+            )
+            enviar_notificacion_telegram(_msg_sl, simbolo, reply_to_message_id=reply_msg_id)
+            logger.info(
+                f"  ❌ [#{senal_id}] SL activado en el mismo ciclo de entrada "
+                f"(pérdida {_beneficio_sl:.2f}%)"
+            )
 
 
 def monitor_senales():

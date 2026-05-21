@@ -195,9 +195,10 @@ def verificar_confluencia(simbolo: str, tf_actual: str, direccion: str, score: i
         desc = _build_desc(sesgo_simbolo, tfs_superiores, tf_actual,
                            confirmados, contrarios, sin_datos)
 
-        # Sin datos en TFs superiores → permitir con aviso
+        # Sin datos en NINGÚN TF superior → advertir pero no bloquear
+        # (el filtro de tendencia 1H en el propio detector ya actúa como red de seguridad)
         if len(confirmados) == 0 and len(contrarios) == 0:
-            return True, f"⏳ TFs superiores sin datos — señal permitida\n{desc}"
+            return True, f"⏳ TFs superiores sin datos — señal permitida (filtros locales activos)\n{desc}"
 
         # Verificar TF inmediatamente superior
         tf_inmediato = tfs_superiores[-1]

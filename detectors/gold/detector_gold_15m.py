@@ -374,6 +374,45 @@ class GoldDetector15M(BaseDetector):
                     logger.info(f"  📊 [15M] RSI 1M={_rsi_1m:.1f} (filtro 1M OK)")
             except Exception as _e_rsi1m:
                 logger.debug(f"  [15M] No se pudo calcular RSI 1M: {_e_rsi1m}")
+
+            # ── Filtro TENDENCIA 1H (calculado de precio real, no de cache tf_bias) ─────
+            # Si la tendencia horaria está CONFIRMADA (EMA alineadas en cascada), no operar
+            # en contra. Esto es independiente del in-memory bias_store y sobrevive reinicios.
+            # "Tendencia confirmada" = EMA rápida / lenta / tendencia todas en la misma dirección.
+            try:
+                df_1h = df_5m.resample('1h').agg(
+                    {'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}
+                ).dropna()
+                if len(df_1h) >= 50:
+                    _e1h_fast  = float(df_1h['Close'].ewm(span=9,  adjust=False).mean().iloc[-1])
+                    _e1h_slow  = float(df_1h['Close'].ewm(span=21, adjust=False).mean().iloc[-1])
+                    _e1h_trend = float(df_1h['Close'].ewm(span=50, adjust=False).mean().iloc[-1])
+                    _tend_1h   = (
+                        'BULLISH' if _e1h_fast > _e1h_slow > _e1h_trend else
+                        'BEARISH' if _e1h_fast < _e1h_slow < _e1h_trend else
+                        'NEUTRAL'
+                    )
+                    logger.info(
+                        f"  📊 [15M] Tendencia 1H real: {_tend_1h} "
+                        f"(EMA9={_e1h_fast:.2f} EMA21={_e1h_slow:.2f} EMA50={_e1h_trend:.2f})"
+                    )
+                    if senal_sell_fuerte and _tend_1h == 'BULLISH':
+                        logger.info(
+                            f"  🚫 [15M] SELL BLOQUEADA — tendencia 1H ALCISTA confirmada "
+                            f"(EMA9 {_e1h_fast:.2f} > EMA21 {_e1h_slow:.2f} > EMA50 {_e1h_trend:.2f})"
+                        )
+                        senal_sell_fuerte = False
+                    if senal_buy_fuerte and _tend_1h == 'BEARISH':
+                        logger.info(
+                            f"  🚫 [15M] BUY BLOQUEADA — tendencia 1H BAJISTA confirmada "
+                            f"(EMA9 {_e1h_fast:.2f} < EMA21 {_e1h_slow:.2f} < EMA50 {_e1h_trend:.2f})"
+                        )
+                        senal_buy_fuerte = False
+                else:
+                    logger.debug(f"  [15M] Datos 1H insuficientes ({len(df_1h)} velas) — filtro tendencia omitido")
+            except Exception as _e_tend1h:
+                logger.debug(f"  [15M] No se pudo calcular tendencia 1H: {_e_tend1h}")
+
             if not self.en_sesion_optima():
                 logger.info(f"  🌙 [15M] Fuera sesión óptima — señal suprimida (08-21 UTC)")
                 senal_sell_fuerte = False

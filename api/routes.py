@@ -739,9 +739,42 @@ def create_app(estado_sistema, threads_detectores):
             }
             ciclo_vida = _ciclo_map.get(estado, 'PREPARADA')
 
+            ahora = datetime.now(timezone.utc).isoformat()
             estados_cierre = ('TP1', 'TP2', 'TP3', 'SL', 'CANCELADA', 'CADUCADA')
-            if estado in estados_cierre:
-                ahora = datetime.now(timezone.utc).isoformat()
+            if estado == 'SL':
+                # Actualiza también los flags específicos de SL para mantener consistencia en BD
+                db.ejecutar_query(
+                    """UPDATE senales
+                       SET estado = ?, ciclo_vida = ?, fecha_cierre = ?,
+                           sl_alcanzado = 1, fecha_sl = ?
+                       WHERE id = ?""",
+                    (estado, ciclo_vida, ahora, ahora, senal_id)
+                )
+            elif estado == 'TP1':
+                db.ejecutar_query(
+                    """UPDATE senales
+                       SET estado = ?, ciclo_vida = ?, fecha_cierre = ?,
+                           tp1_alcanzado = 1, fecha_tp1 = ?
+                       WHERE id = ?""",
+                    (estado, ciclo_vida, ahora, ahora, senal_id)
+                )
+            elif estado == 'TP2':
+                db.ejecutar_query(
+                    """UPDATE senales
+                       SET estado = ?, ciclo_vida = ?, fecha_cierre = ?,
+                           tp2_alcanzado = 1, fecha_tp2 = ?
+                       WHERE id = ?""",
+                    (estado, ciclo_vida, ahora, ahora, senal_id)
+                )
+            elif estado == 'TP3':
+                db.ejecutar_query(
+                    """UPDATE senales
+                       SET estado = ?, ciclo_vida = ?, fecha_cierre = ?,
+                           tp3_alcanzado = 1, fecha_tp3 = ?
+                       WHERE id = ?""",
+                    (estado, ciclo_vida, ahora, ahora, senal_id)
+                )
+            elif estado in estados_cierre:
                 db.ejecutar_query(
                     "UPDATE senales SET estado = ?, ciclo_vida = ?, fecha_cierre = ? WHERE id = ?",
                     (estado, ciclo_vida, ahora, senal_id)
