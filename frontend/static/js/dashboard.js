@@ -157,14 +157,19 @@ function dashboardApp() {
             if (d.precio != null) {
               if (d.symbol === 'XAUUSD') this.precioActual = d.precio;
               this._precioSseTs = Date.now();   // marca de frescura para suprimir polling
-              // Guardar precio live y recompute _bar al instante para señales del mismo símbolo
+              // Guardar precio live y recompute _bar + pnl_pct al instante para señales del mismo símbolo
               this.precios[d.symbol] = d.precio;
               this.senalesActivas = this.senalesActivas.map(s => {
                 const sym = (s.simbolo || '').split('_')[0];
-                if (sym === d.symbol) {
-                  return { ...s, _bar: _calcBar(s, d.precio) };
+                if (sym !== d.symbol) return s;
+                const entrada = parseFloat(s.precio_entrada) || 0;
+                let pnl_pct = s.pnl_pct;
+                if (entrada) {
+                  pnl_pct = s.direccion === 'COMPRA'
+                    ? parseFloat(((d.precio - entrada) / entrada * 100).toFixed(3))
+                    : parseFloat(((entrada - d.precio) / entrada * 100).toFixed(3));
                 }
-                return s;
+                return { ...s, _bar: _calcBar(s, d.precio), pnl_pct };
               });
             }
           } catch (_) {}

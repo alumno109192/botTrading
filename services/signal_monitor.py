@@ -2334,6 +2334,13 @@ def monitor_senales():
 
                     precio_actual, precio_max, precio_min = precios
 
+                    # Actualizar precio_actual en la BD PRIMARIA (siempre, independiente de PAUSE_BD_WRITES)
+                    # Esto es crítico para que el frontend muestre la barra de posición correcta.
+                    try:
+                        db.actualizar_precio_actual(senal_id, precio_actual)
+                    except Exception as e_upd:
+                        logger.warning(f"  ⚠️ actualizar_precio_actual falló para señal {senal_id}: {e_upd}")
+
                     try:
                         if not _PAUSE_BD_WRITES:
                             sec_db = get_secondary_db()
