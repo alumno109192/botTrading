@@ -669,9 +669,27 @@ function dashboardApp() {
         });
         const data = await r.json();
         if (r.ok) {
+          const senalId    = this.editModal.senalId;
+          const nuevoEstado = this.editModal.estadoSel;
+
+          // Actualización optimista: reflejar el cambio inmediatamente en la UI
+          // antes de que llegue el fetch de cargarActivas().
+          const estadosCierre = ['TP1','TP2','TP3','SL','CANCELADA','CADUCADA'];
+          if (estadosCierre.includes(nuevoEstado)) {
+            // Señal cerrada → quitarla de la lista activa/pendiente de inmediato
+            this.senalesActivas = this.senalesActivas.filter(s => s.id !== senalId);
+          } else {
+            // Señal sigue activa con nuevo estado → actualizar el campo estado in-place
+            this.senalesActivas = this.senalesActivas.map(s =>
+              s.id === senalId ? { ...s, estado: nuevoEstado } : s
+            );
+          }
+
           this.editModal.visible = false;
           this.toast('editar', '✏️ Señal actualizada',
-            `#${this.editModal.senalId} → ${this.editModal.estadoSel}`);
+            `#${senalId} → ${nuevoEstado}`);
+
+          // Resincronizar con el servidor tras el cambio optimista
           await this.cargarActivas();
           await this.cargarHistorial();
         } else {
