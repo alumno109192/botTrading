@@ -59,6 +59,18 @@ function dashboardApp() {
       error:    '',
     },
 
+    /* ── Modal editar ── */
+    editModal: {
+      visible:      false,
+      senalId:      null,
+      estadoActual: '',
+      estadoSel:    '',
+      estados:      ['ACTIVA','PENDIENTE_CONFIRM','ESPERANDO','TP1','TP2','TP3','SL','CANCELADA','CADUCADA'],
+      clave:        '',
+      loading:      false,
+      error:        '',
+    },
+
     /* ── SSE ── */
     _sse:                null,           // EventSource activo
     _precioSseTs:        0,              // timestamp último precio recibido por SSE/WS
@@ -618,6 +630,57 @@ function dashboardApp() {
         this.cancelModal.error = 'Error de conexión';
       } finally {
         this.cancelModal.loading = false;
+      }
+    },
+
+    /* ═══════════════════════════════════════════
+       EDITAR SEÑAL
+    ═══════════════════════════════════════════ */
+    abrirEditar(id, estadoActual) {
+      this.editModal.senalId      = id;
+      this.editModal.estadoActual = estadoActual || '';
+      this.editModal.estadoSel    = '';
+      this.editModal.clave        = '';
+      this.editModal.error        = '';
+      this.editModal.loading      = false;
+      this.editModal.visible      = true;
+      this.$nextTick(() => {
+        const inp = this.$refs.editInput;
+        if (inp) inp.focus();
+      });
+    },
+
+    async confirmarEditar() {
+      if (!this.editModal.estadoSel) {
+        this.editModal.error = 'Selecciona un nuevo estado';
+        return;
+      }
+      if (!this.editModal.clave) {
+        this.editModal.error = 'Introduce la clave de confirmación';
+        return;
+      }
+      this.editModal.loading = true;
+      this.editModal.error   = '';
+      try {
+        const r = await fetch(`/api/v1/senales/${this.editModal.senalId}/estado`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ clave: this.editModal.clave, estado: this.editModal.estadoSel }),
+        });
+        const data = await r.json();
+        if (r.ok) {
+          this.editModal.visible = false;
+          this.toast('editar', '✏️ Señal actualizada',
+            `#${this.editModal.senalId} → ${this.editModal.estadoSel}`);
+          await this.cargarActivas();
+          await this.cargarHistorial();
+        } else {
+          this.editModal.error = data.error || 'Error desconocido';
+        }
+      } catch (e) {
+        this.editModal.error = 'Error de conexión';
+      } finally {
+        this.editModal.loading = false;
       }
     },
   };  // fin return dashboardApp

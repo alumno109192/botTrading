@@ -684,6 +684,83 @@ def create_app(estado_sistema, threads_detectores):
             logger.error(f"❌ /api/v1/senales/{senal_id}/cancelar error: {e}")
             return jsonify({'error': str(e)}), 500
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Editar estado de señal manualmente (requiere CANCEL_KEY)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route('/api/v1/senales/<int:senal_id>/estado', methods=['PUT'])
+    def editar_estado_senal(senal_id):
+        """Actualiza manualmente el estado de una señal.
+
+        Body JSON: { "clave": "<CANCEL_KEY>", "estado": "<NUEVO_ESTADO>" }
+        Requiere que la variable de entorno CANCEL_KEY esté configurada.
+        """
+        import hmac
+        CANCEL_KEY = os.environ.get('CANCEL_KEY', '')
+        if not CANCEL_KEY:
+            return jsonify({'error': 'Función no habilitada (CANCEL_KEY no configurada)'}), 503
+
+        ESTADOS_VALIDOS = ('ACTIVA', 'PENDIENTE_CONFIRM', 'ESPERANDO',
+                           'TP1', 'TP2', 'TP3', 'SL', 'CANCELADA', 'CADUCADA')
+
+        try:
+            body   = request.get_json(force=True) or {}
+            clave  = str(body.get('clave', ''))
+            estado = str(body.get('estado', '')).upper()
+
+            if not hmac.compare_digest(clave, CANCEL_KEY):
+                logger.warning(f"⚠️ Intento de edición con clave incorrecta (señal #{senal_id})")
+                return jsonify({'error': 'Clave incorrecta'}), 403
+
+            if estado not in ESTADOS_VALIDOS:
+                return jsonify({'error': f'Estado no válido: {estado}'}), 400
+
+            from adapters.database import get_db
+            db = get_db()
+            if db is None:
+                return jsonify({'error': 'BD no disponible'}), 503
+
+            r = db.ejecutar_query(
+                "SELECT id, simbolo, direccion, estado FROM senales WHERE id = ?",
+                (senal_id,)
+            )
+            if not r.rows:
+                return jsonify({'error': f'Señal #{senal_id} no encontrada'}), 404
+
+            senal         = r.rows[0]
+            estado_previo = senal['estado']
+
+            _ciclo_map = {
+                'PENDIENTE_CONFIRM': 'PREPARADA',
+                'ESPERANDO':         'PREPARADA',
+                'ACTIVA':            'ACTIVA',
+                'TP1': 'COMPLETA', 'TP2': 'COMPLETA', 'TP3': 'COMPLETA',
+                'SL':  'COMPLETA', 'CANCELADA': 'CANCELADA', 'CADUCADA': 'CANCELADA',
+            }
+            ciclo_vida = _ciclo_map.get(estado, 'PREPARADA')
+
+            estados_cierre = ('TP1', 'TP2', 'TP3', 'SL', 'CANCELADA', 'CADUCADA')
+            if estado in estados_cierre:
+                ahora = datetime.now(timezone.utc).isoformat()
+                db.ejecutar_query(
+                    "UPDATE senales SET estado = ?, ciclo_vida = ?, fecha_cierre = ? WHERE id = ?",
+                    (estado, ciclo_vida, ahora, senal_id)
+                )
+            else:
+                db.ejecutar_query(
+                    "UPDATE senales SET estado = ?, ciclo_vida = ? WHERE id = ?",
+                    (estado, ciclo_vida, senal_id)
+                )
+
+            logger.info(f"✏️  Señal #{senal_id} ({senal['simbolo']} {senal['direccion']}) "
+                        f"editada: {estado_previo} → {estado}")
+            return jsonify({'ok': True, 'senal_id': senal_id,
+                            'estado_previo': estado_previo, 'estado_nuevo': estado})
+
+        except Exception as e:
+            logger.error(f"❌ /api/v1/senales/{senal_id}/estado error: {e}")
+            return jsonify({'error': str(e)}), 500
+
     # Servir el Service Worker desde la raíz (requerido por la spec)
     @app.route('/sw.js')
     def service_worker():

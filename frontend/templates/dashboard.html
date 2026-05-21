@@ -238,6 +238,9 @@
             <!-- Chevron -->
             <span class="card-chevron" :class="s._expanded ? 'open' : ''">▼</span>
 
+            <!-- Editar -->
+            <button class="btn-editar" @click.stop="abrirEditar(s.id, s.estado)" title="Editar señal">✏</button>
+
             <!-- Cancelar -->
             <button class="btn-cancelar" @click.stop="abrirCancelar(s.id)" title="Cancelar señal">✕</button>
           </div>
@@ -375,6 +378,9 @@
                     x-text="formatPnl(s.pnl_pct)">—</span>
 
               <span class="card-chevron" :class="s._expanded ? 'open' : ''">▼</span>
+
+              <!-- Editar -->
+              <button class="btn-editar" @click.stop="abrirEditar(s.id, s.estado)" title="Editar señal">✏</button>
 
               <!-- Cancelar -->
               <button class="btn-cancelar" @click.stop="abrirCancelar(s.id)" title="Cancelar orden">✕</button>
@@ -598,6 +604,59 @@
     </section>
 
   </main>
+
+  <!-- ════════════════════════════════════════
+       MODAL EDITAR SEÑAL
+  ════════════════════════════════════════ -->
+  <div class="modal-overlay" x-show="editModal.visible" x-cloak
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-100"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       @click.self="editModal.visible = false">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span class="modal-icon">✏️</span>
+        <span>Editar señal <strong x-text="'#' + editModal.senalId"></strong></span>
+        <button class="modal-close" @click="editModal.visible = false">✕</button>
+      </div>
+      <p class="modal-desc">
+        Estado actual: <strong x-text="editModal.estadoActual"></strong>.<br>
+        Selecciona el nuevo estado y confirma con la clave.
+      </p>
+      <div class="edit-estados">
+        <template x-for="est in editModal.estados" :key="est">
+          <button class="btn-estado"
+                  :class="{
+                    'selected':  editModal.estadoSel === est,
+                    'tp':        est.startsWith('TP'),
+                    'sl-color':  est === 'SL' || est === 'CANCELADA' || est === 'CADUCADA'
+                  }"
+                  @click="editModal.estadoSel = est"
+                  x-text="est"></button>
+        </template>
+      </div>
+      <input class="modal-input"
+             type="password"
+             placeholder="Clave de confirmación…"
+             x-model="editModal.clave"
+             @keydown.enter="confirmarEditar()"
+             @keydown.escape="editModal.visible = false"
+             x-ref="editInput" />
+      <p class="modal-error" x-show="editModal.error" x-text="editModal.error"></p>
+      <div class="modal-actions">
+        <button class="btn-modal-cancel" @click="editModal.visible = false">KO</button>
+        <button class="btn-modal-ok"
+                @click="confirmarEditar()"
+                :disabled="editModal.loading || !editModal.estadoSel">
+          <span x-show="!editModal.loading">OK</span>
+          <span x-show="editModal.loading">Guardando…</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ════════════════════════════════════════
        MODAL CANCELAR SEÑAL
