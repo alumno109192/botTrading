@@ -60,7 +60,9 @@ TF_JERARQUIA = ['1W', '1D', '4H', '1H', '30M', '15M', '5M']
 
 # ─────────────────────────────────────
 def publicar_sesgo(simbolo: str, tf: str, bias: str, score: int) -> None:
-    """Publica (actualiza) el sesgo de un TF para un símbolo. Thread-safe."""
+    """Publica (actualiza) el sesgo de un TF para un símbolo. Thread-safe.
+    Persiste en BD para sobrevivir reinicios de Render.
+    """
     with _lock:
         if simbolo not in _bias_store:
             _bias_store[simbolo] = {}
@@ -69,12 +71,40 @@ def publicar_sesgo(simbolo: str, tf: str, bias: str, score: int) -> None:
             'score': score,
             'ts':    datetime.now(),
         }
+    # Persistir en BD (best-effort, no bloquea si falla)
+    db = _get_db()
+    if db:
+        try:
+            db.guardar_tf_bias(simbolo, tf, bias, score)
+        except Exception:
+            pass
 
 
 def obtener_sesgo(simbolo: str, tf: str):
-    """Retorna dict {bias, score, ts} o None si no hay datos."""
+    """Retorna dict {bias, score, ts} o None si no hay datos.
+    Carga desde BD si el cache en memoria está vacío (tras reinicio).
+    """
     with _lock:
-        return _bias_store.get(simbolo, {}).get(tf)
+        entry = _bias_store.get(simbolo, {}).get(tf)
+        if entry is not None:
+            # Verificar que no haya expirado en memoria
+            edad_h = (datetime.now() - entry['ts']).total_seconds() / 3600
+            if edad_h <= TTL_SESGO_HORAS:
+                return entry
+    # Cache miss o expirado → intentar cargar desde BD
+    db = _get_db()
+    if db:
+        try:
+            row = db.obtener_tf_bias(simbolo, tf, ttl_horas=TTL_SESGO_HORAS)
+            if row:
+                with _lock:
+                    if simbolo not in _bias_store:
+                        _bias_store[simbolo] = {}
+                    _bias_store[simbolo][tf] = row
+                return row
+        except Exception:
+            pass
+    return None
 
 
 def publicar_scores(simbolo: str, tf: str, score_sell: int, score_buy: int, max_score: int) -> None:

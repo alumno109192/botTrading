@@ -1803,6 +1803,81 @@ class DatabaseManager:
         except Exception:
             pass
 
+    # ═══════════════════════════════════════════════════════════
+    # TF BIAS STATE — Persistencia de sesgo de tendencia por TF
+    # Permite que el filtro de confluencia multi-TF sobreviva reinicios de Render.
+    # ═══════════════════════════════════════════════════════════
+
+    def init_tf_bias_table(self) -> None:
+        """Crea la tabla tf_bias_state si no existe."""
+        self.ejecutar_query("""
+        CREATE TABLE IF NOT EXISTS tf_bias_state (
+            simbolo  TEXT NOT NULL,
+            tf       TEXT NOT NULL,
+            bias     TEXT NOT NULL,   -- BULLISH | BEARISH | NEUTRAL
+            score    INTEGER NOT NULL DEFAULT 0,
+            ts       TEXT NOT NULL,   -- ISO datetime UTC
+            PRIMARY KEY (simbolo, tf)
+        )
+        """)
+
+    def guardar_tf_bias(self, simbolo: str, tf: str, bias: str, score: int) -> None:
+        """Upsert del sesgo de un TF para un símbolo."""
+        try:
+            ts = datetime.now(timezone.utc).isoformat()
+            self.ejecutar_query("""
+            INSERT INTO tf_bias_state (simbolo, tf, bias, score, ts)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(simbolo, tf) DO UPDATE SET
+                bias  = excluded.bias,
+                score = excluded.score,
+                ts    = excluded.ts
+            """, (simbolo, tf, bias, score, ts))
+        except Exception as e:
+            logger.debug(f"tf_bias: no se pudo guardar sesgo {simbolo}/{tf}: {e}")
+
+    def obtener_tf_bias(self, simbolo: str, tf: str, ttl_horas: float = 2.0):
+        """Retorna dict {bias, score, ts} o None si no existe o expiró el TTL."""
+        try:
+            desde = (datetime.now(timezone.utc) - timedelta(hours=ttl_horas)).isoformat()
+            result = self.ejecutar_query("""
+            SELECT bias, score, ts FROM tf_bias_state
+            WHERE simbolo = ? AND tf = ? AND ts >= ?
+            """, (simbolo, tf, desde))
+            if result.rows:
+                row = result.rows[0]
+                from datetime import datetime as _dt
+                return {
+                    'bias':  row['bias'],
+                    'score': int(row['score']),
+                    'ts':    _dt.fromisoformat(row['ts'].replace('Z', '+00:00')),
+                }
+        except Exception as e:
+            logger.debug(f"tf_bias: no se pudo obtener sesgo {simbolo}/{tf}: {e}")
+        return None
+
+    def obtener_todos_tf_bias(self, ttl_horas: float = 2.0) -> list:
+        """Retorna todos los sesgos no expirados como lista de dicts."""
+        try:
+            desde = (datetime.now(timezone.utc) - timedelta(hours=ttl_horas)).isoformat()
+            result = self.ejecutar_query("""
+            SELECT simbolo, tf, bias, score, ts FROM tf_bias_state
+            WHERE ts >= ? ORDER BY simbolo, tf
+            """, (desde,))
+            from datetime import datetime as _dt
+            return [
+                {
+                    'simbolo': r['simbolo'],
+                    'tf':      r['tf'],
+                    'bias':    r['bias'],
+                    'score':   int(r['score']),
+                    'ts':      _dt.fromisoformat(r['ts'].replace('Z', '+00:00')),
+                }
+                for r in result.rows
+            ]
+        except Exception:
+            return []
+
 
 _db_warning_printed = False
 _migrations_run = False
