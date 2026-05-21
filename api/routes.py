@@ -721,67 +721,102 @@ def create_app(estado_sistema, threads_detectores):
                 return jsonify({'error': 'BD no disponible'}), 503
 
             r = db.ejecutar_query(
-                "SELECT id, simbolo, direccion, estado FROM senales WHERE id = ?",
+                "SELECT id, simbolo, direccion, estado, tp2, tp3, precio_entrada FROM senales WHERE id = ?",
                 (senal_id,)
             )
             if not r.rows:
                 return jsonify({'error': f'Señal #{senal_id} no encontrada'}), 404
 
-            senal         = r.rows[0]
+            senal         = dict(r.rows[0])
             estado_previo = senal['estado']
 
-            _ciclo_map = {
-                'PENDIENTE_CONFIRM': 'PREPARADA',
-                'ESPERANDO':         'PREPARADA',
-                'ACTIVA':            'ACTIVA',
-                'TP1': 'COMPLETA', 'TP2': 'COMPLETA', 'TP3': 'COMPLETA',
-                'SL':  'COMPLETA', 'CANCELADA': 'CANCELADA', 'CADUCADA': 'CANCELADA',
-            }
-            ciclo_vida = _ciclo_map.get(estado, 'PREPARADA')
-
             ahora = datetime.now(timezone.utc).isoformat()
-            estados_cierre = ('TP1', 'TP2', 'TP3', 'SL', 'CANCELADA', 'CADUCADA')
-            if estado == 'SL':
-                # Actualiza también los flags específicos de SL para mantener consistencia en BD
-                db.ejecutar_query(
-                    """UPDATE senales
-                       SET estado = ?, ciclo_vida = ?, fecha_cierre = ?,
-                           sl_alcanzado = 1, fecha_sl = ?
-                       WHERE id = ?""",
-                    (estado, ciclo_vida, ahora, ahora, senal_id)
-                )
-            elif estado == 'TP1':
-                db.ejecutar_query(
-                    """UPDATE senales
-                       SET estado = ?, ciclo_vida = ?, fecha_cierre = ?,
-                           tp1_alcanzado = 1, fecha_tp1 = ?
-                       WHERE id = ?""",
-                    (estado, ciclo_vida, ahora, ahora, senal_id)
-                )
+
+            # Helper para detectar si la señal tiene más TPs por delante
+            def _tiene_tp(campo):
+                v = senal.get(campo)
+                try:
+                    return v is not None and float(v) > 0
+                except (TypeError, ValueError):
+                    return False
+
+            # ── TP1: si hay TP2, NO cerrar — comportamiento idéntico al monitor automático
+            if estado == 'TP1':
+                if _tiene_tp('tp2'):
+                    # Multi-TP: marcar hit, mover SL a breakeven, mantener ACTIVA
+                    db.ejecutar_query(
+                        """UPDATE senales
+                           SET tp1_alcanzado = 1, fecha_tp1 = ?,
+                               sl = precio_entrada,
+                               estado = 'ACTIVA', ciclo_vida = 'ACTIVA', fecha_cierre = NULL
+                           WHERE id = ?""",
+                        (ahora, senal_id)
+                    )
+                    estado = 'ACTIVA'  # para el log/respuesta
+                else:
+                    # Single-TP: cerrar señal
+                    db.ejecutar_query(
+                        """UPDATE senales
+                           SET estado = 'TP1', ciclo_vida = 'COMPLETA', fecha_cierre = ?,
+                               tp1_alcanzado = 1, fecha_tp1 = ?
+                           WHERE id = ?""",
+                        (ahora, ahora, senal_id)
+                    )
+
+            # ── TP2: si hay TP3, NO cerrar
             elif estado == 'TP2':
-                db.ejecutar_query(
-                    """UPDATE senales
-                       SET estado = ?, ciclo_vida = ?, fecha_cierre = ?,
-                           tp2_alcanzado = 1, fecha_tp2 = ?
-                       WHERE id = ?""",
-                    (estado, ciclo_vida, ahora, ahora, senal_id)
-                )
+                if _tiene_tp('tp3'):
+                    db.ejecutar_query(
+                        """UPDATE senales
+                           SET tp2_alcanzado = 1, fecha_tp2 = ?,
+                               sl = tp1,
+                               estado = 'ACTIVA', ciclo_vida = 'ACTIVA', fecha_cierre = NULL
+                           WHERE id = ?""",
+                        (ahora, senal_id)
+                    )
+                    estado = 'ACTIVA'
+                else:
+                    db.ejecutar_query(
+                        """UPDATE senales
+                           SET estado = 'TP2', ciclo_vida = 'COMPLETA', fecha_cierre = ?,
+                               tp2_alcanzado = 1, fecha_tp2 = ?
+                           WHERE id = ?""",
+                        (ahora, ahora, senal_id)
+                    )
+
+            # ── TP3: siempre cierra
             elif estado == 'TP3':
                 db.ejecutar_query(
                     """UPDATE senales
-                       SET estado = ?, ciclo_vida = ?, fecha_cierre = ?,
+                       SET estado = 'TP3', ciclo_vida = 'COMPLETA', fecha_cierre = ?,
                            tp3_alcanzado = 1, fecha_tp3 = ?
                        WHERE id = ?""",
-                    (estado, ciclo_vida, ahora, ahora, senal_id)
+                    (ahora, ahora, senal_id)
                 )
-            elif estado in estados_cierre:
+
+            elif estado == 'SL':
                 db.ejecutar_query(
-                    "UPDATE senales SET estado = ?, ciclo_vida = ?, fecha_cierre = ? WHERE id = ?",
-                    (estado, ciclo_vida, ahora, senal_id)
+                    """UPDATE senales
+                       SET estado = 'SL', ciclo_vida = 'COMPLETA', fecha_cierre = ?,
+                           sl_alcanzado = 1, fecha_sl = ?
+                       WHERE id = ?""",
+                    (ahora, ahora, senal_id)
                 )
+
+            elif estado in ('CANCELADA', 'CADUCADA'):
+                db.ejecutar_query(
+                    "UPDATE senales SET estado = ?, ciclo_vida = 'CANCELADA', fecha_cierre = ? WHERE id = ?",
+                    (estado, ahora, senal_id)
+                )
+
             else:
+                # ACTIVA, PENDIENTE_CONFIRM, ESPERANDO — reactivar: limpiar fecha_cierre
+                _ciclo_map = {
+                    'ACTIVA': 'ACTIVA', 'PENDIENTE_CONFIRM': 'PREPARADA', 'ESPERANDO': 'PREPARADA',
+                }
+                ciclo_vida = _ciclo_map.get(estado, 'PREPARADA')
                 db.ejecutar_query(
-                    "UPDATE senales SET estado = ?, ciclo_vida = ? WHERE id = ?",
+                    "UPDATE senales SET estado = ?, ciclo_vida = ?, fecha_cierre = NULL WHERE id = ?",
                     (estado, ciclo_vida, senal_id)
                 )
 
