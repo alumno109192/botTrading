@@ -61,14 +61,16 @@ function dashboardApp() {
 
     /* ── Modal editar ── */
     editModal: {
-      visible:      false,
-      senalId:      null,
-      estadoActual: '',
-      estadoSel:    '',
-      estados:      ['ACTIVA','PENDIENTE_CONFIRM','ESPERANDO','TP1','TP2','TP3','SL','CANCELADA','CADUCADA','COMPLETA'],
-      clave:        '',
-      loading:      false,
-      error:        '',
+      visible:       false,
+      senalId:       null,
+      estadoActual:  '',
+      estadoSel:     '',   // grupo 1: estado de la señal
+      precioSel:     '',   // grupo 2: TP/SL alcanzado
+      estadosGrupo:  ['ACTIVA','PENDIENTE_CONFIRM','ESPERANDO','CANCELADA','CADUCADA','COMPLETA'],
+      preciosGrupo:  ['TP1','TP2','TP3','SL'],
+      clave:         '',
+      loading:       false,
+      error:         '',
     },
 
     /* ── SSE ── */
@@ -645,6 +647,7 @@ function dashboardApp() {
       this.editModal.senalId      = id;
       this.editModal.estadoActual = estadoActual || '';
       this.editModal.estadoSel    = '';
+      this.editModal.precioSel    = '';
       this.editModal.clave        = '';
       this.editModal.error        = '';
       this.editModal.loading      = false;
@@ -656,8 +659,8 @@ function dashboardApp() {
     },
 
     async confirmarEditar() {
-      if (!this.editModal.estadoSel) {
-        this.editModal.error = 'Selecciona un nuevo estado';
+      if (!this.editModal.estadoSel && !this.editModal.precioSel) {
+        this.editModal.error = 'Selecciona estado y/o precio alcanzado';
         return;
       }
       if (!this.editModal.clave) {
@@ -667,34 +670,36 @@ function dashboardApp() {
       this.editModal.loading = true;
       this.editModal.error   = '';
       try {
+        const body = { clave: this.editModal.clave };
+        if (this.editModal.estadoSel)  body.estado           = this.editModal.estadoSel;
+        if (this.editModal.precioSel)  body.precio_alcanzado = this.editModal.precioSel;
+
         const r = await fetch(`/api/v1/senales/${this.editModal.senalId}/estado`, {
           method:  'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ clave: this.editModal.clave, estado: this.editModal.estadoSel }),
+          body:    JSON.stringify(body),
         });
         const data = await r.json();
         if (r.ok) {
-          const senalId    = this.editModal.senalId;
-          const nuevoEstado = this.editModal.estadoSel;
+          const senalId        = this.editModal.senalId;
+          const estadoSel      = this.editModal.estadoSel;
+          const precioSel      = this.editModal.precioSel;
+          const etiqueta       = [estadoSel, precioSel].filter(Boolean).join(' + ');
 
-          // Actualización optimista: reflejar el cambio inmediatamente en la UI
-          // antes de que llegue el fetch de cargarActivas().
-          const estadosCierre = ['TP1','TP2','TP3','SL','CANCELADA','CADUCADA'];
-          if (estadosCierre.includes(nuevoEstado)) {
-            // Señal cerrada → quitarla de la lista activa/pendiente de inmediato
+          // Actualización optimista
+          const estadosCierre  = new Set(['CANCELADA','CADUCADA','COMPLETA']);
+          const preciosCierre  = new Set(['TP3','SL']);
+          if (estadosCierre.has(estadoSel) || preciosCierre.has(precioSel)) {
             this.senalesActivas = this.senalesActivas.filter(s => s.id !== senalId);
-          } else {
-            // Señal sigue activa con nuevo estado → actualizar el campo estado in-place
+          } else if (estadoSel && !estadosCierre.has(estadoSel)) {
             this.senalesActivas = this.senalesActivas.map(s =>
-              s.id === senalId ? { ...s, estado: nuevoEstado } : s
+              s.id === senalId ? { ...s, estado: estadoSel } : s
             );
           }
 
           this.editModal.visible = false;
-          this.toast('editar', '✏️ Señal actualizada',
-            `#${senalId} → ${nuevoEstado}`);
+          this.toast('editar', '✏️ Señal actualizada', `#${senalId} → ${etiqueta}`);
 
-          // Resincronizar con el servidor tras el cambio optimista
           await this.cargarActivas();
           await this.cargarHistorial();
         } else {

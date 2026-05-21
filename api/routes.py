@@ -701,19 +701,25 @@ def create_app(estado_sistema, threads_detectores):
             return jsonify({'error': 'Función no habilitada (CANCEL_KEY no configurada)'}), 503
 
         ESTADOS_VALIDOS = ('ACTIVA', 'PENDIENTE_CONFIRM', 'ESPERANDO',
-                           'TP1', 'TP2', 'TP3', 'SL', 'CANCELADA', 'CADUCADA')
+                           'CANCELADA', 'CADUCADA', 'COMPLETA')
+        PRECIOS_VALIDOS = ('TP1', 'TP2', 'TP3', 'SL')
 
         try:
-            body   = request.get_json(force=True) or {}
-            clave  = str(body.get('clave', ''))
-            estado = str(body.get('estado', '')).upper()
+            body             = request.get_json(force=True) or {}
+            clave            = str(body.get('clave', ''))
+            estado           = (body.get('estado') or '').strip().upper() or None
+            precio_alcanzado = (body.get('precio_alcanzado') or '').strip().upper() or None
 
             if not hmac.compare_digest(clave, CANCEL_KEY):
                 logger.warning(f"⚠️ Intento de edición con clave incorrecta (señal #{senal_id})")
                 return jsonify({'error': 'Clave incorrecta'}), 403
 
-            if estado not in ESTADOS_VALIDOS:
+            if not estado and not precio_alcanzado:
+                return jsonify({'error': 'Se requiere estado o precio_alcanzado'}), 400
+            if estado and estado not in ESTADOS_VALIDOS:
                 return jsonify({'error': f'Estado no válido: {estado}'}), 400
+            if precio_alcanzado and precio_alcanzado not in PRECIOS_VALIDOS:
+                return jsonify({'error': f'Precio no válido: {precio_alcanzado}'}), 400
 
             from adapters.database import get_db
             db = get_db()
@@ -740,99 +746,126 @@ def create_app(estado_sistema, threads_detectores):
                 except (TypeError, ValueError):
                     return False
 
-            # ── TP1: si hay TP2, NO cerrar — comportamiento idéntico al monitor automático
-            if estado == 'TP1':
-                if _tiene_tp('tp2'):
-                    # Multi-TP: marcar hit, mover SL a breakeven, mantener ACTIVA
+            # ── 1. PRECIO ALCANZADO: marcar flags y mover SL ──────────────────────
+            # Si también viene un `estado` explícito, el precio solo marca flags (no cierra).
+            # Si viene solo el precio, se aplica la lógica inteligente multi-TP.
+            if precio_alcanzado == 'TP1':
+                if estado:
                     db.ejecutar_query(
-                        """UPDATE senales
-                           SET tp1_alcanzado = 1, fecha_tp1 = ?,
-                               sl = precio_entrada,
-                               estado = 'ACTIVA', ciclo_vida = 'ACTIVA', fecha_cierre = NULL
-                           WHERE id = ?""",
+                        "UPDATE senales SET tp1_alcanzado=1, fecha_tp1=?, sl=precio_entrada WHERE id=?",
                         (ahora, senal_id)
                     )
-                    estado = 'ACTIVA'  # para el log/respuesta
-                else:
-                    # Single-TP: cerrar señal
+                elif _tiene_tp('tp2'):
                     db.ejecutar_query(
-                        """UPDATE senales
-                           SET estado = 'TP1', ciclo_vida = 'COMPLETA', fecha_cierre = ?,
-                               tp1_alcanzado = 1, fecha_tp1 = ?
-                           WHERE id = ?""",
+                        """UPDATE senales SET tp1_alcanzado=1, fecha_tp1=?,
+                               sl=precio_entrada, estado='ACTIVA', ciclo_vida='ACTIVA', fecha_cierre=NULL
+                           WHERE id=?""",
+                        (ahora, senal_id)
+                    )
+                    estado = 'ACTIVA'          # para el log
+                else:
+                    db.ejecutar_query(
+                        """UPDATE senales SET tp1_alcanzado=1, fecha_tp1=?,
+                               estado='TP1', ciclo_vida='COMPLETA', fecha_cierre=?
+                           WHERE id=?""",
                         (ahora, ahora, senal_id)
                     )
+                    estado = 'TP1'
 
-            # ── TP2: si hay TP3, NO cerrar
-            elif estado == 'TP2':
-                if _tiene_tp('tp3'):
+            elif precio_alcanzado == 'TP2':
+                if estado:
                     db.ejecutar_query(
-                        """UPDATE senales
-                           SET tp2_alcanzado = 1, fecha_tp2 = ?,
-                               sl = tp1,
-                               estado = 'ACTIVA', ciclo_vida = 'ACTIVA', fecha_cierre = NULL
-                           WHERE id = ?""",
+                        "UPDATE senales SET tp2_alcanzado=1, fecha_tp2=?, sl=tp1 WHERE id=?",
+                        (ahora, senal_id)
+                    )
+                elif _tiene_tp('tp3'):
+                    db.ejecutar_query(
+                        """UPDATE senales SET tp2_alcanzado=1, fecha_tp2=?,
+                               sl=tp1, estado='ACTIVA', ciclo_vida='ACTIVA', fecha_cierre=NULL
+                           WHERE id=?""",
                         (ahora, senal_id)
                     )
                     estado = 'ACTIVA'
                 else:
                     db.ejecutar_query(
-                        """UPDATE senales
-                           SET estado = 'TP2', ciclo_vida = 'COMPLETA', fecha_cierre = ?,
-                               tp2_alcanzado = 1, fecha_tp2 = ?
-                           WHERE id = ?""",
+                        """UPDATE senales SET tp2_alcanzado=1, fecha_tp2=?,
+                               estado='TP2', ciclo_vida='COMPLETA', fecha_cierre=?
+                           WHERE id=?""",
                         (ahora, ahora, senal_id)
                     )
+                    estado = 'TP2'
 
-            # ── TP3: siempre cierra
-            elif estado == 'TP3':
-                db.ejecutar_query(
-                    """UPDATE senales
-                       SET estado = 'TP3', ciclo_vida = 'COMPLETA', fecha_cierre = ?,
-                           tp3_alcanzado = 1, fecha_tp3 = ?
-                       WHERE id = ?""",
-                    (ahora, ahora, senal_id)
-                )
+            elif precio_alcanzado == 'TP3':
+                if estado:
+                    db.ejecutar_query(
+                        "UPDATE senales SET tp3_alcanzado=1, fecha_tp3=? WHERE id=?",
+                        (ahora, senal_id)
+                    )
+                else:
+                    db.ejecutar_query(
+                        """UPDATE senales SET tp3_alcanzado=1, fecha_tp3=?,
+                               estado='TP3', ciclo_vida='COMPLETA', fecha_cierre=?
+                           WHERE id=?""",
+                        (ahora, ahora, senal_id)
+                    )
+                    estado = 'TP3'
 
-            elif estado == 'SL':
-                db.ejecutar_query(
-                    """UPDATE senales
-                       SET estado = 'SL', ciclo_vida = 'COMPLETA', fecha_cierre = ?,
-                           sl_alcanzado = 1, fecha_sl = ?
-                       WHERE id = ?""",
-                    (ahora, ahora, senal_id)
-                )
+            elif precio_alcanzado == 'SL':
+                if estado:
+                    db.ejecutar_query(
+                        "UPDATE senales SET sl_alcanzado=1, fecha_sl=? WHERE id=?",
+                        (ahora, senal_id)
+                    )
+                else:
+                    db.ejecutar_query(
+                        """UPDATE senales SET sl_alcanzado=1, fecha_sl=?,
+                               estado='SL', ciclo_vida='COMPLETA', fecha_cierre=?
+                           WHERE id=?""",
+                        (ahora, ahora, senal_id)
+                    )
+                    estado = 'SL'
 
-            elif estado == 'COMPLETA':
-                # Cierre manual genérico: saca la señal de activas y marca ciclo_vida=COMPLETA
-                db.ejecutar_query(
-                    """UPDATE senales
-                       SET estado = 'CANCELADA', ciclo_vida = 'COMPLETA', fecha_cierre = ?
-                       WHERE id = ?""",
-                    (ahora, senal_id)
-                )
+            # ── 2. ESTADO: cambio de estado explícito ─────────────────────────────
+            if estado and precio_alcanzado:
+                # precio_alcanzado ya marcó los flags; aquí solo cambiamos el estado
+                if estado in ('CANCELADA', 'CADUCADA', 'COMPLETA'):
+                    ciclo = 'COMPLETA' if estado == 'COMPLETA' else 'CANCELADA'
+                    est_db = 'CANCELADA'
+                    db.ejecutar_query(
+                        "UPDATE senales SET estado=?, ciclo_vida=?, fecha_cierre=? WHERE id=?",
+                        (est_db, ciclo, ahora, senal_id)
+                    )
+                else:
+                    _ciclo = {'ACTIVA': 'ACTIVA', 'PENDIENTE_CONFIRM': 'PREPARADA', 'ESPERANDO': 'PREPARADA'}
+                    db.ejecutar_query(
+                        "UPDATE senales SET estado=?, ciclo_vida=?, fecha_cierre=NULL WHERE id=?",
+                        (estado, _ciclo.get(estado, 'PREPARADA'), senal_id)
+                    )
 
-            elif estado in ('CANCELADA', 'CADUCADA'):
-                db.ejecutar_query(
-                    "UPDATE senales SET estado = ?, ciclo_vida = 'CANCELADA', fecha_cierre = ? WHERE id = ?",
-                    (estado, ahora, senal_id)
-                )
+            elif estado:
+                # Solo estado, sin precio
+                if estado == 'COMPLETA':
+                    db.ejecutar_query(
+                        "UPDATE senales SET estado='CANCELADA', ciclo_vida='COMPLETA', fecha_cierre=? WHERE id=?",
+                        (ahora, senal_id)
+                    )
+                elif estado in ('CANCELADA', 'CADUCADA'):
+                    db.ejecutar_query(
+                        "UPDATE senales SET estado=?, ciclo_vida='CANCELADA', fecha_cierre=? WHERE id=?",
+                        (estado, ahora, senal_id)
+                    )
+                else:
+                    _ciclo = {'ACTIVA': 'ACTIVA', 'PENDIENTE_CONFIRM': 'PREPARADA', 'ESPERANDO': 'PREPARADA'}
+                    db.ejecutar_query(
+                        "UPDATE senales SET estado=?, ciclo_vida=?, fecha_cierre=NULL WHERE id=?",
+                        (estado, _ciclo.get(estado, 'PREPARADA'), senal_id)
+                    )
 
-            else:
-                # ACTIVA, PENDIENTE_CONFIRM, ESPERANDO — reactivar: limpiar fecha_cierre
-                _ciclo_map = {
-                    'ACTIVA': 'ACTIVA', 'PENDIENTE_CONFIRM': 'PREPARADA', 'ESPERANDO': 'PREPARADA',
-                }
-                ciclo_vida = _ciclo_map.get(estado, 'PREPARADA')
-                db.ejecutar_query(
-                    "UPDATE senales SET estado = ?, ciclo_vida = ?, fecha_cierre = NULL WHERE id = ?",
-                    (estado, ciclo_vida, senal_id)
-                )
-
+            cambio = ' + '.join(filter(None, [estado, precio_alcanzado]))
             logger.info(f"✏️  Señal #{senal_id} ({senal['simbolo']} {senal['direccion']}) "
-                        f"editada: {estado_previo} → {estado}")
+                        f"editada: {estado_previo} → {cambio}")
             return jsonify({'ok': True, 'senal_id': senal_id,
-                            'estado_previo': estado_previo, 'estado_nuevo': estado})
+                            'estado_previo': estado_previo, 'estado_nuevo': cambio})
 
         except Exception as e:
             logger.error(f"❌ /api/v1/senales/{senal_id}/estado error: {e}")
