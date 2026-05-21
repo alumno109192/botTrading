@@ -632,7 +632,7 @@
                   :class="{
                     'selected':  editModal.estadoSel === est,
                     'tp':        est.startsWith('TP'),
-                    'sl-color':  est === 'SL' || est === 'CANCELADA' || est === 'CADUCADA'
+                    'sl-color':  est === 'SL' || est === 'CANCELADA' || est === 'CADUCADA' || est === 'COMPLETA'
                   }"
                   @click="editModal.estadoSel = est"
                   x-text="est"></button>

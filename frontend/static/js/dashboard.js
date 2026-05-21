@@ -65,7 +65,7 @@ function dashboardApp() {
       senalId:      null,
       estadoActual: '',
       estadoSel:    '',
-      estados:      ['ACTIVA','PENDIENTE_CONFIRM','ESPERANDO','TP1','TP2','TP3','SL','CANCELADA','CADUCADA'],
+      estados:      ['ACTIVA','PENDIENTE_CONFIRM','ESPERANDO','TP1','TP2','TP3','SL','CANCELADA','CADUCADA','COMPLETA'],
       clave:        '',
       loading:      false,
       error:        '',

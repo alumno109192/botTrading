@@ -803,6 +803,15 @@ def create_app(estado_sistema, threads_detectores):
                     (ahora, ahora, senal_id)
                 )
 
+            elif estado == 'COMPLETA':
+                # Cierre manual genérico: saca la señal de activas y marca ciclo_vida=COMPLETA
+                db.ejecutar_query(
+                    """UPDATE senales
+                       SET estado = 'CANCELADA', ciclo_vida = 'COMPLETA', fecha_cierre = ?
+                       WHERE id = ?""",
+                    (ahora, senal_id)
+                )
+
             elif estado in ('CANCELADA', 'CADUCADA'):
                 db.ejecutar_query(
                     "UPDATE senales SET estado = ?, ciclo_vida = 'CANCELADA', fecha_cierre = ? WHERE id = ?",
