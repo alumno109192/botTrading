@@ -1807,6 +1807,72 @@ def _intervalo_para(categoria: str) -> int:
     }.get(categoria, _INTERVALO_SWING)
 
 
+def _check_entry_historico(
+    ticker: str, ts_senal: datetime, precio_entrada: float, direccion: str
+) -> bool:
+    """Comprueba si la entrada fue tocada en el histórico de velas desde ts_senal.
+
+    Estrategia:
+      1. BD secundaria (1m) — MIN(low)/MAX(high) desde ts_senal.
+         Si la BD tiene velas del período, el resultado es definitivo.
+      2. Fallback a Twelve Data API (1d/2d de 1m) filtrando por ts_senal.
+
+    Necesario para detectar entries tocadas durante off-hours, cuando el
+    ohlcv_poller pausó su escritura y las últimas 5 velas ya no cubren
+    el momento en que el precio pasó por el nivel de entrada.
+    """
+    _TOL = 0.10
+    ts_desde = ts_senal.isoformat()
+
+    # ── 1. BD secundaria (más rápida, sin coste de API) ──────────────────────
+    try:
+        from adapters.database import get_secondary_db as _get_sec_db
+        _db_sec = _get_sec_db()
+        if _db_sec is not None:
+            result = _db_sec.ejecutar_query(
+                """
+                SELECT MIN(low) AS min_low, MAX(high) AS max_high, COUNT(*) AS n
+                FROM ohlcv
+                WHERE symbol = ? AND interval = '1m' AND ts >= ?
+                """,
+                (ticker, ts_desde)
+            )
+            if result.rows:
+                row = result.rows[0]
+                n   = int(row.get('n') or 0)
+                if n > 0:
+                    if direccion == 'COMPRA':
+                        min_low = float(row.get('min_low') or 999_999)
+                        return min_low <= precio_entrada + _TOL
+                    else:
+                        max_high = float(row.get('max_high') or 0)
+                        return max_high >= precio_entrada - _TOL
+                    # Si n == 0: BD no tiene velas del período → caemos al fallback
+    except Exception as _e:
+        logger.warning(f"  ⚠️ [check_entry_hist/{ticker}] BD error: {_e}")
+
+    # ── 2. Fallback Twelve Data API ───────────────────────────────────────────
+    try:
+        antiguedad_h = (datetime.now(timezone.utc) - ts_senal).total_seconds() / 3600
+        period       = '2d' if antiguedad_h > 20 else '1d'
+        hist, _      = _get_ohlcv(ticker, period=period, interval='1m')
+        if hist is not None and not hist.empty:
+            # Filtrar desde ts_senal — el índice puede ser TZ-aware o naive
+            idx = hist.index
+            ts_ref = ts_senal if (hasattr(idx, 'tz') and idx.tz is not None) \
+                              else ts_senal.replace(tzinfo=None)
+            hist_f = hist[hist.index >= ts_ref]
+            if not hist_f.empty:
+                if direccion == 'COMPRA':
+                    return float(hist_f['Low'].min()) <= precio_entrada + _TOL
+                else:
+                    return float(hist_f['High'].max()) >= precio_entrada - _TOL
+    except Exception as _e:
+        logger.warning(f"  ⚠️ [check_entry_hist/{ticker}] API error: {_e}")
+
+    return False
+
+
 def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
     """
     Revisa todas las señales en estado ESPERANDO (orden LIMIT colocada, precio aún no llegó).
@@ -1868,6 +1934,28 @@ def _verificar_senales_esperando(db: DatabaseManager, ahora: datetime) -> None:
         else:
             # SELL LIMIT: el precio sube hasta la entrada
             ejecutada = precio_max >= precio_entrada - _TOL
+
+        # ── Comprobación histórica (off-hours recovery) ───────────────────────
+        # Las últimas 5 velas pueden no cubrir el momento en que el precio tocó
+        # la entrada (p.ej. durante la madrugada con ohlcv_poller pausado).
+        # Consultamos el histórico completo desde la creación de la señal.
+        if not ejecutada:
+            ts_senal_str = senal.get('timestamp')
+            if ts_senal_str:
+                try:
+                    ts_senal_dt = datetime.fromisoformat(
+                        str(ts_senal_str).replace('Z', '+00:00')
+                    )
+                    if ts_senal_dt.tzinfo is None:
+                        ts_senal_dt = ts_senal_dt.replace(tzinfo=timezone.utc)
+                    if _check_entry_historico(ticker, ts_senal_dt, precio_entrada, direccion):
+                        ejecutada = True
+                        logger.info(
+                            f"  📜 [#{senal_id}] Entrada detectada en histórico — "
+                            f"activando (precio actual ${precio_actual:.2f})"
+                        )
+                except Exception as _hist_e:
+                    logger.warning(f"  ⚠️ [#{senal_id}] Error check histórico: {_hist_e}")
 
         if ejecutada:
             pass  # continúa abajo para activar
